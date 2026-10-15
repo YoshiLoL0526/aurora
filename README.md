@@ -17,7 +17,7 @@
 </p>
 
 > [!WARNING]
-> **Estado: pre-alfa (v0.1).** La API puede cambiar entre versiones menores.
+> **Estado: pre-alfa (v0.2).** La API puede cambiar entre versiones menores.
 > Ya sirve para herramientas internas y prototipos; todavía no para producción.
 > Consulta las [limitaciones conocidas](#limitaciones-conocidas).
 
@@ -55,7 +55,7 @@ App(view, title="Contador").run()
 
 <p align="center">
   <img src="docs/studio/1-resumen.png" alt="Aurora Studio, la app de demostración" width="100%">
-  <br><sub><code>examples/studio.py</code>: navegación, kanban, gráfico interactivo, modal, toasts y tema claro/oscuro.<br>
+  <br><sub><code>examples/studio.py</code>: navegación, kanban con búsqueda, gráfico interactivo, formularios, ajustes, modal, toasts y tema claro/oscuro.<br>
   Todas las capturas del repositorio están renderizadas por la propia librería.</sub>
 </p>
 
@@ -69,7 +69,8 @@ App(view, title="Contador").run()
 | **🧩 Declarativa y componible** | La jerarquía se lee como markup (`column()[...]`). Los componentes son funciones Python normales: se testean, se importan y se comparten como cualquier código. |
 | **🔁 Reactiva** | El estado vive en `Signal`s y la interfaz se mantiene sincronizada sola. |
 | **🎨 Temas con tokens** | `bg="$primary"` en lugar de colores sueltos. Cambia de tema claro a oscuro en caliente con un `Signal[Theme]`. |
-| **🧪 Testeable sin pantalla** | `app.render_png()` renderiza cualquier vista sin abrir ventana: tests de snapshot, CI y documentación visual. |
+| **⌨️ Apps de verdad** | Scroll con inercia, teclado y foco con Tab, campos de texto con selección, portapapeles, deshacer e IME, imágenes y SVG, y componentes como `select`, `tabs`, `switch` o `tooltip`. |
+| **🧪 Testeable sin pantalla** | `app.render_png()` renderiza cualquier vista sin abrir ventana, y `app.pilot()` simula clics, teclas y rueda con el mismo motor que la ventana: tests de interacción, CI y documentación visual. |
 
 ## Inicio rápido
 
@@ -131,11 +132,15 @@ App(view, title="Mi panel", size=(1100, 720), theme=theme).run()
 | Concepto | En Aurora |
 |---|---|
 | Estructura | `column`, `row`, `box`, `spacer`; hijos con `[...]` |
-| Contenido | `text` (dinámico con `lambda`), `badge`, `stat` |
-| Interacción | `button`, u `on_click=` en cualquier contenedor; hover y pressed animados |
+| Contenido | `text` (dinámico con `lambda`), `image` (PNG, JPEG, WebP, SVG), `badge`, `stat`, `avatar`, `divider` |
+| Interacción | `button`, u `on_click=` en cualquier contenedor; hover y pressed animados; `tooltip` |
+| Entrada | `text_input`, `textarea`, `checkbox`, `switch`, `select`, `tabs`, enlazados a un `Signal` |
+| Teclado | Tab y foco visible, Enter/Espacio activan, `on_key` con atajos (`e.matches("mod+s")`) |
+| Desplazamiento | `scroll()` con rueda suave, trackpad, barra arrastrable y teclado |
 | Layout | flexbox: `gap`, `padding`, `align`, `justify`, `grow`, `wrap`, `%`, `position="absolute"` |
 | Estilo | `bg`, `gradient`, `radius`, `border_*`, `shadow`, `opacity`, `press_scale` |
-| Estado | `Signal(valor)`: `s()`, `s.set(v)`, `s.update(fn)` |
+| Estado | `Signal(valor)`: `s()`, `s.set(v)`, `s.update(fn)`; seguro desde hilos y `app.spawn(corrutina)` |
+| Tests | `app.render_png()` y `app.pilot()`: `click`, `type`, `press`, `scroll`, `png`… |
 | Temas | tokens `"$nombre"`, temas `MIDNIGHT` y `DAYLIGHT`, o el tuyo con `Theme(...)` |
 
 La referencia completa de propiedades está en [`docs/reference.md`](docs/reference.md).
@@ -148,8 +153,9 @@ La referencia completa de propiedades está en [`docs/reference.md`](docs/refere
  view() ─► árbol de Element ─► to_spec() ──►   spec    dict → nodos tipados, herencia de estilos
      ▲                          (1 cruce)      layout  Taffy (flexbox) + medición de texto Skia
      │                                         paint   Skia: formas, sombras, gradientes, texto
-     │                                         anim    transiciones hover/pressed por frame
- Signal.set() ◄── callback ◄── clic ◄────────  window  winit + framebuffer; bucle sin el GIL
+     │                                         anim    hover/pressed, scroll suave, foco, tooltips
+     │                                         input   edición de texto, IME, portapapeles
+ Signal.set() ◄── callback ◄── evento ◄──────  window  winit + framebuffer; bucle sin el GIL
 ```
 
 Python **describe**; Rust **ejecuta**. La frontera entre ambos se cruza una vez por actualización,

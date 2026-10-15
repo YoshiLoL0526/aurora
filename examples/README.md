@@ -6,7 +6,7 @@ sin abrir ventana, útil para ver el resultado en un servidor o en CI.
 | Ejemplo | Qué muestra | Comando |
 |---|---|---|
 | [`hello.py`](hello.py) | Lo esencial: layout, tarjetas de métricas, botones y un contador reactivo. | `uv run examples/hello.py` |
-| [`studio.py`](studio.py) | Una app completa: navegación entre vistas, kanban, gráfico interactivo, modal con confirmación, toasts y tema claro/oscuro. | `uv run examples/studio.py` |
+| [`studio.py`](studio.py) | Una app completa: navegación entre vistas, kanban con búsqueda, gráfico interactivo, formulario de nueva tarea (Ctrl+N), ajustes con `tabs`/`switch`/`select`/`textarea`, modal con confirmación, toasts, tooltips y tema claro/oscuro. | `uv run examples/studio.py` |
 | [`brand.py`](brand.py) | Genera el banner y el logo del README con la propia librería. | `uv run examples/brand.py` |
 
 ```bash

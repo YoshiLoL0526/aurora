@@ -8,6 +8,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ## [Sin publicar]
 
+## [0.2.0] — 2026-10-15
+
+Apps de verdad: scroll, teclado y foco, campos de texto, imágenes y más componentes.
+
 ### Añadido
 
 - Componentes `divider`, `avatar`, `checkbox`, `switch`, `tabs` (con ← →) y `select` (desplegable en
@@ -50,7 +54,16 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   `"on_click"`. `Element.on_click` sigue disponible como propiedad de solo lectura.
 - El núcleo separa el estado de la app (`Runtime`) del bucle de ventana.
 - El hit-testing respeta el recorte de los contenedores `scroll`.
-- La demo `studio.py` desplaza el contenido de cada página.
+- La demo `studio.py` desplaza el contenido de cada página y estrena búsqueda en el tablero, un
+  formulario de nueva tarea (Ctrl+N y el botón lo abren en vez de añadir una tarea de ejemplo),
+  una página de Ajustes y tooltips.
+- Nuevas dependencias del núcleo: `arboard` (portapapeles) y `unicode-segmentation`. Las features de
+  `skia-safe` cambian por sistema (`svg`, `webp` y, fuera de macOS, `ganesh` + `vulkan`) para
+  seguir usando binarios precompilados de Skia.
+
+### Corregido
+
+- `examples/studio.py --png` ya no falla en consolas de Windows sin UTF-8.
 
 ## [0.1.0] — 2026-10-15
 
@@ -76,5 +89,6 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
-[Sin publicar]: https://github.com/<usuario>/aurora/compare/v0.1.0...HEAD
+[Sin publicar]: https://github.com/<usuario>/aurora/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/<usuario>/aurora/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/<usuario>/aurora/releases/tag/v0.1.0

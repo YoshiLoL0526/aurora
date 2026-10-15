@@ -22,7 +22,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Componentes base: `button` (3 variantes), `card`, `badge`, `stat`
 - ✅ Render headless a PNG, tests y workflows de CI (lint, tests en 3 SO, release a PyPI)
 
-## v0.2 — Apps de verdad 🚧
+## v0.2 — Apps de verdad ✅
 
 *Lo mínimo para construir herramientas que se usen a diario.*
 

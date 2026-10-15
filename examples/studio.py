@@ -1,12 +1,13 @@
 """Aurora Studio — demo completa de capacidades.
 
 Una app de gestión de proyectos con:
-  • navegación entre 3 vistas (Resumen, Tablero, Equipo) con estado global en Signals
+  • navegación entre 4 vistas (Resumen, Tablero, Equipo, Ajustes) con estado global en Signals
   • valores derivados (KPIs, progreso por proyecto, carga del equipo) calculados en cada build
   • gráfico de barras interactivo construido solo con primitivas (clic en una barra = detalle)
-  • tablero kanban: mover tareas entre columnas, eliminar con confirmación, filtros por etiqueta
-  • modal con backdrop (posicionamiento absoluto + barrera de eventos)
-  • toast de notificación, tema claro/oscuro reactivo, texto truncado con elipsis
+  • tablero kanban: búsqueda, filtros por etiqueta, mover tareas y eliminar con confirmación
+  • formulario de nueva tarea en un modal: text_input con autofocus, select y Enter para crear
+  • ajustes con tabs, switch, checkbox, select y textarea enlazados a Signals
+  • scroll por página, tooltips, teclado (Tab, Esc, Ctrl/Cmd+N) y tema claro/oscuro reactivo
   • hover/pressed animados en Rust en todos los elementos clicables
 
     uv run examples/studio.py               # ventana
@@ -31,12 +32,19 @@ from aurora import (
     box,
     button,
     card,
+    checkbox,
     column,
+    divider,
     row,
     scroll,
+    select,
     spacer,
     stat,
+    switch,
+    tabs,
     text,
+    text_input,
+    textarea,
 )
 
 # ════════════════════════════════════════════════════════════════════ modelo
@@ -107,15 +115,6 @@ SEED = (
     _t("Landing con composición del índice", "Índice on-chain", "diseño", "baja", "done", "Ana Souza", 3),
 )
 
-BACKLOG = itertools.cycle(
-    [
-        ("Scroll virtualizado para listas largas", "Aurora UI", "frontend", "alta", "Raidel Pérez", 8),
-        ("Accesibilidad con AccessKit", "Aurora UI", "frontend", "media", "Ana Souza", 5),
-        ("Reintentos y colas en el agente", "Agentes IA", "backend", "media", "Lucas Martins", 3),
-        ("Alertas de desviación del índice", "Índice on-chain", "infra", "baja", "Carla Méndez", 3),
-    ]
-)
-
 WEEKS = {
     "Esta semana": [5, 8, 6, 11, 9, 4, 2],
     "Semana pasada": [3, 6, 9, 7, 5, 6, 1],
@@ -133,6 +132,22 @@ toast: Signal[str | None] = Signal(None)
 following: Signal[frozenset[str]] = Signal(frozenset({"Ana Souza"}))
 week = Signal("Esta semana")
 selected_day: Signal[int | None] = Signal(3)
+query = Signal("")
+
+# Formulario de nueva tarea
+new_title = Signal("")
+new_project = Signal("Aurora UI")
+new_priority = Signal("media")
+new_tag = Signal("frontend")
+new_assignee = Signal(TEAM[0].name)
+
+# Ajustes
+settings_tab = Signal("general")
+language = Signal("es")
+signature = Signal("")
+weekly_digest = Signal(True)
+notify_assigned = Signal(True)
+notify_mentions = Signal(False)
 
 # ══════════════════════════════════════════════════════════════════ acciones
 
@@ -164,9 +179,18 @@ def confirm_delete() -> None:
     notify(f"Tarea eliminada: {victim.title[:32]}")
 
 
-def add_task() -> None:
-    title, project, tag, prio, who, pts = next(BACKLOG)
-    tasks.update(lambda ts: (*ts, _t(title, project, tag, prio, "todo", who, pts)))
+def open_new_task() -> None:
+    modal.set(("new",))
+
+
+def create_task(_text: str | None = None) -> None:
+    title = new_title().strip()
+    if not title:
+        return
+    project = new_project()
+    tasks.update(lambda ts: (*ts, _t(title, project, new_tag(), new_priority(), "todo", new_assignee(), 3)))
+    new_title.set("")
+    modal.set(None)
     notify(f"Nueva tarea en {project}")
 
 
@@ -186,7 +210,7 @@ def toggle_theme() -> None:
 # ═══════════════════════════════════════════════════════════ piezas pequeñas
 
 
-def avatar(member_or_name: Member | str, size: int = 32) -> Element:
+def avatar(member_or_name: Member | str, size: int = 32, **style) -> Element:
     m = (
         member_or_name
         if isinstance(member_or_name, Member)
@@ -199,6 +223,7 @@ def avatar(member_or_name: Member | str, size: int = 32) -> Element:
         align="center",
         justify="center",
         gradient=(m.color, m.color + "99", 45),
+        **style,
     )[text(m.initials, size=size * 0.36, weight=700, color="#FFFFFF")]
 
 
@@ -249,7 +274,12 @@ def segmented(options: list[str], current: Signal[str]) -> Element:
 
 # ═══════════════════════════════════════════════════════════════════ sidebar
 
-NAV = [("resumen", "◆", "Resumen"), ("tablero", "▤", "Tablero"), ("equipo", "●", "Equipo")]
+NAV = [
+    ("resumen", "◆", "Resumen"),
+    ("tablero", "▤", "Tablero"),
+    ("equipo", "●", "Equipo"),
+    ("ajustes", "⚙", "Ajustes"),
+]
 
 
 def nav_item(name: str, icon: str, label: str) -> Element:
@@ -300,6 +330,7 @@ def sidebar() -> Element:
             toggle_theme,
             variant="soft",
             key="theme-toggle",
+            tooltip="También en Ajustes",
         ),
         box(height=8),
         row(gap=10, align="center", padding=10, radius="$md", border_width=1, border_color="$border")[
@@ -451,7 +482,9 @@ def overview() -> Element:
 # ═══════════════════════════════════════════════════════════════════ tablero
 
 
-def small_action(label: str, on_click, *, key: str, color: str = "$muted", enabled: bool = True) -> Element:
+def small_action(
+    label: str, on_click, *, key: str, color: str = "$muted", enabled: bool = True, tip: str | None = None
+) -> Element:
     return box(
         key=key,
         padding=(5, 9),
@@ -462,6 +495,7 @@ def small_action(label: str, on_click, *, key: str, color: str = "$muted", enabl
         press_scale=0.92,
         opacity=1.0 if enabled else 0.3,
         on_click=on_click if enabled else None,
+        tooltip=tip if enabled else None,
     )[text(label, size=12, weight=600, color=color)]
 
 
@@ -479,12 +513,16 @@ def task_card(t: Task, col_index: int) -> Element:
             pill(f"#{t.tag}", "#8A91A8"),
             text(f"{t.points} pts", size=11, color="$muted"),
             spacer(),
-            avatar(t.assignee, 24),
+            avatar(t.assignee, 24, tooltip=t.assignee),
         ],
         box(height=1, bg="$border"),
         row(gap=2, align="center")[
-            small_action("←", lambda: move(t.id, -1), key=f"l-{t.id}", enabled=col_index > 0),
-            small_action("→", lambda: move(t.id, +1), key=f"r-{t.id}", enabled=col_index < 2),
+            small_action(
+                "←", lambda: move(t.id, -1), key=f"l-{t.id}", enabled=col_index > 0, tip="Mover atrás"
+            ),
+            small_action(
+                "→", lambda: move(t.id, +1), key=f"r-{t.id}", enabled=col_index < 2, tip="Mover adelante"
+            ),
             spacer(),
             small_action("Eliminar", lambda: modal.set(("delete", t.id)), key=f"d-{t.id}", color="$danger"),
         ],
@@ -513,7 +551,8 @@ def tag_chip(tag: str) -> Element:
 
 def board() -> Element:
     tags = active_tags()
-    visible = [t for t in tasks() if not tags or t.tag in tags]
+    q = query().strip().lower()
+    visible = [t for t in tasks() if (not tags or t.tag in tags) and q in t.title.lower()]
     columns = []
     for i, (status, label, color) in enumerate(STATUSES):
         items = [t for t in visible if t.status == status]
@@ -534,7 +573,8 @@ def board() -> Element:
         )
     return column(gap=16)[
         row(gap=8, align="center", wrap=True)[
-            text("Filtrar:", size=12, weight=600, color="$muted"),
+            text_input(query, placeholder="Buscar tareas…", key="search", width=220),
+            text("Filtrar:", size=12, weight=600, color="$muted", padding=(0, 0, 0, 8)),
             [tag_chip(tag) for tag in TAGS],
             tags and small_action("Limpiar", lambda: active_tags.set(frozenset()), key="clear-tags"),
             spacer(),
@@ -589,6 +629,59 @@ def team() -> Element:
     ]
 
 
+# ═══════════════════════════════════════════════════════════════════ ajustes
+
+
+def setting_row(title: str, description: str, control: Element) -> Element:
+    return row(gap=16, align="center")[
+        column(gap=2, grow=1, shrink=1)[
+            text(title, size=14, weight=600),
+            text(description, size=12, color="$muted"),
+        ],
+        control,
+    ]
+
+
+def settings() -> Element:
+    general = card(gap=16)[
+        setting_row(
+            "Tema oscuro",
+            "Cambia toda la interfaz al instante",
+            switch(
+                theme() is MIDNIGHT,
+                on_change=lambda on: theme.set(MIDNIGHT if on else DAYLIGHT),
+                key="set-dark",
+            ),
+        ),
+        divider(),
+        setting_row(
+            "Idioma",
+            "Para fechas y notificaciones",
+            select(
+                language,
+                [("es", "Español"), ("en", "English"), ("pt", "Português")],
+                key="set-lang",
+                width=200,
+            ),
+        ),
+        divider(),
+        column(gap=8)[
+            text("Firma de los comentarios", size=14, weight=600),
+            textarea(signature, placeholder="Se añade al final de tus comentarios…", key="set-signature"),
+            text(lambda: f"{len(signature())} caracteres", size=11, color="$muted"),
+        ],
+    ]
+    notifications = card(gap=14)[
+        checkbox(weekly_digest, "Resumen semanal por email", key="set-weekly"),
+        checkbox(notify_assigned, "Avisarme cuando me asignan una tarea", key="set-assigned"),
+        checkbox(notify_mentions, "Avisarme cuando me mencionan", key="set-mentions"),
+    ]
+    return column(gap=18, max_width=680)[
+        tabs([("general", "General"), ("notificaciones", "Notificaciones")], settings_tab, key="set-tabs"),
+        general if settings_tab() == "general" else notifications,
+    ]
+
+
 # ═════════════════════════════════════════════════════════════════ overlays
 
 
@@ -596,7 +689,44 @@ def modal_layer() -> Element | None:
     state = modal()
     if state is None:
         return None
-    if state[0] == "delete":
+    if state[0] == "new":
+
+        def field(label: str, control: Element, **style) -> Element:
+            return column(gap=6, **style)[text(label, size=12, weight=600, color="$muted"), control]
+
+        def half(label: str, control: Element) -> Element:
+            # Dos campos por fila a partes iguales.
+            return field(label, control, grow=1, width=0)
+
+        body = [
+            column(gap=2)[
+                text("Nueva tarea", size=17, weight=700),
+                text("Enter para crear · Esc para cancelar", size=12, color="$muted"),
+            ],
+            field(
+                "Título",
+                text_input(
+                    new_title,
+                    placeholder="¿Qué hay que hacer?",
+                    key="new-title",
+                    autofocus=True,
+                    on_submit=create_task,
+                ),
+            ),
+            row(gap=12)[
+                half("Proyecto", select(new_project, list(PROJECTS), key="new-project")),
+                half("Prioridad", select(new_priority, ["alta", "media", "baja"], key="new-priority")),
+            ],
+            row(gap=12)[
+                half("Etiqueta", select(new_tag, TAGS, key="new-tag")),
+                half("Responsable", select(new_assignee, [m.name for m in TEAM], key="new-assignee")),
+            ],
+            row(gap=10, justify="end")[
+                button("Cancelar", lambda: modal.set(None), variant="soft", key="m-cancel"),
+                button("Crear tarea", create_task, key="m-create"),
+            ],
+        ]
+    elif state[0] == "delete":
         t = next(t for t in tasks() if t.id == state[1])
         body = [
             row(gap=12, align="center")[
@@ -629,8 +759,8 @@ def modal_layer() -> Element | None:
     else:
         features = [
             "Layout flexbox con Taffy y texto con shaping real (Skia)",
-            "Sombras, gradientes, bordes y elipsis nativos",
-            "Hover/pressed animados en Rust, sin pasar por Python",
+            "Scroll, teclado y foco, campos de texto con IME e imágenes",
+            "Hover/pressed y tooltips animados en Rust, sin pasar por Python",
             "Estado con Signals y tema claro/oscuro reactivo",
         ]
         body = [
@@ -645,7 +775,7 @@ def modal_layer() -> Element | None:
                 )[text("A", size=20, weight=800, color="#FFFFFF")],
                 column(gap=2)[
                     text("Aurora Studio", size=18, weight=700),
-                    text("Demo de capacidades · v0.1", size=12, color="$muted"),
+                    text("Demo de capacidades · v0.2", size=12, color="$muted"),
                 ],
             ],
             column(gap=10)[
@@ -702,16 +832,17 @@ PAGES = {
     "resumen": ("Resumen", "Cómo va todo de un vistazo", overview),
     "tablero": ("Tablero", "Mueve tareas entre columnas o filtra por etiqueta", board),
     "equipo": ("Equipo", "Carga de trabajo y personas que sigues", team),
+    "ajustes": ("Ajustes", "Preferencias de la cuenta y notificaciones", settings),
 }
 
 
 def on_key(e: KeyEvent) -> bool | None:
-    """Atajos globales: Esc cierra el modal y Ctrl/Cmd+N crea una tarea."""
+    """Atajos globales: Esc cierra el modal y Ctrl/Cmd+N abre el formulario de nueva tarea."""
     if e.matches("escape") and modal() is not None:
         modal.set(None)
         return True
     if e.matches("mod+n"):
-        add_task()
+        open_new_task()
         return True
     return None
 
@@ -729,7 +860,7 @@ def view() -> Element:
                 spacer(),
                 badge(lambda: f"{sum(t.status == 'doing' for t in tasks())} en curso"),
                 button("Acerca de", lambda: modal.set(("about",)), variant="ghost", key="about"),
-                button("+ Nueva tarea", add_task, key="add"),
+                button("+ Nueva tarea", open_new_task, key="add", tooltip="Ctrl+N"),
             ],
             # Cada página conserva su propia posición de desplazamiento.
             # El relleno va dentro para que el contenido llegue al borde de la ventana
@@ -755,6 +886,16 @@ def render_gallery(out: Path) -> None:
             "4-equipo-claro",
             lambda: (modal.set(None), page.set("equipo"), toggle_theme(), toggle_follow("Lucas Martins")),
         ),
+        (
+            "5-nueva-tarea",
+            lambda: (
+                toggle_theme(),
+                page.set("tablero"),
+                open_new_task(),
+                new_title.set("Revisar accesibilidad"),
+            ),
+        ),
+        ("6-ajustes", lambda: (modal.set(None), page.set("ajustes"), signature.set("— Raidel"))),
     ]
     for name, mutate in shots:
         mutate()
@@ -764,6 +905,8 @@ def render_gallery(out: Path) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--png":
+        # Consolas sin UTF-8 (cp1252 en Windows): que "✓" no rompa la salida.
+        sys.stdout.reconfigure(errors="replace")
         render_gallery(Path(sys.argv[2]))
     else:
         app.run()

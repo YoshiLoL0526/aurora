@@ -88,7 +88,7 @@ flexbox no aporta nada diferencial.
 
 ### Framebuffer por CPU (de momento)
 
-winit + softbuffer + Skia raster es la combinación más portable y simple para la v0.1: no hay
+winit + softbuffer + Skia raster es la combinación más portable y simple por ahora: no hay
 contextos de GPU que crear ni drivers con los que pelear. El formato de píxel de softbuffer
 (`0x00RRGGBB`) coincide en little-endian con el N32 (BGRA) de Skia, así que Skia pinta
 directamente en el buffer de la ventana, **sin copias**. El backend GPU (v0.3) entra detrás
@@ -96,7 +96,8 @@ del mismo punto.
 
 ### Árbol completo por actualización (de momento)
 
-La v0.1 reconstruye la vista entera tras cada evento. Es una simplificación deliberada:
+Aurora reconstruye la vista entera tras cada evento (también tras cada tecla en un campo de
+texto). Es una simplificación deliberada:
 el coste real es serializar el árbol en Python, que para apps medianas está muy por debajo de un
 frame. El diseño ya prepara la reactividad de grano fino de la v0.3:
 

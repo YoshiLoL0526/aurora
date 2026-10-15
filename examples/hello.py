@@ -19,7 +19,7 @@ def header():
             text("Rust + Skia + Taffy, controlado desde Python", size=13, color="$muted"),
         ],
         spacer(),
-        badge("v0.1 · MVP"),
+        badge("v0.2"),
     ]
 
 
