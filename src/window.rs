@@ -57,8 +57,8 @@ struct App {
     mods: Mods,
     /// Si el IME del sistema está activado (solo mientras hay un campo enfocado).
     ime_allowed: bool,
-    /// Próximo cambio del parpadeo del cursor, si no hay animaciones en curso.
-    blink_at: Option<Instant>,
+    /// Próximo despertar programado (parpadeo, tooltip), si no hay animaciones en curso.
+    wake_at: Option<Instant>,
     last_frame: Instant,
     /// Si el frame anterior dejó transiciones en curso.
     animating: bool,
@@ -117,7 +117,7 @@ impl App {
         if animating || hover_changed {
             window.request_redraw();
         }
-        self.blink_at = match self.rt.next_blink() {
+        self.wake_at = match self.rt.next_wakeup() {
             Some(secs) if !animating => Some(now + Duration::from_secs_f32(secs)),
             _ => None,
         };
@@ -325,7 +325,7 @@ impl ApplicationHandler<Wake> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        event_loop.set_control_flow(match self.blink_at {
+        event_loop.set_control_flow(match self.wake_at {
             Some(at) => ControlFlow::WaitUntil(at),
             None => ControlFlow::Wait,
         });
@@ -359,7 +359,7 @@ pub fn run(
             surface: None,
             mods: Mods::default(),
             ime_allowed: false,
-            blink_at: None,
+            wake_at: None,
             last_frame: Instant::now(),
             animating: false,
             fatal: None,

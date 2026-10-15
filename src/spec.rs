@@ -48,6 +48,9 @@ pub struct TextProps {
     pub letter_spacing: f32,
     /// Color del anillo de foco.
     pub focus_color: Color,
+    /// Colores de la burbuja de los tooltips.
+    pub tooltip_bg: Color,
+    pub tooltip_color: Color,
 }
 
 impl Default for TextProps {
@@ -60,6 +63,8 @@ impl Default for TextProps {
             line_height: None,
             letter_spacing: 0.0,
             focus_color: Color::from_rgb(0x7C, 0x5C, 0xFF),
+            tooltip_bg: Color::from_rgb(0xE6, 0xE8, 0xF0),
+            tooltip_color: Color::from_rgb(0x0B, 0x0D, 0x14),
         }
     }
 }
@@ -142,6 +147,8 @@ pub struct Style {
     pub selection_color: Option<Color>,
     /// Alto mínimo de un campo multilínea, en líneas.
     pub rows: usize,
+    /// Texto de ayuda que aparece al dejar el puntero un momento encima.
+    pub tooltip: Option<String>,
     // Imágenes
     pub src: Option<Source>,
     pub fit: Fit,
@@ -353,6 +360,7 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         placeholder_color: color_of(d, "placeholder_color")?,
         selection_color: color_of(d, "selection_color")?,
         rows: f32_of(d, "rows")?.map_or(1, |n| n.max(1.0) as usize),
+        tooltip: str_of(d, "tooltip")?.filter(|t| !t.is_empty()),
         src: match get(d, "src")? {
             Some(v) if v.is_instance_of::<PyBytes>() => Some(Source::Bytes(v.extract()?)),
             Some(v) => Some(Source::Path(v.extract::<String>().map_err(|_| {
@@ -382,6 +390,8 @@ fn inherit_text(d: &Bound<'_, PyDict>, parent: &TextProps) -> PyResult<TextProps
         line_height: f32_of(d, "line_height")?.or(parent.line_height),
         letter_spacing: f32_of(d, "letter_spacing")?.unwrap_or(parent.letter_spacing),
         focus_color: color_of(d, "focus_color")?.unwrap_or(parent.focus_color),
+        tooltip_bg: color_of(d, "tooltip_bg")?.unwrap_or(parent.tooltip_bg),
+        tooltip_color: color_of(d, "tooltip_color")?.unwrap_or(parent.tooltip_color),
     })
 }
 

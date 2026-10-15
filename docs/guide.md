@@ -303,6 +303,26 @@ row(gap=12, align="center")[
 ]
 ```
 
+### Más componentes
+
+Además de `button`, `card`, `badge` y `stat`, Aurora trae `checkbox`, `switch`, `select`, `tabs`,
+`avatar`, `divider` y `tooltip`. Los controles se enlazan a un `Signal` igual que los campos de
+texto:
+
+```python
+from aurora import checkbox, select, switch, tabs
+
+notify = Signal(True)
+region = Signal("eu")
+view_mode = Signal("lista")
+
+column(gap=14)[
+    tabs([("lista", "Lista"), ("mapa", "Mapa")], view_mode, key="mode"),
+    switch(notify, "Avisarme si un servicio cae"),
+    select(region, [("eu", "Europa"), ("us", "EE. UU.")], key="region", width=200),
+]
+```
+
 ### Formularios
 
 `text_input` y `textarea` se enlazan directamente a un `Signal[str]`: no hace falta escribir

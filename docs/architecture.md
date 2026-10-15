@@ -208,6 +208,15 @@ la región enfocada por sus padres; si ninguno devuelve un valor verdadero, el `
 comportamiento por defecto (foco, activación, desplazamiento). El anillo se anima con el mismo
 suavizado que hover y pressed y se pinta después de los hijos.
 
+## Tooltips
+
+El tooltip es lo único de los componentes nuevos que vive en el núcleo, porque depende del hover y
+del tiempo. Al recalcular el hover, el `Runtime` busca el primer ancestro con `tooltip` bajo el
+puntero (`Tip` en el `Engine`); el reloj real (`advance_clock`) acumula tiempo y, pasado el
+retardo, la burbuja aparece con el mismo suavizado que el hover. La ventana duerme hasta ese
+momento con `next_wakeup`, como con el parpadeo del cursor. Se pinta al final del frame, encima de
+las capas, y no registra `HitRegion`: no intercepta el ratón.
+
 ## Capas
 
 Un nodo con `layer="overlay"` se maqueta en su sitio, pero el `Painter` lo aplaza: lo encola y lo

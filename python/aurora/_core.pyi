@@ -82,6 +82,9 @@ class Pilot:
     def focus(self, key: str) -> None:
         """Enfoca `key` como con el teclado. `LookupError` si no es enfocable."""
     @property
+    def tooltip(self) -> str | None:
+        """Texto del tooltip visible."""
+    @property
     def focused(self) -> str | None:
         """Key del nodo enfocado."""
     @property

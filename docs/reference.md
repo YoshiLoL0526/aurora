@@ -100,6 +100,7 @@ def test_counter():
 | `clipboard` | Portapapeles del piloto, en memoria (se puede leer y asignar); no toca el del sistema. |
 | `focus(key)` | Enfoca `key` como si se llegara con el teclado. `LookupError` si no se pintó o no es enfocable. |
 | `focused` | Key del nodo enfocado, o `None`. |
+| `tooltip` | Texto del tooltip visible, o `None`. Avanza el tiempo con `frame(dt=0.6)` para que aparezca. |
 | `hovered` | Key del nodo interactivo bajo el puntero, o `None`. |
 | `rect(key)` | `(x, y, ancho, alto)` del nodo en el último frame, o `None`. |
 | `frame(dt=1/60)` | Avanza un frame. Devuelve `True` si quedan transiciones en curso. |
@@ -273,6 +274,72 @@ Píldora compacta de texto. `tone` es el nombre de un token de color del tema.
 Tarjeta de métrica: etiqueta, valor grande y variación opcional en verde (`positive=True`) o rojo.
 Tiene `grow=1`, así que varias `stat` en una `row` se reparten el ancho.
 
+### `divider(*, vertical=False, color="$border", **estilo)`
+
+Línea de 1 px. Horizontal por defecto (ocupa el ancho de su columna); con `vertical=True`, para
+separar elementos de una `row` (ocupa su alto, o el `height` que le des).
+
+### `avatar(name="", *, src=None, size=32, **estilo)`
+
+Círculo de `size` px. Con `src` (ruta o `bytes`) muestra la imagen recortada (`fit="cover"`); sin
+ella, las iniciales de `name` (hasta dos) sobre un color del tema que depende del nombre, así que
+una persona siempre tiene el mismo color.
+
+```python
+avatar("Ada Lovelace")
+avatar("Ada Lovelace", src="ada.jpg", size=40, tooltip="Ada · Admin")
+```
+
+### `checkbox(checked, label=None, *, on_change=None, key=None, **estilo)` y `switch(on, label=None, ...)`
+
+Casilla de verificación e interruptor. Con un `Signal[bool]` se enlazan solos: un clic (o Enter /
+Espacio con el foco) lo alterna. `on_change(valor)` se llama en cada cambio; con un `bool` fijo y
+`on_change`, gestionas el valor tú. Toda la fila (control y etiqueta) es la zona de clic.
+
+```python
+dark = Signal(True)
+switch(dark, "Tema oscuro", on_change=lambda on: theme.set(MIDNIGHT if on else DAYLIGHT))
+checkbox(accepted, "Acepto las condiciones")
+```
+
+### `tabs(options, selected, *, key=None, **estilo)`
+
+Pestañas con indicador bajo la activa. `options` es una lista de valores o de pares
+`(valor, etiqueta)` y `selected` el `Signal` con el valor activo. Con una pestaña enfocada, ← y →
+cambian de pestaña. Cada pestaña tiene la key `f"{key}-{valor}"`.
+
+```python
+page = Signal("resumen")
+tabs([("resumen", "Resumen"), ("tablero", "Tablero")], page, key="nav")
+```
+
+### `select(value, options, *, placeholder="Elegir…", key=None, **estilo)`
+
+Desplegable. `value` es un `Signal` y `options`, valores o pares `(valor, etiqueta)`. La lista se
+abre por encima de todo (`layer="overlay"`), con scroll si es larga, y se cierra al elegir, al hacer
+clic fuera, con Esc o con Enter. Con el desplegable enfocado, ↑ y ↓ cambian el valor sin abrirlo.
+Ancho mínimo de 160 px; los estilos extra (`width`, `grow`…) se aplican al contenedor. Las opciones
+tienen la key `f"{key}-opt-{índice}"`.
+
+```python
+lang = Signal("es")
+select(lang, [("es", "Español"), ("en", "English")], key="lang", width=220)
+```
+
+### `tooltip(child, tip)`
+
+Muestra `tip` en una burbuja al dejar el puntero **medio segundo** sobre `child`. Aparece debajo
+(o encima, si no cabe), sin salirse de la ventana, se oculta al hacer clic o pulsar una tecla, y
+no intercepta el ratón. Es lo mismo que pasar `tooltip="..."` a cualquier elemento:
+
+```python
+tooltip(button("Guardar", save), "Ctrl+S")
+image("info.svg", width=16, tooltip="Se actualiza cada hora")
+```
+
+La burbuja usa los colores heredables `tooltip_bg` y `tooltip_color`, que por defecto invierten el
+tema (`$text` sobre `$background`), así destaca en claro y en oscuro.
+
 ### `text_input(value, *, placeholder="", on_change=None, on_submit=None, key=None, **estilo)`
 
 Campo de texto de una línea. `value` es normalmente un `Signal[str]`, y entonces queda **enlazado
@@ -356,6 +423,7 @@ contenedores (como en CSS).
 | `scrollbar_color` | color | Color del pulgar de la barra de un `scroll` (se pinta translúcido). `scroll()` usa `$muted`. |
 | `placeholder_color` | color | Color del placeholder de un campo de texto. Por defecto, el color del texto al 45 %. |
 | `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |
+| `tooltip` | texto | Texto de ayuda que aparece al dejar el puntero encima. Ver [`tooltip`](#tooltipchild-tip). |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
 | `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |
 
@@ -370,6 +438,7 @@ contenedores (como en CSS).
 | `line_height` | — | múltiplo del tamaño (`1.4`) | el de la fuente | *H* |
 | `letter_spacing` | — | número (px, admite negativos) | `0` | *H* |
 | `focus_color` | — | color del anillo de foco | `$primary` | *H* |
+| `tooltip_bg`, `tooltip_color` | — | colores de la burbuja de los tooltips | `$text`, `$background` | *H* |
 | `max_lines` | — | entero | sin límite | Corta con `…` al superar ese número de líneas. |
 | `text_align` | — | `"left"`, `"center"`, `"right"` | `"left"` | Alineación dentro del ancho del texto. |
 

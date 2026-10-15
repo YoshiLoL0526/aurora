@@ -185,6 +185,12 @@ impl Pilot {
         self.step(FRAME).map(drop)
     }
 
+    /// Texto del tooltip visible, o `None`.
+    #[getter]
+    fn tooltip(&self) -> Option<String> {
+        self.rt.tooltip()
+    }
+
     /// Key del nodo enfocado, o `None`.
     #[getter]
     fn focused(&self) -> Option<String> {

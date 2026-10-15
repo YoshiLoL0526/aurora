@@ -16,7 +16,7 @@ use skia_safe::{Canvas, Point, Rect};
 
 use crate::input::InputState;
 use crate::keys::{KeyEvent, KeyInput, Mods};
-use crate::render::{Engine, HitRegion, ancestors, hit_test, topmost};
+use crate::render::{Engine, HitRegion, TIP_DELAY, ancestors, hit_test, topmost};
 use crate::scroll::LINE;
 use crate::spec::{self, Node};
 
@@ -195,6 +195,9 @@ impl Runtime {
         if let Some(state) = self.focused_input() {
             state.blink += elapsed;
         }
+        if self.engine.tip.key.is_some() {
+            self.engine.tip.timer += elapsed;
+        }
     }
 
     /// Pinta el árbol y recalcula el hover: tras una reconstrucción, lo que
@@ -240,6 +243,7 @@ impl Runtime {
     pub fn pointer_leave(&mut self) {
         self.pointer = None;
         self.engine.hovered = None;
+        self.engine.tip.set_key(None);
         self.hover_scrollbar();
     }
 
@@ -251,6 +255,7 @@ impl Runtime {
             return Ok(());
         }
         self.engine.pressed = self.engine.hovered.clone();
+        self.engine.tip.suppressed = true;
         self.engine.focus_visible = false;
         let target = self.pointer.and_then(|(x, y)| {
             ancestors(&self.regions, topmost(&self.regions, x, y))
@@ -467,6 +472,7 @@ impl Runtime {
         if !pressed {
             return self.key_up(input);
         }
+        self.engine.tip.suppressed = true;
         if self.dispatch_key(input)? {
             return Ok(true);
         }
@@ -734,9 +740,32 @@ impl Runtime {
     }
 
     /// Segundos hasta el próximo parpadeo del cursor, si hay un campo enfocado.
-    pub fn next_blink(&self) -> Option<f32> {
-        let key = self.engine.focused.as_ref()?;
-        self.engine.inputs.get(key).map(InputState::until_blink)
+    /// Segundos hasta el próximo cambio programado (parpadeo del cursor o
+    /// aparición de un tooltip), para que el bucle duerma hasta entonces.
+    pub fn next_wakeup(&self) -> Option<f32> {
+        let blink = self
+            .engine
+            .focused
+            .as_ref()
+            .and_then(|key| self.engine.inputs.get(key))
+            .map(InputState::until_blink);
+        let tip = &self.engine.tip;
+        let tooltip = (tip.key.is_some() && !tip.suppressed && tip.timer < TIP_DELAY)
+            .then_some(TIP_DELAY - tip.timer);
+        match (blink, tooltip) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// Texto del tooltip visible, si hay uno.
+    pub fn tooltip(&self) -> Option<String> {
+        let tip = &self.engine.tip;
+        if !tip.ready() {
+            return None;
+        }
+        let key = tip.key.as_ref()?;
+        find(self.tree.as_ref()?, key)?.style.tooltip.clone()
     }
 
     /// Selección del campo `key` en caracteres (no bytes): `(inicio, fin)`.
@@ -849,7 +878,12 @@ impl Runtime {
             .and_then(|(x, y)| hit_test(&self.regions, x, y));
         let changed = hovered != self.engine.hovered;
         self.engine.hovered = hovered;
-        changed
+        let tip = self.pointer.and_then(|(x, y)| {
+            ancestors(&self.regions, topmost(&self.regions, x, y))
+                .find(|r| r.tooltip)
+                .map(|r| r.key.clone())
+        });
+        self.engine.tip.set_key(tip) || changed
     }
 
     // ---------------------------------------------------------------- eventos

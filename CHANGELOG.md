@@ -10,6 +10,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- Componentes `divider`, `avatar`, `checkbox`, `switch`, `tabs` (con ← →) y `select` (desplegable en
+  capa superior, con scroll, Esc y ↑ ↓), enlazados a `Signal` donde aplica.
+- `tooltip(child, tip)` y la propiedad `tooltip`: burbuja tras medio segundo de hover, colocada
+  dentro de la ventana, con colores heredables `tooltip_bg` y `tooltip_color`; `Pilot.tooltip`.
 - Primitiva `image(src, fit=...)`: PNG, JPEG, WebP, GIF, BMP, ICO y SVG (vectorial) desde una ruta
   o desde `bytes`, con proporción automática, `fit` (`contain`, `cover`, `fill`, `none`), recorte a
   las esquinas redondeadas, caché de decodificación que detecta cambios en disco y errores claros

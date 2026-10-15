@@ -72,6 +72,8 @@ pub struct HitRegion {
     pub focusable: bool,
     /// Campo de texto: cursor de texto al pasar y el clic coloca el cursor.
     pub editable: bool,
+    /// Tiene `tooltip`.
+    pub tooltip: bool,
     pub scroll: Option<Axis>,
     /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
     pub parent: Option<usize>,
@@ -134,6 +136,41 @@ pub struct Engine {
     /// El anillo de foco se muestra solo si se llegó con el teclado (como
     /// `:focus-visible` en CSS): un clic enfoca sin dibujar el anillo.
     pub focus_visible: bool,
+    pub tip: Tip,
+}
+
+/// Retardo antes de mostrar un tooltip (segundos).
+pub const TIP_DELAY: f32 = 0.5;
+
+/// Tooltip del nodo bajo el puntero.
+#[derive(Default)]
+pub struct Tip {
+    /// Nodo con `tooltip` bajo el puntero.
+    pub key: Option<String>,
+    /// Segundos (reales) que lleva el puntero encima.
+    pub timer: f32,
+    /// Visibilidad de la burbuja, de 0 a 1.
+    pub alpha: f32,
+    /// Tras un clic no se muestra hasta que el puntero cambie de nodo.
+    pub suppressed: bool,
+}
+
+impl Tip {
+    pub fn ready(&self) -> bool {
+        self.key.is_some() && !self.suppressed && self.timer >= TIP_DELAY
+    }
+
+    /// Cambia el nodo bajo el puntero. Devuelve `true` si cambió.
+    pub fn set_key(&mut self, key: Option<String>) -> bool {
+        if self.key == key {
+            return false;
+        }
+        self.key = key;
+        self.timer = 0.0;
+        self.alpha = 0.0;
+        self.suppressed = false;
+        true
+    }
 }
 
 /// Constante de tiempo de las transiciones de estado (segundos).
@@ -154,6 +191,7 @@ impl Engine {
             pressed: None,
             focused: None,
             focus_visible: false,
+            tip: Tip::default(),
         }
     }
 
@@ -412,6 +450,13 @@ impl Engine {
             }
             s.hover > 0.0 || s.press > 0.0 || s.focus > 0.0 || th + tp + tf > 0.0
         });
+        let goal = if self.tip.ready() { 1.0 } else { 0.0 };
+        self.tip.alpha += (goal - self.tip.alpha) * k;
+        if (goal - self.tip.alpha).abs() < 0.01 {
+            self.tip.alpha = goal;
+        } else {
+            animating = true;
+        }
         for s in self.scroll.values_mut() {
             animating |= s.tick(dt);
         }
@@ -431,7 +476,9 @@ impl Engine {
     ) -> Vec<HitRegion> {
         let (tree, lroot) = self.layout(root, width, height);
         canvas.clear(root.style.bg.unwrap_or(Color::from_rgb(0x0B, 0x0D, 0x14)));
-        canvas.save();
+        // `restore_to_count` al final: un frame nunca deja la pila del canvas
+        // desequilibrada (la superficie del piloto se reutiliza entre frames).
+        let base = canvas.save();
         canvas.scale((scale, scale));
         let mut painter = Painter {
             engine: self,
@@ -442,6 +489,7 @@ impl Engine {
             overlays: Vec::new(),
             scrolls: Vec::new(),
             inputs: Vec::new(),
+            tip: None,
         };
         painter.paint(root, &lroot, Point::new(0.0, 0.0), None, no_clip());
         // Las capas superiores se pintan al final, en orden de aparición. Una capa
@@ -452,7 +500,11 @@ impl Engine {
             painter.paint_node(node, lnode, origin, parent, no_clip());
             i += 1;
         }
-        canvas.restore();
+        // El tooltip va por encima de todo, capas incluidas, y no recibe eventos.
+        if let Some((rect, node)) = painter.tip.take() {
+            self.paint_tooltip(canvas, rect, node, width, height);
+        }
+        canvas.restore_to_count(base);
         let Painter {
             regions,
             scrolls,
@@ -518,6 +570,8 @@ struct Painter<'a> {
     /// Nodos con `layer="overlay"` aplazados hasta el final del frame.
     overlays: Vec<Deferred<'a>>,
     scrolls: Vec<ScrollMetrics>,
+    /// Nodo cuyo tooltip hay que pintar al final del frame, con su rectángulo.
+    tip: Option<(Rect, &'a Node)>,
     /// Geometría de cada campo pintado: key, desplazamiento horizontal y frame.
     inputs: Vec<(String, f32, InputFrame)>,
 }
@@ -565,6 +619,7 @@ impl<'a> Painter<'a> {
             capture: node.style.capture,
             focusable: node.is_focusable(),
             editable: node.is_editable(),
+            tooltip: node.style.tooltip.is_some(),
             scroll: node.style.scroll,
             parent,
         });
@@ -689,6 +744,12 @@ impl<'a> Painter<'a> {
             canvas.restore();
             paint_scrollbars(canvas, &state, s.scrollbar_color);
         }
+        if self.engine.tip.alpha > 0.0
+            && node.style.tooltip.is_some()
+            && self.engine.tip.key.as_deref() == Some(node.key.as_str())
+        {
+            self.tip = Some((rect, node));
+        }
         if st.focus > 0.0 {
             paint_focus_ring(
                 canvas,
@@ -699,6 +760,58 @@ impl<'a> Painter<'a> {
             );
         }
         canvas.restore_to_count(save_count);
+    }
+}
+
+impl Engine {
+    /// Burbuja del tooltip debajo del nodo (o encima, si no cabe), centrada y
+    /// sin salirse de la ventana. Colores heredables: `tooltip_bg` y `tooltip_color`.
+    fn paint_tooltip(&self, canvas: &Canvas, owner: Rect, node: &Node, width: f32, height: f32) {
+        const PAD: (f32, f32) = (10.0, 6.0);
+        const GAP: f32 = 8.0;
+        const MARGIN: f32 = 8.0;
+        const MAX_WIDTH: f32 = 260.0;
+        let Some(text) = node.style.tooltip.as_deref() else {
+            return;
+        };
+        let tp = &node.text_props;
+        let mut props = tp.clone();
+        props.size = 12.0;
+        props.weight = 500;
+        props.color = tp.tooltip_color;
+        props.line_height = None;
+        props.letter_spacing = 0.0;
+        let mut p = self.paragraph(text, &props, &Style::default());
+        p.layout(MAX_WIDTH);
+        let (tw, th) = (
+            p.max_intrinsic_width().min(MAX_WIDTH).ceil(),
+            p.height().ceil(),
+        );
+        p.layout(tw + 0.5);
+        let (w, h) = (tw + 2.0 * PAD.0, th + 2.0 * PAD.1);
+        let x = (owner.center_x() - w / 2.0).clamp(MARGIN, (width - MARGIN - w).max(MARGIN));
+        let below = owner.bottom + GAP;
+        let y = if below + h <= height - MARGIN {
+            below
+        } else {
+            (owner.top - GAP - h).max(MARGIN)
+        };
+        let bubble = RRect::new_rect_xy(Rect::from_xywh(x, y, w, h), 8.0, 8.0);
+
+        canvas.save_layer_alpha_f(None, self.tip.alpha);
+        let mut shadow = Paint::default();
+        shadow
+            .set_anti_alias(true)
+            .set_color(Color::from_argb(60, 0, 0, 0));
+        if let Some(mf) = MaskFilter::blur(BlurStyle::Normal, 6.0, false) {
+            shadow.set_mask_filter(mf);
+        }
+        canvas.draw_rrect(bubble.with_offset((0.0, 3.0)), &shadow);
+        let mut bg = Paint::default();
+        bg.set_anti_alias(true).set_color(tp.tooltip_bg);
+        canvas.draw_rrect(bubble, &bg);
+        p.paint(canvas, (x + PAD.0, y + PAD.1));
+        canvas.restore();
     }
 }
 

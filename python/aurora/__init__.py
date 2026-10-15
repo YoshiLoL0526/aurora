@@ -10,7 +10,21 @@ from typing import Any, TypeVar
 
 from . import _core
 from ._core import KeyEvent, Pilot
-from .components import badge, button, card, stat, text_input, textarea
+from .components import (
+    avatar,
+    badge,
+    button,
+    card,
+    checkbox,
+    divider,
+    select,
+    stat,
+    switch,
+    tabs,
+    text_input,
+    textarea,
+    tooltip,
+)
 from .elements import Element, box, column, image, row, scroll, spacer, text
 from .signal import Signal
 from .theme import DAYLIGHT, MIDNIGHT, Theme
@@ -24,19 +38,26 @@ __all__ = [
     "Pilot",
     "Signal",
     "Theme",
+    "avatar",
     "badge",
     "box",
     "button",
     "card",
+    "checkbox",
     "column",
+    "divider",
     "image",
     "row",
     "scroll",
+    "select",
     "spacer",
     "stat",
+    "switch",
+    "tabs",
     "text",
     "text_input",
     "textarea",
+    "tooltip",
 ]
 __version__ = _core.__version__
 
@@ -73,6 +94,9 @@ class App:
         root.style.setdefault("font_family", theme.font_family)
         root.style.setdefault("color", "$text")
         root.style.setdefault("focus_color", "$primary")
+        # Burbuja de tooltip invertida respecto al tema: destaca en claro y en oscuro.
+        root.style.setdefault("tooltip_bg", "$text")
+        root.style.setdefault("tooltip_color", "$background")
         return root.to_spec(theme)
 
     def run(self) -> None:
