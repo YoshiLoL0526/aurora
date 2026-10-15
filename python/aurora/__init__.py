@@ -8,10 +8,10 @@ from . import _core
 from .components import badge, button, card, stat
 from .elements import Element, box, column, row, spacer, text
 from .signal import Signal
-from .theme import MIDNIGHT, Theme
+from .theme import DAYLIGHT, MIDNIGHT, Theme
 
 __all__ = [
-    "App", "Element", "Signal", "Theme", "MIDNIGHT",
+    "App", "Element", "Signal", "Theme", "MIDNIGHT", "DAYLIGHT",
     "box", "column", "row", "text", "spacer",
     "button", "card", "badge", "stat",
 ]
@@ -31,7 +31,7 @@ class App:
         *,
         title: str = "Aurora",
         size: tuple[float, float] = (960, 640),
-        theme: Theme = MIDNIGHT,
+        theme: Theme | Callable[[], Theme] = MIDNIGHT,
     ) -> None:
         self.view = view
         self.title = title
@@ -39,11 +39,13 @@ class App:
         self.theme = theme
 
     def _build(self) -> dict:
+        # El tema puede ser reactivo (p. ej. un Signal[Theme]) para alternar claro/oscuro.
+        theme = self.theme() if callable(self.theme) else self.theme
         root = self.view()
         root.style.setdefault("bg", "$background")
-        root.style.setdefault("font_family", self.theme.font_family)
+        root.style.setdefault("font_family", theme.font_family)
         root.style.setdefault("color", "$text")
-        return root.to_spec(self.theme)
+        return root.to_spec(theme)
 
     def run(self) -> None:
         _core.run(self._build, self.title, *self.size)

@@ -58,9 +58,16 @@ La primera compilación descarga los binarios precompilados de Skia (~2 min).
 
 ## Estado del MVP
 
-Funciona: layout flex, texto con shaping real, sombras, bordes, gradientes,
-herencia de estilos de texto, tokens de tema (`"$primary"`), hover/pressed
-animados en Rust, `press_scale`, clicks, render headless a PNG.
+Funciona: layout flex (wrap, %, posicionamiento absoluto), texto con shaping real
+y elipsis (`max_lines`), sombras, bordes, gradientes, herencia de estilos de texto,
+tokens de tema (`"$primary"`) con tema reactivo claro/oscuro, hover/pressed animados
+en Rust, `press_scale`, clicks con burbujeo y barreras (`capture=True` para modales),
+render headless a PNG.
+
+`examples/studio.py` es la demo completa: navegación entre vistas, kanban,
+gráfico interactivo, modal, toasts y tema claro/oscuro.
+
+![Studio](docs/studio/1-resumen.png)
 
 Limitaciones conscientes (siguientes pasos):
 

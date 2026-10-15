@@ -45,3 +45,25 @@ MIDNIGHT = Theme(
     },
     radius={"sm": 8.0, "md": 12.0, "lg": 18.0, "full": 999.0},
 )
+
+
+DAYLIGHT = Theme(
+    colors={
+        "background": "#F4F5F9",
+        "surface": "#FFFFFF",
+        "surface_hover": "#F0F1F6",
+        "surface_pressed": "#E6E8F0",
+        "border": "#E3E5EE",
+        "text": "#141826",
+        "muted": "#6B7189",
+        "primary": "#6847F5",
+        "primary_hover": "#7A5CFF",
+        "primary_pressed": "#5636E0",
+        "accent": "#0FB89C",
+        "success": "#12A26B",
+        "danger": "#E04848",
+        "shadow": "#1A1F3A14",
+        "glow": "#6847F533",
+    },
+    radius=MIDNIGHT.radius,
+)

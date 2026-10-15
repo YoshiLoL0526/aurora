@@ -52,12 +52,7 @@ impl App {
     }
 
     fn hit(&self, x: f32, y: f32) -> Option<String> {
-        // Recorrido inverso: el nodo pintado más arriba gana.
-        self.regions
-            .iter()
-            .rev()
-            .find(|r| r.interactive && x >= r.rect.left && x < r.rect.right && y >= r.rect.top && y < r.rect.bottom)
-            .map(|r| r.key.clone())
+        crate::render::hit_test(&self.regions, x, y)
     }
 
     fn dispatch_click(&mut self, key: &str) {

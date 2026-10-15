@@ -56,6 +56,13 @@ impl Default for TextProps {
     }
 }
 
+/// Longitud: píxeles lógicos o porcentaje del contenedor ("50%").
+#[derive(Clone, Copy, Debug)]
+pub enum Len {
+    Px(f32),
+    Pct(f32),
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Style {
     // Layout
@@ -64,8 +71,11 @@ pub struct Style {
     pub padding: Edges,
     pub align: Option<String>,
     pub justify: Option<String>,
-    pub width: Option<f32>,
-    pub height: Option<f32>,
+    pub width: Option<Len>,
+    pub height: Option<Len>,
+    pub absolute: bool,
+    /// top, right, bottom, left (solo con `position="absolute"`).
+    pub inset: [Option<f32>; 4],
     pub min_width: Option<f32>,
     pub max_width: Option<f32>,
     pub grow: f32,
@@ -82,6 +92,11 @@ pub struct Style {
     pub shadow: Option<Shadow>,
     pub opacity: f32,
     pub press_scale: f32,
+    /// Barrera de eventos: los clics dentro no llegan a los ancestros (modales).
+    pub capture: bool,
+    // Texto (nivel párrafo, no heredable)
+    pub max_lines: Option<usize>,
+    pub text_align: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -123,6 +138,22 @@ fn f32_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f32>> {
 
 fn str_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<String>> {
     get(d, key)?.map(|v| v.extract::<String>()).transpose()
+}
+
+fn len_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Len>> {
+    let Some(v) = get(d, key)? else { return Ok(None) };
+    if let Ok(px) = v.extract::<f32>() {
+        return Ok(Some(Len::Px(px)));
+    }
+    let s: String = v.extract()?;
+    s.strip_suffix('%')
+        .and_then(|n| n.trim().parse::<f32>().ok())
+        .map(|p| Some(Len::Pct(p / 100.0)))
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("longitud inválida: {s:?}")))
+}
+
+fn bool_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<bool> {
+    Ok(get(d, key)?.map(|v| v.is_truthy()).transpose()?.unwrap_or(false))
 }
 
 fn color_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Color>> {
@@ -169,13 +200,15 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         padding: edges_of(d, "padding")?,
         align: str_of(d, "align")?,
         justify: str_of(d, "justify")?,
-        width: f32_of(d, "width")?,
-        height: f32_of(d, "height")?,
+        width: len_of(d, "width")?,
+        height: len_of(d, "height")?,
+        absolute: str_of(d, "position")?.as_deref() == Some("absolute"),
+        inset: [f32_of(d, "top")?, f32_of(d, "right")?, f32_of(d, "bottom")?, f32_of(d, "left")?],
         min_width: f32_of(d, "min_width")?,
         max_width: f32_of(d, "max_width")?,
         grow: f32_of(d, "grow")?.unwrap_or(0.0),
         shrink: f32_of(d, "shrink")?,
-        wrap: get(d, "wrap")?.map(|v| v.is_truthy()).transpose()?.unwrap_or(false),
+        wrap: bool_of(d, "wrap")?,
         bg: color_of(d, "bg")?,
         bg_hover: color_of(d, "bg_hover")?,
         bg_pressed: color_of(d, "bg_pressed")?,
@@ -186,6 +219,9 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         shadow,
         opacity: f32_of(d, "opacity")?.unwrap_or(1.0),
         press_scale: f32_of(d, "press_scale")?.unwrap_or(1.0),
+        capture: bool_of(d, "capture")?,
+        max_lines: f32_of(d, "max_lines")?.map(|n| n as usize),
+        text_align: str_of(d, "text_align")?,
     })
 }
 

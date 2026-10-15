@@ -15,7 +15,7 @@ from typing import Any, Callable, Iterable, Union
 
 from .theme import Theme
 
-Child = Union["Element", str, None, Iterable["Child"]]
+Child = Union["Element", str, bool, None, Iterable["Child"]]
 TextLike = Union[str, Callable[[], Any]]
 
 # Alias cómodos para los props de texto más usados.
@@ -62,7 +62,8 @@ class Element:
 
 
 def _flatten(children: Child) -> Iterable[Element]:
-    if children is None:
+    # None/False permiten condicionales en línea: `cond and elemento`.
+    if children is None or isinstance(children, bool):
         return
     if isinstance(children, Element):
         yield children

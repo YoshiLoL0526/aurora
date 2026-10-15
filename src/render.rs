@@ -8,17 +8,17 @@ use skia_safe::{
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
-    textlayout::{FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, TextStyle},
+    textlayout::{FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, TextAlign, TextStyle},
     BlurStyle, Canvas, Color, Color4f, EncodedImageFormat, FontMgr, FontStyle, MaskFilter, Paint,
     PaintStyle, Point, RRect, Rect, TileMode,
 };
 use taffy::{
     compute_leaf_layout, AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap,
-    JustifyContent, LengthPercentage, LengthPercentageAuto, NodeId, Size, TaffyTree,
+    JustifyContent, LengthPercentage, LengthPercentageAuto, NodeId, Position, Size, TaffyTree,
 };
 
 use crate::color::lerp;
-use crate::spec::{Kind, Node, Style, TextProps};
+use crate::spec::{Kind, Len, Node, Style, TextProps};
 
 /// Contexto de los nodos hoja de texto: el párrafo ya "shapeado" se reutiliza
 /// para medir (durante el layout) y para pintar.
@@ -37,6 +37,26 @@ pub struct HitRegion {
     pub key: String,
     pub rect: Rect,
     pub interactive: bool,
+    pub capture: bool,
+    /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
+    pub parent: Option<usize>,
+}
+
+/// Hit-testing: el nodo pintado más arriba bajo el cursor decide; el clic
+/// burbujea hasta el ancestro interactivo más cercano o se detiene en una barrera.
+pub fn hit_test(regions: &[HitRegion], x: f32, y: f32) -> Option<String> {
+    let contains = |r: &Rect| x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+    let mut idx = regions.iter().rposition(|r| contains(&r.rect))?;
+    loop {
+        let r = &regions[idx];
+        if r.interactive {
+            return Some(r.key.clone());
+        }
+        if r.capture {
+            return None;
+        }
+        idx = r.parent?;
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -64,7 +84,7 @@ impl Engine {
 
     // ------------------------------------------------------------------ texto
 
-    fn paragraph(&self, text: &str, tp: &TextProps) -> Paragraph {
+    fn paragraph(&self, text: &str, tp: &TextProps, style: &Style) -> Paragraph {
         let mut ts = TextStyle::new();
         ts.set_color(tp.color)
             .set_font_size(tp.size)
@@ -76,6 +96,14 @@ impl Engine {
         }
         let mut ps = ParagraphStyle::new();
         ps.set_text_style(&ts);
+        if let Some(n) = style.max_lines {
+            ps.set_max_lines(n).set_ellipsis("…");
+        }
+        ps.set_text_align(match style.text_align.as_deref() {
+            Some("center") => TextAlign::Center,
+            Some("right") => TextAlign::Right,
+            _ => TextAlign::Left,
+        });
         let mut builder = ParagraphBuilder::new(&ps, self.fonts.clone());
         builder.push_style(&ts);
         builder.add_text(text);
@@ -87,7 +115,7 @@ impl Engine {
     fn build_layout(&self, tree: &mut TaffyTree<TextCtx>, node: &Node) -> LayoutNode {
         let style = taffy_style(&node.style);
         if node.kind == Kind::Text {
-            let paragraph = self.paragraph(node.text.as_deref().unwrap_or(""), &node.text_props);
+            let paragraph = self.paragraph(node.text.as_deref().unwrap_or(""), &node.text_props, &node.style);
             let id = tree.new_leaf_with_context(style, TextCtx { paragraph }).expect("taffy leaf");
             return LayoutNode { id, children: Vec::new() };
         }
@@ -168,7 +196,7 @@ impl Engine {
         canvas.save();
         canvas.scale((scale, scale));
         let mut regions = Vec::new();
-        self.paint_node(canvas, root, &lroot, &tree, Point::new(0.0, 0.0), &mut regions);
+        self.paint_node(canvas, root, &lroot, &tree, Point::new(0.0, 0.0), None, &mut regions);
         canvas.restore();
         regions
     }
@@ -180,6 +208,7 @@ impl Engine {
         lnode: &LayoutNode,
         tree: &TaffyTree<TextCtx>,
         origin: Point,
+        parent: Option<usize>,
         regions: &mut Vec<HitRegion>,
     ) {
         let layout = tree.layout(lnode.id).expect("layout");
@@ -189,7 +218,14 @@ impl Engine {
             layout.size.width,
             layout.size.height,
         );
-        regions.push(HitRegion { key: node.key.clone(), rect, interactive: node.is_interactive() });
+        let my_index = regions.len();
+        regions.push(HitRegion {
+            key: node.key.clone(),
+            rect,
+            interactive: node.is_interactive(),
+            capture: node.style.capture,
+            parent,
+        });
 
         let s = &node.style;
         let st = self.anim.get(&node.key).copied().unwrap_or_default();
@@ -241,7 +277,7 @@ impl Engine {
 
         let child_origin = Point::new(rect.left, rect.top);
         for (child, lchild) in node.children.iter().zip(&lnode.children) {
-            self.paint_node(canvas, child, lchild, tree, child_origin, regions);
+            self.paint_node(canvas, child, lchild, tree, child_origin, Some(my_index), regions);
         }
         canvas.restore_to_count(save_count);
     }
@@ -310,10 +346,22 @@ fn finalize_text(tree: &mut TaffyTree<TextCtx>, lnode: &LayoutNode) {
 
 fn taffy_style(s: &Style) -> taffy::Style {
     let len = LengthPercentage::length;
-    let dim = |v: Option<f32>| v.map(Dimension::length).unwrap_or(Dimension::auto());
+    let dim = |v: Option<Len>| match v {
+        Some(Len::Px(px)) => Dimension::length(px),
+        Some(Len::Pct(p)) => Dimension::percent(p),
+        None => Dimension::auto(),
+    };
+    let inset = |v: Option<f32>| v.map(LengthPercentageAuto::length).unwrap_or(LengthPercentageAuto::auto());
     let lpa = |v: Option<f32>| v.map(LengthPercentageAuto::length).unwrap_or(LengthPercentageAuto::auto());
     taffy::Style {
         display: Display::Flex,
+        position: if s.absolute { Position::Absolute } else { Position::Relative },
+        inset: taffy::Rect {
+            top: inset(s.inset[0]),
+            right: inset(s.inset[1]),
+            bottom: inset(s.inset[2]),
+            left: inset(s.inset[3]),
+        },
         flex_direction: if s.row { FlexDirection::Row } else { FlexDirection::Column },
         flex_wrap: if s.wrap { FlexWrap::Wrap } else { FlexWrap::NoWrap },
         gap: Size { width: len(s.gap), height: len(s.gap) },
