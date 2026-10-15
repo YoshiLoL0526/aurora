@@ -5,16 +5,18 @@
 use std::collections::HashMap;
 
 use skia_safe::{
+    BlurStyle, Canvas, Color, Color4f, EncodedImageFormat, FontMgr, FontStyle, MaskFilter, Paint,
+    PaintStyle, Point, RRect, Rect, TileMode,
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
-    textlayout::{FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, TextAlign, TextStyle},
-    BlurStyle, Canvas, Color, Color4f, EncodedImageFormat, FontMgr, FontStyle, MaskFilter, Paint,
-    PaintStyle, Point, RRect, Rect, TileMode,
+    textlayout::{
+        FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, TextAlign, TextStyle,
+    },
 };
 use taffy::{
-    compute_leaf_layout, AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap,
-    JustifyContent, LengthPercentage, LengthPercentageAuto, NodeId, Position, Size, TaffyTree,
+    AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, JustifyContent,
+    LengthPercentage, LengthPercentageAuto, NodeId, Position, Size, TaffyTree, compute_leaf_layout,
 };
 
 use crate::color::lerp;
@@ -79,7 +81,12 @@ impl Engine {
     pub fn new() -> Self {
         let mut fonts = FontCollection::new();
         fonts.set_default_font_manager(FontMgr::new(), "Inter");
-        Self { fonts, anim: HashMap::new(), hovered: None, pressed: None }
+        Self {
+            fonts,
+            anim: HashMap::new(),
+            hovered: None,
+            pressed: None,
+        }
     }
 
     // ------------------------------------------------------------------ texto
@@ -90,7 +97,11 @@ impl Engine {
             .set_font_size(tp.size)
             .set_font_families(&[tp.family.as_str()])
             .set_letter_spacing(tp.letter_spacing)
-            .set_font_style(FontStyle::new(Weight::from(tp.weight), Width::NORMAL, Slant::Upright));
+            .set_font_style(FontStyle::new(
+                Weight::from(tp.weight),
+                Width::NORMAL,
+                Slant::Upright,
+            ));
         if let Some(lh) = tp.line_height {
             ts.set_height(lh).set_height_override(true);
         }
@@ -115,12 +126,24 @@ impl Engine {
     fn build_layout(&self, tree: &mut TaffyTree<TextCtx>, node: &Node) -> LayoutNode {
         let style = taffy_style(&node.style);
         if node.kind == Kind::Text {
-            let paragraph = self.paragraph(node.text.as_deref().unwrap_or(""), &node.text_props, &node.style);
-            let id = tree.new_leaf_with_context(style, TextCtx { paragraph }).expect("taffy leaf");
-            return LayoutNode { id, children: Vec::new() };
+            let paragraph = self.paragraph(
+                node.text.as_deref().unwrap_or(""),
+                &node.text_props,
+                &node.style,
+            );
+            let id = tree
+                .new_leaf_with_context(style, TextCtx { paragraph })
+                .expect("taffy leaf");
+            return LayoutNode {
+                id,
+                children: Vec::new(),
+            };
         }
-        let children: Vec<LayoutNode> =
-            node.children.iter().map(|c| self.build_layout(tree, c)).collect();
+        let children: Vec<LayoutNode> = node
+            .children
+            .iter()
+            .map(|c| self.build_layout(tree, c))
+            .collect();
         let ids: Vec<NodeId> = children.iter().map(|c| c.id).collect();
         let id = tree.new_with_children(style, &ids).expect("taffy node");
         LayoutNode { id, children }
@@ -132,20 +155,31 @@ impl Engine {
 
         // La raíz siempre ocupa la ventana completa.
         let mut root_style = tree.style(lroot.id).expect("root").clone();
-        root_style.size = Size { width: Dimension::length(width), height: Dimension::length(height) };
+        root_style.size = Size {
+            width: Dimension::length(width),
+            height: Dimension::length(height),
+        };
         tree.set_style(lroot.id, root_style).expect("root style");
 
         tree.compute_layout_with_measure(
             lroot.id,
-            Size { width: AvailableSpace::Definite(width), height: AvailableSpace::Definite(height) },
+            Size {
+                width: AvailableSpace::Definite(width),
+                height: AvailableSpace::Definite(height),
+            },
             |inputs, _id, ctx, style| {
                 let mut baseline = None;
-                let mut out = compute_leaf_layout(inputs, style, |_, _| 0.0, |known, avail| {
-                    let Some(ctx) = ctx else { return Size::ZERO };
-                    let size = measure_text(&mut ctx.paragraph, known, avail);
-                    baseline = Some(ctx.paragraph.alphabetic_baseline());
-                    size
-                });
+                let mut out = compute_leaf_layout(
+                    inputs,
+                    style,
+                    |_, _| 0.0,
+                    |known, avail| {
+                        let Some(ctx) = ctx else { return Size::ZERO };
+                        let size = measure_text(&mut ctx.paragraph, known, avail);
+                        baseline = Some(ctx.paragraph.alphabetic_baseline());
+                        size
+                    },
+                );
                 // Exponer la baseline permite `align="baseline"` entre textos de distinto tamaño.
                 if let Some(b) = baseline {
                     out.baselines.first = Some(b);
@@ -164,15 +198,26 @@ impl Engine {
 
     /// Avanza las transiciones `dt` segundos. Devuelve `true` si alguna sigue en curso.
     pub fn tick(&mut self, dt: f32) -> bool {
-        for key in [self.hovered.clone(), self.pressed.clone()].into_iter().flatten() {
+        for key in [self.hovered.clone(), self.pressed.clone()]
+            .into_iter()
+            .flatten()
+        {
             self.anim.entry(key).or_default();
         }
         let k = 1.0 - (-dt / TRANSITION_TAU).exp();
         let mut animating = false;
         let (hovered, pressed) = (self.hovered.as_deref(), self.pressed.as_deref());
         self.anim.retain(|key, s| {
-            let th = if hovered == Some(key.as_str()) { 1.0 } else { 0.0 };
-            let tp = if pressed == Some(key.as_str()) { 1.0 } else { 0.0 };
+            let th = if hovered == Some(key.as_str()) {
+                1.0
+            } else {
+                0.0
+            };
+            let tp = if pressed == Some(key.as_str()) {
+                1.0
+            } else {
+                0.0
+            };
             s.hover += (th - s.hover) * k;
             s.press += (tp - s.press) * k;
             for (v, t) in [(&mut s.hover, th), (&mut s.press, tp)] {
@@ -190,36 +235,50 @@ impl Engine {
     // ---------------------------------------------------------------- pintura
 
     /// Dibuja el árbol completo. `width`/`height` en píxeles lógicos.
-    pub fn draw(&self, canvas: &Canvas, root: &Node, width: f32, height: f32, scale: f32) -> Vec<HitRegion> {
+    pub fn draw(
+        &self,
+        canvas: &Canvas,
+        root: &Node,
+        width: f32,
+        height: f32,
+        scale: f32,
+    ) -> Vec<HitRegion> {
         let (tree, lroot) = self.layout(root, width, height);
         canvas.clear(root.style.bg.unwrap_or(Color::from_rgb(0x0B, 0x0D, 0x14)));
         canvas.save();
         canvas.scale((scale, scale));
-        let mut regions = Vec::new();
-        self.paint_node(canvas, root, &lroot, &tree, Point::new(0.0, 0.0), None, &mut regions);
+        let mut painter = Painter {
+            engine: self,
+            canvas,
+            tree: &tree,
+            regions: Vec::new(),
+        };
+        painter.paint(root, &lroot, Point::new(0.0, 0.0), None);
         canvas.restore();
-        regions
+        painter.regions
     }
+}
 
-    fn paint_node(
-        &self,
-        canvas: &Canvas,
-        node: &Node,
-        lnode: &LayoutNode,
-        tree: &TaffyTree<TextCtx>,
-        origin: Point,
-        parent: Option<usize>,
-        regions: &mut Vec<HitRegion>,
-    ) {
-        let layout = tree.layout(lnode.id).expect("layout");
+/// Contexto de un frame de pintura: recorre el árbol y registra las regiones de hit-testing.
+struct Painter<'a> {
+    engine: &'a Engine,
+    canvas: &'a Canvas,
+    tree: &'a TaffyTree<TextCtx>,
+    regions: Vec<HitRegion>,
+}
+
+impl Painter<'_> {
+    fn paint(&mut self, node: &Node, lnode: &LayoutNode, origin: Point, parent: Option<usize>) {
+        let canvas = self.canvas;
+        let layout = self.tree.layout(lnode.id).expect("layout");
         let rect = Rect::from_xywh(
             origin.x + layout.location.x,
             origin.y + layout.location.y,
             layout.size.width,
             layout.size.height,
         );
-        let my_index = regions.len();
-        regions.push(HitRegion {
+        let my_index = self.regions.len();
+        self.regions.push(HitRegion {
             key: node.key.clone(),
             rect,
             interactive: node.is_interactive(),
@@ -228,7 +287,7 @@ impl Engine {
         });
 
         let s = &node.style;
-        let st = self.anim.get(&node.key).copied().unwrap_or_default();
+        let st = self.engine.anim.get(&node.key).copied().unwrap_or_default();
 
         let save_count = canvas.save();
         if s.opacity < 1.0 {
@@ -255,29 +314,34 @@ impl Engine {
             canvas.draw_rrect(rrect, &paint);
         }
 
-        if s.border_width > 0.0 {
-            if let Some(color) = s.border_color {
-                let half = s.border_width / 2.0;
-                let inner = RRect::new_rect_xy(rect.with_inset((half, half)), s.radius - half, s.radius - half);
-                let mut p = Paint::default();
-                p.set_anti_alias(true)
-                    .set_style(PaintStyle::Stroke)
-                    .set_stroke_width(s.border_width)
-                    .set_color(color);
-                canvas.draw_rrect(inner, &p);
-            }
+        if s.border_width > 0.0
+            && let Some(color) = s.border_color
+        {
+            let half = s.border_width / 2.0;
+            let inner = RRect::new_rect_xy(
+                rect.with_inset((half, half)),
+                s.radius - half,
+                s.radius - half,
+            );
+            let mut p = Paint::default();
+            p.set_anti_alias(true)
+                .set_style(PaintStyle::Stroke)
+                .set_stroke_width(s.border_width)
+                .set_color(color);
+            canvas.draw_rrect(inner, &p);
         }
 
-        if node.kind == Kind::Text {
-            if let Some(ctx) = tree.get_node_context(lnode.id) {
-                let pad = layout.padding;
-                ctx.paragraph.paint(canvas, (rect.left + pad.left, rect.top + pad.top));
-            }
+        if node.kind == Kind::Text
+            && let Some(ctx) = self.tree.get_node_context(lnode.id)
+        {
+            let pad = layout.padding;
+            ctx.paragraph
+                .paint(canvas, (rect.left + pad.left, rect.top + pad.top));
         }
 
         let child_origin = Point::new(rect.left, rect.top);
         for (child, lchild) in node.children.iter().zip(&lnode.children) {
-            self.paint_node(canvas, child, lchild, tree, child_origin, Some(my_index), regions);
+            self.paint(child, lchild, child_origin, Some(my_index));
         }
         canvas.restore_to_count(save_count);
     }
@@ -295,11 +359,18 @@ fn background_paint(s: &Style, rect: Rect, st: AnimState) -> Option<Paint> {
             GradientColors::new_evenly_spaced(&colors, TileMode::Clamp, None),
             gradient::Interpolation::default(),
         );
-        p.set_shader(gradient::shaders::linear_gradient((c - half, c + half), &grad, None));
+        p.set_shader(gradient::shaders::linear_gradient(
+            (c - half, c + half),
+            &grad,
+            None,
+        ));
         // Las capas de hover/pressed se superponen como un velo translúcido.
         if st.hover > 0.0 || st.press > 0.0 {
             let veil = Color::from_argb((st.hover * 24.0 + st.press * 24.0) as u8, 255, 255, 255);
-            p.set_color_filter(skia_safe::color_filters::blend(veil, skia_safe::BlendMode::SrcATop));
+            p.set_color_filter(skia_safe::color_filters::blend(
+                veil,
+                skia_safe::BlendMode::SrcATop,
+            ));
         }
         return Some(p);
     }
@@ -315,7 +386,11 @@ fn background_paint(s: &Style, rect: Rect, st: AnimState) -> Option<Paint> {
     Some(p)
 }
 
-fn measure_text(p: &mut Paragraph, known: Size<Option<f32>>, avail: Size<AvailableSpace>) -> Size<f32> {
+fn measure_text(
+    p: &mut Paragraph,
+    known: Size<Option<f32>>,
+    avail: Size<AvailableSpace>,
+) -> Size<f32> {
     const UNBOUNDED: f32 = 1.0e6;
     let max_w = known.width.unwrap_or(match avail.width {
         AvailableSpace::Definite(w) => w,
@@ -327,7 +402,9 @@ fn measure_text(p: &mut Paragraph, known: Size<Option<f32>>, avail: Size<Availab
     });
     p.layout(max_w.max(1.0));
     Size {
-        width: known.width.unwrap_or_else(|| p.max_intrinsic_width().min(max_w).ceil()),
+        width: known
+            .width
+            .unwrap_or_else(|| p.max_intrinsic_width().min(max_w).ceil()),
         height: known.height.unwrap_or_else(|| p.height().ceil()),
     }
 }
@@ -351,20 +428,41 @@ fn taffy_style(s: &Style) -> taffy::Style {
         Some(Len::Pct(p)) => Dimension::percent(p),
         None => Dimension::auto(),
     };
-    let inset = |v: Option<f32>| v.map(LengthPercentageAuto::length).unwrap_or(LengthPercentageAuto::auto());
-    let lpa = |v: Option<f32>| v.map(LengthPercentageAuto::length).unwrap_or(LengthPercentageAuto::auto());
+    let inset = |v: Option<f32>| {
+        v.map(LengthPercentageAuto::length)
+            .unwrap_or(LengthPercentageAuto::auto())
+    };
+    let lpa = |v: Option<f32>| {
+        v.map(LengthPercentageAuto::length)
+            .unwrap_or(LengthPercentageAuto::auto())
+    };
     taffy::Style {
         display: Display::Flex,
-        position: if s.absolute { Position::Absolute } else { Position::Relative },
+        position: if s.absolute {
+            Position::Absolute
+        } else {
+            Position::Relative
+        },
         inset: taffy::Rect {
             top: inset(s.inset[0]),
             right: inset(s.inset[1]),
             bottom: inset(s.inset[2]),
             left: inset(s.inset[3]),
         },
-        flex_direction: if s.row { FlexDirection::Row } else { FlexDirection::Column },
-        flex_wrap: if s.wrap { FlexWrap::Wrap } else { FlexWrap::NoWrap },
-        gap: Size { width: len(s.gap), height: len(s.gap) },
+        flex_direction: if s.row {
+            FlexDirection::Row
+        } else {
+            FlexDirection::Column
+        },
+        flex_wrap: if s.wrap {
+            FlexWrap::Wrap
+        } else {
+            FlexWrap::NoWrap
+        },
+        gap: Size {
+            width: len(s.gap),
+            height: len(s.gap),
+        },
         padding: taffy::Rect {
             left: len(s.padding.left),
             right: len(s.padding.right),
@@ -392,9 +490,18 @@ fn taffy_style(s: &Style) -> taffy::Style {
             Some("evenly") => JustifyContent::SPACE_EVENLY,
             _ => JustifyContent::FLEX_START,
         },
-        size: Size { width: dim(s.width), height: dim(s.height) },
-        min_size: Size { width: lpa(s.min_width), height: LengthPercentageAuto::auto() },
-        max_size: Size { width: lpa(s.max_width), height: LengthPercentageAuto::auto() },
+        size: Size {
+            width: dim(s.width),
+            height: dim(s.height),
+        },
+        min_size: Size {
+            width: lpa(s.min_width),
+            height: LengthPercentageAuto::auto(),
+        },
+        max_size: Size {
+            width: lpa(s.max_width),
+            height: LengthPercentageAuto::auto(),
+        },
         flex_grow: s.grow,
         flex_shrink: s.shrink.unwrap_or(1.0),
         ..Default::default()
@@ -402,10 +509,20 @@ fn taffy_style(s: &Style) -> taffy::Style {
 }
 
 /// Renderiza sin ventana a un PNG: útil para tests de snapshot y CI.
-pub fn render_png(root: &Node, width: f32, height: f32, scale: f32, path: &str) -> Result<(), String> {
+pub fn render_png(
+    root: &Node,
+    width: f32,
+    height: f32,
+    scale: f32,
+    path: &str,
+) -> Result<(), String> {
     let engine = Engine::new();
-    let (pw, ph) = ((width * scale).round() as i32, (height * scale).round() as i32);
-    let mut surface = surfaces::raster_n32_premul((pw, ph)).ok_or("no se pudo crear la superficie")?;
+    let (pw, ph) = (
+        (width * scale).round() as i32,
+        (height * scale).round() as i32,
+    );
+    let mut surface =
+        surfaces::raster_n32_premul((pw, ph)).ok_or("no se pudo crear la superficie")?;
     engine.draw(surface.canvas(), root, width, height, scale);
     let image = surface.image_snapshot();
     let data = image

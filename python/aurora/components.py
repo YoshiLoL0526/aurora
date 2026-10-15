@@ -7,7 +7,8 @@ se compone aquí, en Python.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 from .elements import Element, TextLike, box, column, row, text
 
@@ -15,15 +16,24 @@ Variant = Literal["primary", "soft", "ghost"]
 
 _BUTTON_VARIANTS: dict[str, dict[str, Any]] = {
     "primary": dict(
-        bg="$primary", bg_hover="$primary_hover", bg_pressed="$primary_pressed",
-        color="#FFFFFF", shadow=(0, 6, 18, "$glow"),
+        bg="$primary",
+        bg_hover="$primary_hover",
+        bg_pressed="$primary_pressed",
+        color="#FFFFFF",
+        shadow=(0, 6, 18, "$glow"),
     ),
     "soft": dict(
-        bg="$surface_hover", bg_hover="$surface_pressed", bg_pressed="$border",
-        color="$text", border_width=1, border_color="$border",
+        bg="$surface_hover",
+        bg_hover="$surface_pressed",
+        bg_pressed="$border",
+        color="$text",
+        border_width=1,
+        border_color="$border",
     ),
     "ghost": dict(
-        bg="#00000000", bg_hover="$surface_hover", bg_pressed="$surface_pressed",
+        bg="#00000000",
+        bg_hover="$surface_hover",
+        bg_pressed="$surface_pressed",
         color="$muted",
     ),
 }

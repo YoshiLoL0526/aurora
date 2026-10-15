@@ -8,13 +8,14 @@ que invaliden solo la rama afectada.
 
 from __future__ import annotations
 
-from typing import Callable, Generic, TypeVar
+from collections.abc import Callable
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
 
 class Signal(Generic[T]):
-    __slots__ = ("_value", "_subscribers")
+    __slots__ = ("_subscribers", "_value")
 
     def __init__(self, value: T) -> None:
         self._value = value

@@ -1,7 +1,7 @@
 """Hola mundo de Aurora: un mini dashboard con estado reactivo.
 
-    python examples/hello.py            # abre la ventana
-    python examples/hello.py --png out.png   # render headless
+python examples/hello.py            # abre la ventana
+python examples/hello.py --png out.png   # render headless
 """
 
 import sys

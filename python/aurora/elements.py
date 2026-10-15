@@ -11,19 +11,20 @@ añaden con corchetes, lo que deja leer la jerarquía como si fuera markup:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Union
+from collections.abc import Callable, Iterable
+from typing import Any, Union
 
 from .theme import Theme
 
 Child = Union["Element", str, bool, None, Iterable["Child"]]
-TextLike = Union[str, Callable[[], Any]]
+TextLike = str | Callable[[], Any]
 
 # Alias cómodos para los props de texto más usados.
 _ALIASES = {"size": "font_size", "weight": "font_weight", "family": "font_family"}
 
 
 class Element:
-    __slots__ = ("kind", "style", "content", "children", "on_click", "key")
+    __slots__ = ("children", "content", "key", "kind", "on_click", "style")
 
     def __init__(
         self,
@@ -41,7 +42,7 @@ class Element:
         self.style = {_ALIASES.get(k, k): v for k, v in style.items() if v is not None}
         self.children: list[Element] = []
 
-    def __getitem__(self, children: Child) -> "Element":
+    def __getitem__(self, children: Child) -> Element:
         self.children = list(_flatten(children))
         return self
 
@@ -75,6 +76,7 @@ def _flatten(children: Child) -> Iterable[Element]:
 
 
 # --- Primitivas ------------------------------------------------------------
+
 
 def box(**style: Any) -> Element:
     return Element("box", **style)

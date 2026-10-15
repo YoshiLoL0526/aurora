@@ -11,7 +11,13 @@ use pyo3::prelude::*;
 /// Renderiza un árbol de vista a PNG sin abrir ventana.
 #[pyfunction]
 #[pyo3(signature = (tree, width, height, path, scale = 2.0))]
-fn render_png(tree: &Bound<'_, PyAny>, width: f32, height: f32, path: &str, scale: f32) -> PyResult<()> {
+fn render_png(
+    tree: &Bound<'_, PyAny>,
+    width: f32,
+    height: f32,
+    path: &str,
+    scale: f32,
+) -> PyResult<()> {
     let node = spec::parse(tree)?;
     render::render_png(&node, width, height, scale, path).map_err(PyRuntimeError::new_err)
 }

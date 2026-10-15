@@ -2,6 +2,9 @@
 name = "aurora_core"
 version = "0.1.0"
 edition = "2024"
+description = "Núcleo nativo de Aurora: layout, render, eventos y animaciones."
+license = "MIT"
+publish = false
 
 [dependencies]
 pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py310"] }

@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use pyo3::prelude::*;
-use skia_safe::{surfaces, ImageInfo};
+use skia_safe::{ImageInfo, surfaces};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -73,7 +73,9 @@ impl App {
         if self.dirty || self.tree.is_none() {
             self.rebuild();
         }
-        let (Some(window), Some(surface), Some(tree)) = (&self.window, &mut self.surface, &self.tree) else {
+        let (Some(window), Some(surface), Some(tree)) =
+            (&self.window, &mut self.surface, &self.tree)
+        else {
             return;
         };
 
@@ -136,15 +138,23 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        let Some(window) = self.window.clone() else { return };
+        let Some(window) = self.window.clone() else {
+            return;
+        };
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => window.request_redraw(),
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                window.request_redraw()
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 let p = position.to_logical::<f32>(window.scale_factor());
                 let hovered = self.hit(p.x, p.y);
                 if hovered != self.engine.hovered {
-                    window.set_cursor(if hovered.is_some() { CursorIcon::Pointer } else { CursorIcon::Default });
+                    window.set_cursor(if hovered.is_some() {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
+                    });
                     self.engine.hovered = hovered;
                     window.request_redraw();
                 }
@@ -153,14 +163,18 @@ impl ApplicationHandler for App {
                 self.engine.hovered = None;
                 window.request_redraw();
             }
-            WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput {
+                state,
+                button: MouseButton::Left,
+                ..
+            } => {
                 match state {
                     ElementState::Pressed => self.engine.pressed = self.engine.hovered.clone(),
                     ElementState::Released => {
-                        if let Some(key) = self.engine.pressed.take() {
-                            if self.engine.hovered.as_deref() == Some(key.as_str()) {
-                                self.dispatch_click(&key);
-                            }
+                        if let Some(key) = self.engine.pressed.take()
+                            && self.engine.hovered.as_deref() == Some(key.as_str())
+                        {
+                            self.dispatch_click(&key);
                         }
                     }
                 }
@@ -177,7 +191,13 @@ impl ApplicationHandler for App {
     }
 }
 
-pub fn run(py: Python<'_>, build: Py<PyAny>, title: String, width: f64, height: f64) -> PyResult<()> {
+pub fn run(
+    py: Python<'_>,
+    build: Py<PyAny>,
+    title: String,
+    width: f64,
+    height: f64,
+) -> PyResult<()> {
     let fatal = py.detach(move || -> Result<Option<String>, String> {
         let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
         event_loop.set_control_flow(ControlFlow::Wait);

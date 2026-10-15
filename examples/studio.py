@@ -21,10 +21,24 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from aurora import (
-    DAYLIGHT, MIDNIGHT, App, Element, Signal, badge, box, button, card, column, row, spacer, stat, text,
+    DAYLIGHT,
+    MIDNIGHT,
+    App,
+    Element,
+    Signal,
+    badge,
+    box,
+    button,
+    card,
+    column,
+    row,
+    spacer,
+    stat,
+    text,
 )
 
 # ════════════════════════════════════════════════════════════════════ modelo
+
 
 @dataclass(frozen=True)
 class Task:
@@ -72,7 +86,15 @@ def _t(title, project, tag, priority, status, assignee, points) -> Task:
 SEED = (
     _t("Signals de grano fino con diff por key", "Aurora UI", "backend", "alta", "doing", "Raidel Pérez", 8),
     _t("Backend GPU de Skia (Metal/D3D/Vulkan)", "Aurora UI", "infra", "alta", "todo", "Lucas Martins", 13),
-    _t("Componente de input de texto con IME y selección", "Aurora UI", "frontend", "media", "todo", "Raidel Pérez", 8),
+    _t(
+        "Componente de input de texto con IME y selección",
+        "Aurora UI",
+        "frontend",
+        "media",
+        "todo",
+        "Raidel Pérez",
+        8,
+    ),
     _t("Sistema de tokens y tema claro", "Aurora UI", "diseño", "media", "done", "Ana Souza", 3),
     _t("Router de intents WhatsApp → JIRA", "Agentes IA", "backend", "alta", "doing", "Lucas Martins", 5),
     _t("Prompts de clasificación de tickets", "Agentes IA", "backend", "media", "done", "Raidel Pérez", 3),
@@ -83,12 +105,14 @@ SEED = (
     _t("Landing con composición del índice", "Índice on-chain", "diseño", "baja", "done", "Ana Souza", 3),
 )
 
-BACKLOG = itertools.cycle([
-    ("Scroll virtualizado para listas largas", "Aurora UI", "frontend", "alta", "Raidel Pérez", 8),
-    ("Accesibilidad con AccessKit", "Aurora UI", "frontend", "media", "Ana Souza", 5),
-    ("Reintentos y colas en el agente", "Agentes IA", "backend", "media", "Lucas Martins", 3),
-    ("Alertas de desviación del índice", "Índice on-chain", "infra", "baja", "Carla Méndez", 3),
-])
+BACKLOG = itertools.cycle(
+    [
+        ("Scroll virtualizado para listas largas", "Aurora UI", "frontend", "alta", "Raidel Pérez", 8),
+        ("Accesibilidad con AccessKit", "Aurora UI", "frontend", "media", "Ana Souza", 5),
+        ("Reintentos y colas en el agente", "Agentes IA", "backend", "media", "Lucas Martins", 3),
+        ("Alertas de desviación del índice", "Índice on-chain", "infra", "baja", "Carla Méndez", 3),
+    ]
+)
 
 WEEKS = {
     "Esta semana": [5, 8, 6, 11, 9, 4, 2],
@@ -140,7 +164,7 @@ def confirm_delete() -> None:
 
 def add_task() -> None:
     title, project, tag, prio, who, pts = next(BACKLOG)
-    tasks.update(lambda ts: ts + (_t(title, project, tag, prio, "todo", who, pts),))
+    tasks.update(lambda ts: (*ts, _t(title, project, tag, prio, "todo", who, pts)))
     notify(f"Nueva tarea en {project}")
 
 
@@ -161,9 +185,17 @@ def toggle_theme() -> None:
 
 
 def avatar(member_or_name: Member | str, size: int = 32) -> Element:
-    m = member_or_name if isinstance(member_or_name, Member) else next(x for x in TEAM if x.name == member_or_name)
+    m = (
+        member_or_name
+        if isinstance(member_or_name, Member)
+        else next(x for x in TEAM if x.name == member_or_name)
+    )
     return box(
-        width=size, height=size, radius="$full", align="center", justify="center",
+        width=size,
+        height=size,
+        radius="$full",
+        align="center",
+        justify="center",
         gradient=(m.color, m.color + "99", 45),
     )[text(m.initials, size=size * 0.36, weight=700, color="#FFFFFF")]
 
@@ -180,8 +212,12 @@ def dot(color: str, size: int = 8) -> Element:
 
 def progress(pct: float, color: str, height: int = 8) -> Element:
     return box(height=height, radius="$full", bg="$surface_hover")[
-        box(width=f"{max(2.0, min(100.0, pct)):.1f}%", height="100%", radius="$full",
-            gradient=(color, color + "AA", 0)),
+        box(
+            width=f"{max(2.0, min(100.0, pct)):.1f}%",
+            height="100%",
+            radius="$full",
+            gradient=(color, color + "AA", 0),
+        ),
     ]
 
 
@@ -197,7 +233,8 @@ def segmented(options: list[str], current: Signal[str]) -> Element:
         (
             box(
                 key=f"seg-{opt}",
-                padding=(6, 12), radius=9,
+                padding=(6, 12),
+                radius=9,
                 bg="$surface" if current() == opt else "#00000000",
                 bg_hover="$surface" if current() == opt else "$surface_pressed",
                 shadow=(0, 1, 4, "$shadow") if current() == opt else None,
@@ -218,7 +255,10 @@ def nav_item(name: str, icon: str, label: str) -> Element:
     count = {"tablero": sum(t.status != "done" for t in tasks()), "equipo": len(TEAM)}.get(name)
     return row(
         key=f"nav-{name}",
-        padding=(9, 12), gap=10, radius="$md", align="center",
+        padding=(9, 12),
+        gap=10,
+        radius="$md",
+        align="center",
         bg="$surface_pressed" if active else "#00000000",
         bg_hover="$surface_pressed" if active else "$surface_hover",
         on_click=lambda: page.set(name),
@@ -234,10 +274,15 @@ def sidebar() -> Element:
     me = TEAM[0]
     return column(width=236, padding=(22, 16), gap=4, bg="$surface")[
         row(gap=10, align="center", padding=(0, 6))[
-            box(width=32, height=32, radius=10, align="center", justify="center",
-                gradient=("#7C5CFF", "#22D3B6", 45), shadow=(0, 4, 14, "$glow"))[
-                text("A", size=16, weight=800, color="#FFFFFF")
-            ],
+            box(
+                width=32,
+                height=32,
+                radius=10,
+                align="center",
+                justify="center",
+                gradient=("#7C5CFF", "#22D3B6", 45),
+                shadow=(0, 4, 14, "$glow"),
+            )[text("A", size=16, weight=800, color="#FFFFFF")],
             column(gap=0)[
                 text("Aurora Studio", size=15, weight=700),
                 text("Workspace personal", size=11, color="$muted"),
@@ -250,7 +295,9 @@ def sidebar() -> Element:
         spacer(),
         button(
             lambda: "☀  Tema claro" if theme() is MIDNIGHT else "☾  Tema oscuro",
-            toggle_theme, variant="soft", key="theme-toggle",
+            toggle_theme,
+            variant="soft",
+            key="theme-toggle",
         ),
         box(height=8),
         row(gap=10, align="center", padding=10, radius="$md", border_width=1, border_color="$border")[
@@ -271,19 +318,27 @@ def bar_chart() -> Element:
     peak = max(values)
     sel = selected_day()
     bars = []
-    for i, (day, v) in enumerate(zip(DAYS, values)):
+    for i, (day, v) in enumerate(zip(DAYS, values, strict=True)):
         chosen = i == sel
         bars.append(
             column(
-                key=f"bar-{i}", grow=1, width=0, gap=8, align="center", justify="end",
-                padding=(6, 0), radius="$sm",
+                key=f"bar-{i}",
+                grow=1,
+                width=0,
+                gap=8,
+                align="center",
+                justify="end",
+                padding=(6, 0),
+                radius="$sm",
                 bg="$surface_hover" if chosen else "#00000000",
                 bg_hover="$surface_hover",
                 on_click=lambda i=i: selected_day.set(None if selected_day() == i else i),
             )[
                 text(str(v), size=11, weight=700, color="$text" if chosen else "$muted"),
                 box(
-                    width=26, height=max(6, 118 * v / peak), radius=7,
+                    width=26,
+                    height=max(6, 118 * v / peak),
+                    radius=7,
                     gradient=("#7C5CFF", "#22D3B6", 90) if chosen else ("#7C5CFF99", "#7C5CFF44", 90),
                 ),
                 text(day, size=11, weight=600 if chosen else 500, color="$text" if chosen else "$muted"),
@@ -292,7 +347,8 @@ def bar_chart() -> Element:
     total = sum(values)
     detail = (
         f"{DAYS[sel]}: {values[sel]} tareas cerradas · {values[sel] / total:.0%} de la semana"
-        if sel is not None else "Haz clic en una barra para ver el detalle del día"
+        if sel is not None
+        else "Haz clic en una barra para ver el detalle del día"
     )
     return card(grow=2, width=0, gap=16)[
         row(align="center")[
@@ -315,16 +371,18 @@ def projects_card(ts: tuple[Task, ...]) -> Element:
         done = sum(t.points for t in own if t.status == "done")
         total = sum(t.points for t in own) or 1
         pct = 100 * done / total
-        rows.append(column(gap=8)[
-            row(gap=8, align="center")[
-                dot(color),
-                text(name, size=13, weight=600),
-                spacer(),
-                text(f"{pct:.0f}%", size=13, weight=700),
-            ],
-            progress(pct, color),
-            text(f"{done} de {total} pts · {len(own)} tareas", size=11, color="$muted"),
-        ])
+        rows.append(
+            column(gap=8)[
+                row(gap=8, align="center")[
+                    dot(color),
+                    text(name, size=13, weight=600),
+                    spacer(),
+                    text(f"{pct:.0f}%", size=13, weight=700),
+                ],
+                progress(pct, color),
+                text(f"{done} de {total} pts · {len(own)} tareas", size=11, color="$muted"),
+            ]
+        )
     return card(grow=1, width=0, gap=18)[
         section_title("Progreso por proyecto", "Ponderado por story points"),
         rows,
@@ -341,8 +399,13 @@ def activity_card(ts: tuple[Task, ...]) -> Element:
         ],
         [
             row(
-                key=f"act-{t.id}", gap=12, align="center", padding=(10, 10), radius="$sm",
-                bg="#00000000", bg_hover="$surface_hover",
+                key=f"act-{t.id}",
+                gap=12,
+                align="center",
+                padding=(10, 10),
+                radius="$sm",
+                bg="#00000000",
+                bg_hover="$surface_hover",
                 on_click=lambda: page.set("tablero"),
             )[
                 avatar(t.assignee, 30),
@@ -350,8 +413,10 @@ def activity_card(ts: tuple[Task, ...]) -> Element:
                     text(t.title, size=13, weight=600, max_lines=1),
                     text(f"{t.project} · {t.assignee.split()[0]}", size=11, color="$muted"),
                 ],
-                pill(next(lbl for s, lbl, _ in STATUSES if s == t.status),
-                     next(c for s, _, c in STATUSES if s == t.status)),
+                pill(
+                    next(lbl for s, lbl, _ in STATUSES if s == t.status),
+                    next(c for s, _, c in STATUSES if s == t.status),
+                ),
             ]
             for t in recent
         ],
@@ -369,8 +434,12 @@ def overview() -> Element:
             stat("TAREAS ACTIVAS", str(len(ts) - len(done)), f"{len(ts)} total"),
             stat("EN CURSO", str(len(doing)), f"{sum(t.points for t in doing)} pts"),
             stat("COMPLETADO", f"{100 * pts_done / pts_total:.0f}%", f"{pts_done} pts"),
-            stat("PRIORIDAD ALTA", str(sum(t.priority == "alta" and t.status != "done" for t in ts)),
-                 "pendientes", positive=False),
+            stat(
+                "PRIORIDAD ALTA",
+                str(sum(t.priority == "alta" and t.status != "done" for t in ts)),
+                "pendientes",
+                positive=False,
+            ),
         ],
         row(gap=16, align="stretch")[bar_chart(), projects_card(ts)],
         activity_card(ts),
@@ -382,8 +451,13 @@ def overview() -> Element:
 
 def small_action(label: str, on_click, *, key: str, color: str = "$muted", enabled: bool = True) -> Element:
     return box(
-        key=key, padding=(5, 9), radius=8, bg="#00000000",
-        bg_hover="$surface_pressed", bg_pressed="$border", press_scale=0.92,
+        key=key,
+        padding=(5, 9),
+        radius=8,
+        bg="#00000000",
+        bg_hover="$surface_pressed",
+        bg_pressed="$border",
+        press_scale=0.92,
         opacity=1.0 if enabled else 0.3,
         on_click=on_click if enabled else None,
     )[text(label, size=12, weight=600, color=color)]
@@ -418,10 +492,15 @@ def task_card(t: Task, col_index: int) -> Element:
 def tag_chip(tag: str) -> Element:
     on = tag in active_tags()
     return row(
-        key=f"tag-{tag}", gap=6, align="center", padding=(6, 12), radius="$full",
+        key=f"tag-{tag}",
+        gap=6,
+        align="center",
+        padding=(6, 12),
+        radius="$full",
         bg="$primary" if on else "$surface",
         bg_hover="$primary_hover" if on else "$surface_hover",
-        border_width=1, border_color="$primary" if on else "$border",
+        border_width=1,
+        border_color="$primary" if on else "$border",
         press_scale=0.95,
         on_click=lambda: toggle_tag(tag),
     )[
@@ -446,10 +525,9 @@ def board() -> Element:
                     text(f"{sum(t.points for t in items)} pts", size=11, color="$muted"),
                 ],
                 [task_card(t, i) for t in items]
-                or column(padding=(28, 12), align="center", radius=14,
-                          border_width=1, border_color="$border")[
-                    text("Sin tareas aquí", size=12, color="$muted"),
-                ],
+                or column(
+                    padding=(28, 12), align="center", radius=14, border_width=1, border_color="$border"
+                )[text("Sin tareas aquí", size=12, color="$muted"),],
             ]
         )
     return column(gap=16)[
@@ -534,8 +612,15 @@ def modal_layer() -> Element | None:
             ],
             row(gap=10, justify="end")[
                 button("Cancelar", lambda: modal.set(None), variant="soft", key="m-cancel"),
-                button("Eliminar", confirm_delete, key="m-confirm",
-                       bg="$danger", bg_hover="#FB8A8A", bg_pressed="#E05A5A", shadow=(0, 6, 18, "#F8717140")),
+                button(
+                    "Eliminar",
+                    confirm_delete,
+                    key="m-confirm",
+                    bg="$danger",
+                    bg_hover="#FB8A8A",
+                    bg_pressed="#E05A5A",
+                    shadow=(0, 6, 18, "#F8717140"),
+                ),
             ],
         ]
     else:
@@ -547,25 +632,39 @@ def modal_layer() -> Element | None:
         ]
         body = [
             row(gap=12, align="center")[
-                box(width=44, height=44, radius=13, align="center", justify="center",
-                    gradient=("#7C5CFF", "#22D3B6", 45))[text("A", size=20, weight=800, color="#FFFFFF")],
+                box(
+                    width=44,
+                    height=44,
+                    radius=13,
+                    align="center",
+                    justify="center",
+                    gradient=("#7C5CFF", "#22D3B6", 45),
+                )[text("A", size=20, weight=800, color="#FFFFFF")],
                 column(gap=2)[
                     text("Aurora Studio", size=18, weight=700),
                     text("Demo de capacidades · v0.1", size=12, color="$muted"),
                 ],
             ],
             column(gap=10)[
-                [row(gap=10, align="center")[dot("#22D3B6", 6), text(f, size=13, color="$muted")] for f in features]
+                [
+                    row(gap=10, align="center")[dot("#22D3B6", 6), text(f, size=13, color="$muted")]
+                    for f in features
+                ]
             ],
             row(justify="end")[button("Entendido", lambda: modal.set(None), key="m-ok")],
         ]
     return box(
-        key="backdrop", position="absolute", top=0, left=0, right=0, bottom=0,
-        bg="#05060ACC", align="center", justify="center",
+        key="backdrop",
+        position="absolute",
+        top=0,
+        left=0,
+        right=0,
+        bottom=0,
+        bg="#05060ACC",
+        align="center",
+        justify="center",
         on_click=lambda: modal.set(None),
-    )[
-        card(width=440, padding=24, gap=20, capture=True, shadow=(0, 24, 60, "#00000088"))[body]
-    ]
+    )[card(width=440, padding=24, gap=20, capture=True, shadow=(0, 24, 60, "#00000088"))[body]]
 
 
 def toast_layer() -> Element | None:
@@ -573,9 +672,19 @@ def toast_layer() -> Element | None:
     if msg is None:
         return None
     return row(
-        key="toast", position="absolute", right=24, bottom=24, max_width=420,
-        gap=12, align="center", padding=(12, 14, 12, 16), radius="$md",
-        bg="$surface", border_width=1, border_color="$border", shadow=(0, 12, 32, "$shadow"),
+        key="toast",
+        position="absolute",
+        right=24,
+        bottom=24,
+        max_width=420,
+        gap=12,
+        align="center",
+        padding=(12, 14, 12, 16),
+        radius="$md",
+        bg="$surface",
+        border_width=1,
+        border_color="$border",
+        shadow=(0, 12, 32, "$shadow"),
         on_click=lambda: toast.set(None),
     )[
         dot("#22D3B6"),
@@ -625,7 +734,10 @@ def render_gallery(out: Path) -> None:
         ("1-resumen", lambda: None),
         ("2-tablero", lambda: (page.set("tablero"), move(2, +1), toggle_tag("backend"))),
         ("3-modal", lambda: modal.set(("delete", 5))),
-        ("4-equipo-claro", lambda: (modal.set(None), page.set("equipo"), toggle_theme(), toggle_follow("Lucas Martins"))),
+        (
+            "4-equipo-claro",
+            lambda: (modal.set(None), page.set("equipo"), toggle_theme(), toggle_follow("Lucas Martins")),
+        ),
     ]
     for name, mutate in shots:
         mutate()

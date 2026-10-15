@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from . import _core
 from .components import badge, button, card, stat
@@ -11,9 +11,21 @@ from .signal import Signal
 from .theme import DAYLIGHT, MIDNIGHT, Theme
 
 __all__ = [
-    "App", "Element", "Signal", "Theme", "MIDNIGHT", "DAYLIGHT",
-    "box", "column", "row", "text", "spacer",
-    "button", "card", "badge", "stat",
+    "DAYLIGHT",
+    "MIDNIGHT",
+    "App",
+    "Element",
+    "Signal",
+    "Theme",
+    "badge",
+    "box",
+    "button",
+    "card",
+    "column",
+    "row",
+    "spacer",
+    "stat",
+    "text",
 ]
 __version__ = _core.__version__
 

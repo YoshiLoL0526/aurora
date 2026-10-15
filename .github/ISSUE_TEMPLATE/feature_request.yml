@@ -1,0 +1,26 @@
+name: Proponer una funcionalidad
+description: Una idea para mejorar Aurora.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de proponer, echa un vistazo a [VISION.md](../blob/main/VISION.md) y al
+        [ROADMAP.md](../blob/main/ROADMAP.md): puede que ya esté planificada.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qué problema resuelve
+      description: Cuéntanos el caso de uso real. Es lo que más pesa al priorizar.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Cómo te gustaría usarlo
+      description: Un ejemplo de cómo se vería la API desde Python.
+      render: python
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas que consideraste

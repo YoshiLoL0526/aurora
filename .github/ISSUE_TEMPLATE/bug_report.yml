@@ -1,0 +1,47 @@
+name: Reportar un bug
+description: Algo no funciona como esperabas.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Gracias por tomarte el tiempo de reportarlo. Cuanto más concreto, antes se arregla.
+  - type: textarea
+    id: what
+    attributes:
+      label: Qué pasa
+      description: Describe el problema. Si es visual, adjunta una captura (puedes usar `app.render_png()`).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Qué esperabas que pasara
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Ejemplo mínimo
+      description: El programa más corto posible que reproduzca el problema.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versión de Aurora
+      placeholder: "0.1.0 (o el commit)"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Sistema operativo
+      options: [Windows, macOS, Linux (X11), Linux (Wayland)]
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Versión de Python
+      placeholder: "3.13"

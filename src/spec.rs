@@ -141,7 +141,9 @@ fn str_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<String>> {
 }
 
 fn len_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Len>> {
-    let Some(v) = get(d, key)? else { return Ok(None) };
+    let Some(v) = get(d, key)? else {
+        return Ok(None);
+    };
     if let Ok(px) = v.extract::<f32>() {
         return Ok(Some(Len::Px(px)));
     }
@@ -153,7 +155,10 @@ fn len_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Len>> {
 }
 
 fn bool_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<bool> {
-    Ok(get(d, key)?.map(|v| v.is_truthy()).transpose()?.unwrap_or(false))
+    Ok(get(d, key)?
+        .map(|v| v.is_truthy())
+        .transpose()?
+        .unwrap_or(false))
 }
 
 fn color_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Color>> {
@@ -165,16 +170,31 @@ fn edges_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Edges> {
         return Ok(Edges::default());
     };
     if let Ok(all) = v.extract::<f32>() {
-        return Ok(Edges { top: all, right: all, bottom: all, left: all });
+        return Ok(Edges {
+            top: all,
+            right: all,
+            bottom: all,
+            left: all,
+        });
     }
     let vals: Vec<f32> = v.extract()?;
     Ok(match vals.as_slice() {
-        [y, x] => Edges { top: *y, right: *x, bottom: *y, left: *x },
-        [t, r, b, l] => Edges { top: *t, right: *r, bottom: *b, left: *l },
+        [y, x] => Edges {
+            top: *y,
+            right: *x,
+            bottom: *y,
+            left: *x,
+        },
+        [t, r, b, l] => Edges {
+            top: *t,
+            right: *r,
+            bottom: *b,
+            left: *l,
+        },
         _ => {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "padding debe ser un número, (vertical, horizontal) o (top, right, bottom, left)",
-            ))
+            ));
         }
     })
 }
@@ -183,14 +203,23 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
     let shadow = match get(d, "shadow")? {
         Some(v) => {
             let (dx, dy, blur, color): (f32, f32, f32, String) = v.extract()?;
-            Some(Shadow { dx, dy, blur, color: parse_color(&color)? })
+            Some(Shadow {
+                dx,
+                dy,
+                blur,
+                color: parse_color(&color)?,
+            })
         }
         None => None,
     };
     let gradient = match get(d, "gradient")? {
         Some(v) => {
             let (from, to, angle): (String, String, f32) = v.extract()?;
-            Some(Gradient { from: parse_color(&from)?, to: parse_color(&to)?, angle })
+            Some(Gradient {
+                from: parse_color(&from)?,
+                to: parse_color(&to)?,
+                angle,
+            })
         }
         None => None,
     };
@@ -203,7 +232,12 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         width: len_of(d, "width")?,
         height: len_of(d, "height")?,
         absolute: str_of(d, "position")?.as_deref() == Some("absolute"),
-        inset: [f32_of(d, "top")?, f32_of(d, "right")?, f32_of(d, "bottom")?, f32_of(d, "left")?],
+        inset: [
+            f32_of(d, "top")?,
+            f32_of(d, "right")?,
+            f32_of(d, "bottom")?,
+            f32_of(d, "left")?,
+        ],
         min_width: f32_of(d, "min_width")?,
         max_width: f32_of(d, "max_width")?,
         grow: f32_of(d, "grow")?.unwrap_or(0.0),
@@ -228,7 +262,9 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
 fn inherit_text(d: &Bound<'_, PyDict>, parent: &TextProps) -> PyResult<TextProps> {
     Ok(TextProps {
         size: f32_of(d, "font_size")?.unwrap_or(parent.size),
-        weight: f32_of(d, "font_weight")?.map(|w| w as i32).unwrap_or(parent.weight),
+        weight: f32_of(d, "font_weight")?
+            .map(|w| w as i32)
+            .unwrap_or(parent.weight),
         color: color_of(d, "color")?.unwrap_or(parent.color),
         family: str_of(d, "font_family")?.unwrap_or_else(|| parent.family.clone()),
         line_height: f32_of(d, "line_height")?.or(parent.line_height),

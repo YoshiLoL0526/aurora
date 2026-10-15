@@ -5,14 +5,33 @@ build-backend = "maturin"
 [project]
 name = "aurora-ui"
 version = "0.1.0"
-description = "UI de escritorio declarativa para Python con núcleo nativo en Rust (Skia + Taffy)."
+description = "Interfaces de escritorio profesionales en Python, con un núcleo nativo en Rust (Skia + Taffy)."
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [{ name = "Raidel" }]
+keywords = ["gui", "ui", "desktop", "declarative", "reactive", "skia", "rust", "dashboard"]
 classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Rust",
     "Topic :: Software Development :: User Interfaces",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+# TODO: reemplazar <usuario> por tu cuenta u organización de GitHub.
+Homepage = "https://github.com/<usuario>/aurora"
+Documentation = "https://github.com/<usuario>/aurora/tree/main/docs"
+Issues = "https://github.com/<usuario>/aurora/issues"
+Changelog = "https://github.com/<usuario>/aurora/blob/main/CHANGELOG.md"
 
 [tool.maturin]
 python-source = "python"
@@ -20,7 +39,7 @@ module-name = "aurora._core"
 features = ["pyo3/extension-module"]
 
 [dependency-groups]
-dev = ["maturin>=1.7,<2"]
+dev = ["maturin>=1.7,<2", "pytest>=8", "ruff>=0.6"]
 
 [tool.uv]
 # uv cachea el paquete construido: estas claves hacen que recompile
@@ -31,3 +50,21 @@ cache-keys = [
     { file = "Cargo.lock" },
     { file = "src/**/*.rs" },
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["python/aurora/_core.pyi"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E731", "RUF001", "RUF002", "RUF003"]  # lambdas como callbacks; tipografía en español
+
+[tool.ruff.lint.isort]
+known-first-party = ["aurora"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*" = ["B023", "E501"]

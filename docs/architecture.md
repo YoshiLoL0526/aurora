@@ -1,0 +1,142 @@
+# Arquitectura
+
+Este documento explica cómo funciona Aurora por dentro y **por qué** está diseñado así. Está
+pensado para contribuidores y para quien quiera entender qué pasa entre un `Signal.set()` y un
+píxel en pantalla.
+
+## Idea central
+
+> **Python describe, Rust ejecuta. La frontera se cruza poco y con mucha información.**
+
+Llamar de Python a código nativo es barato una vez, y carísimo diez mil veces por frame. Por eso
+Aurora nunca expone a Python operaciones de bajo nivel ("dibuja este rectángulo", "mide este
+texto"). Python produce un **árbol de descripción completo**, y Rust hace todo el trabajo pesado
+sobre ese árbol sin volver a consultar al intérprete.
+
+## Mapa del código
+
+```
+python/aurora/
+├── __init__.py      App: une la vista, el tema y el núcleo nativo
+├── elements.py      Element y primitivas (box, row, column, text, spacer)
+├── components.py    Componentes con estilo (button, card, badge, stat), solo con primitivas
+├── signal.py        Estado reactivo
+├── theme.py         Design tokens y temas MIDNIGHT / DAYLIGHT
+└── _core.pyi        Stubs del módulo nativo
+
+src/                 (crate aurora_core → módulo aurora._core)
+├── lib.rs           Funciones expuestas a Python: render_png, run
+├── spec.rs          Árbol de Python (dicts) → Node tipado; herencia de estilos de texto
+├── color.rs         Parseo de colores e interpolación
+├── render.rs        Engine: layout (Taffy) + pintura (Skia) + animación + hit-testing
+└── window.rs        Bucle de ventana (winit), framebuffer (softbuffer), eventos
+```
+
+## Ciclo de vida de un frame
+
+```
+           ┌────────────────────────── Python (con el GIL) ──────────────────────────┐
+ evento ─► │ callback del usuario ─► Signal.set() ─► view() ─► Element ─► to_spec()   │
+           └──────────────────────────────────────────────────────────┬──────────────┘
+                                                                      │ dict anidado (1 cruce)
+           ┌────────────────────────── Rust (sin el GIL) ─────────────▼──────────────┐
+           │ spec::parse    → Node tipado, herencia de text props, keys estables     │
+           │ Engine::layout → árbol Taffy + medición de texto con Skia               │
+           │ Engine::tick   → avanza transiciones hover/pressed (dt real)            │
+           │ Painter        → Skia pinta en el framebuffer y registra HitRegions     │
+           │ present        → softbuffer muestra el frame                            │
+           └─────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Evento.** winit entrega un `CursorMoved` o `MouseInput`. El bucle corre sin el GIL: mover el
+   ratón por encima de la interfaz no toca Python en absoluto.
+2. **Hit-testing.** Se busca el nodo pintado más arriba bajo el cursor y se sube por sus ancestros
+   hasta el primero interactivo (ver más abajo).
+3. **Callback.** Solo al soltar el clic sobre el mismo nodo se toma el GIL, se ejecuta el callback
+   y la vista se marca como sucia.
+4. **Reconstrucción.** Se llama a `view()` y el árbol resultante se serializa a dicts en un único
+   recorrido (`Element.to_spec`), resolviendo tokens de tema y lambdas de texto.
+5. **Parseo.** `spec::parse` convierte los dicts en `Node` tipados. Es el único lugar del núcleo
+   que conoce la forma de los datos de Python.
+6. **Layout.** Se construye un árbol Taffy paralelo. Los nodos de texto llevan un `Paragraph` de
+   Skia ya "shapeado" como contexto: el mismo párrafo se usa para medir y para pintar.
+7. **Pintura.** `Painter` recorre el árbol: sombra → fondo → borde → texto → hijos. Skia escribe
+   directamente en la memoria del framebuffer.
+
+## Decisiones de diseño
+
+### Skia sobre Vello o un renderer propio
+
+La calidad visual de una UI depende sobre todo de sus efectos: sombras suaves, blur, gradientes,
+antialiasing y, por encima de todo, **el texto**. Skia ofrece todo eso maduro y probado en
+producción, incluido un motor de párrafos (`SkParagraph`) con shaping, bidi y fallback de fuentes.
+Vello es prometedor pero todavía tiene huecos en filtros y blur. El render queda detrás del
+`Engine`, de modo que cambiar de backend no afecta a la API de Python.
+
+### Taffy para el layout
+
+Implementa Flexbox y Grid fielmente a la especificación CSS, lo usan proyectos serios (Zed,
+Bevy, Dioxus) y expone una API de medición que encaja con el texto de Skia. Reimplementar
+flexbox no aporta nada diferencial.
+
+### Framebuffer por CPU (de momento)
+
+winit + softbuffer + Skia raster es la combinación más portable y simple para la v0.1: no hay
+contextos de GPU que crear ni drivers con los que pelear. El formato de píxel de softbuffer
+(`0x00RRGGBB`) coincide en little-endian con el N32 (BGRA) de Skia, así que Skia pinta
+directamente en el buffer de la ventana, **sin copias**. El backend GPU (v0.3) entra detrás
+del mismo punto.
+
+### Árbol completo por actualización (de momento)
+
+La v0.1 reconstruye la vista entera tras cada evento. Es una simplificación deliberada:
+el coste real es serializar el árbol en Python, que para apps medianas está muy por debajo de un
+frame. El diseño ya prepara la reactividad de grano fino de la v0.3:
+
+- Los nodos tienen **identidad estable** (`key` explícita o ruta en el árbol), que ya hoy se usa
+  para conservar el estado de animación entre reconstrucciones.
+- `Signal` tiene suscriptores, y es el punto natural para registrar dependencias por rama.
+
+### Animaciones en Rust
+
+Las transiciones de hover y pressed se interpolan en el núcleo con suavizado exponencial
+(`τ = 70 ms`) usando el `dt` real entre frames. Python solo declara los estados de destino
+(`bg_hover`, `bg_pressed`, `press_scale`). Así una animación nunca compite con tu código Python
+por el GIL ni depende de su velocidad.
+
+### Hit-testing con burbujeo y barreras
+
+Durante la pintura se registra una `HitRegion` por nodo (rectángulo absoluto e índice del padre),
+en orden de pintura. Para resolver un clic:
+
+1. Se toma la **última** región que contiene el punto (la pintada más arriba).
+2. Se sube por los padres hasta encontrar un nodo con `on_click`, o hasta un nodo con
+   `capture=True`, que corta la búsqueda.
+
+Esto permite que un clic sobre el texto de un botón llegue al botón, y que un clic dentro de un
+modal no llegue al fondo que lo cierra.
+
+### Herencia de estilos de texto
+
+Como en CSS, `color`, `font_size`, `font_weight`, `font_family`, `line_height` y `letter_spacing`
+se heredan del contenedor más cercano que los define. La herencia se resuelve una sola vez en
+`spec::parse`, no en cada pintura.
+
+## Hilos y el GIL
+
+`aurora._core.run` libera el GIL (`py.detach`) durante todo el bucle de eventos y solo lo toma
+para reconstruir la vista o ejecutar un callback. Esto ya permite que otros hilos de Python
+trabajen mientras la ventana está abierta. Despertar el bucle cuando un `Signal` cambia desde
+otro hilo o una corrutina está previsto para la v0.2 (`EventLoopProxy`).
+
+## Extender Aurora
+
+- **Un componente nuevo** casi nunca necesita Rust: se compone con primitivas en
+  `components.py`. Si se puede hacer así, hazlo así.
+- **Una propiedad de estilo nueva** toca tres lugares: el campo en `spec::Style` y su parseo,
+  su efecto en `taffy_style` (layout) o en `Painter::paint` (pintura), y su documentación en
+  [`reference.md`](reference.md).
+- **Un nuevo tipo de nodo** (imagen, canvas, input) añade una variante a `spec::Kind`, su
+  medición en el layout y su pintura.
+
+Cualquier cambio visual debería venir con un test que lo renderice (`tests/test_render.py`).
