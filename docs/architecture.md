@@ -34,6 +34,7 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── keys.rs          KeyEvent y parseo de combinaciones ("ctrl+s", "mod+k")
 ├── edit.rs          Modelo de edición puro: texto, cursor, selección, deshacer, grafemas
 ├── input.rs         Estado de los campos de texto y geometría de cursor y selección
+├── image.rs         Decodificación de imágenes (raster y SVG), caché y encaje (fit)
 ├── window.rs        Bucle de ventana (winit) sobre Runtime, framebuffer (softbuffer)
 └── pilot.rs         Piloto headless sobre Runtime para tests de interacción
 ```
@@ -169,6 +170,15 @@ contienen), así que lo que está fuera de la zona visible no recibe eventos.
 
 La rueda se resuelve con las regiones del último frame: desde la región bajo el puntero se sube
 por los ancestros hasta el primer `scroll` que todavía pueda moverse en esa dirección.
+
+## Imágenes
+
+Un nodo `image` (`Kind::Image`) es una hoja cuyo contexto de layout es su tamaño natural
+(`Leaf::Image`): se mide conservando la proporción. Antes de maquetar, `Engine::load_images`
+resuelve cada `src` contra una `ImageCache` (`src/image.rs`) indexada por ruta + fecha + tamaño
+del archivo (o por un hash de los bytes): cada imagen se decodifica una vez, con mipmaps para
+reducir sin aliasing. Los SVG se cargan como `svg::Dom` de Skia y se pintan como vectores. Los
+errores de carga se convierten en `FileNotFoundError`/`ValueError` al reconstruir la vista.
 
 ## Campos de texto
 

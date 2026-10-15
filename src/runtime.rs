@@ -173,6 +173,7 @@ impl Runtime {
             .rev()
             .find(|k| !self.autofocus_seen.contains(*k))
             .cloned();
+        self.engine.load_images(&tree)?;
         self.autofocus_seen = autofocus.into_iter().collect();
         self.engine.sync_inputs(&tree);
         self.tree = Some(tree);

@@ -178,7 +178,7 @@ Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap]
 - **Render por CPU**: suficiente para interfaces normales; el backend GPU está planificado.
 - **Reconstrucción completa**: cada evento reconstruye la vista entera. Es barato en apps
   medianas; la reactividad de grano fino llega en la v0.3.
-- Todavía sin imágenes, canvas de dibujo libre, accesibilidad ni multi-ventana.
+- Todavía sin canvas de dibujo libre, accesibilidad ni multi-ventana.
 
 ## Documentación
 

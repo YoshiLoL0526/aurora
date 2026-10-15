@@ -289,6 +289,20 @@ def view():
 `not visible and text(...)` es un patrón habitual: si la condición es falsa, el valor es `False`
 y Aurora lo ignora.
 
+### Imágenes
+
+`image` acepta rutas o `bytes`, y SVG para iconos nítidos a cualquier tamaño. Fija un lado y el
+otro se calcula solo; con los dos, `fit="cover"` llena la caja sin deformar:
+
+```python
+from aurora import image
+
+row(gap=12, align="center")[
+    image("avatar.jpg", width=40, height=40, fit="cover", radius="$full"),
+    image("icons/check.svg", width=16),
+]
+```
+
 ### Formularios
 
 `text_input` y `textarea` se enlazan directamente a un `Signal[str]`: no hace falta escribir

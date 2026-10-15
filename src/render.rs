@@ -3,10 +3,12 @@
 //! Todo lo que ocurre por frame vive aquí, fuera del intérprete de Python.
 
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use skia_safe::{
-    BlurStyle, Canvas, ClipOp, Color, Color4f, EncodedImageFormat, FontMgr, FontStyle, MaskFilter,
-    Paint, PaintStyle, Point, RRect, Rect, Surface, TileMode,
+    BlurStyle, Canvas, ClipOp, Color, Color4f, EncodedImageFormat, FilterMode, FontMgr, FontStyle,
+    MaskFilter, MipmapMode, Paint, PaintStyle, Point, RRect, Rect, SamplingOptions, Surface,
+    TileMode,
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
@@ -21,9 +23,17 @@ use taffy::{
 };
 
 use crate::color::lerp;
+use crate::image::{Decoded, Fit, ImageCache, ImageError, Loaded};
 use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
 use crate::scroll::{BAR_WIDTH, ScrollState};
 use crate::spec::{Axis, Kind, Len, Node, Style, TextProps};
+
+/// Contexto de las hojas del árbol de layout.
+pub enum Leaf {
+    Text(TextCtx),
+    /// Imagen: su tamaño natural, para medirla manteniendo la proporción.
+    Image(skia_safe::Size),
+}
 
 /// Contexto de los nodos hoja de texto: el párrafo ya "shapeado" se reutiliza
 /// para medir (durante el layout) y para pintar.
@@ -115,6 +125,9 @@ pub struct Engine {
     pub scroll: HashMap<String, ScrollState>,
     /// Estado de cada campo de texto, por key.
     pub inputs: HashMap<String, InputState>,
+    /// Imagen decodificada de cada nodo `image` del árbol actual, por key.
+    images: HashMap<String, Rc<Loaded>>,
+    image_cache: ImageCache,
     pub hovered: Option<String>,
     pub pressed: Option<String>,
     pub focused: Option<String>,
@@ -135,6 +148,8 @@ impl Engine {
             anim: HashMap::new(),
             scroll: HashMap::new(),
             inputs: HashMap::new(),
+            images: HashMap::new(),
+            image_cache: ImageCache::default(),
             hovered: None,
             pressed: None,
             focused: None,
@@ -222,6 +237,24 @@ impl Engine {
         self.inputs.retain(|k, _| alive.contains(k));
     }
 
+    /// Carga (o toma de la caché) las imágenes del árbol. Un archivo que falta
+    /// o no se puede decodificar es un error de la vista, con la ruta en el mensaje.
+    pub fn load_images(&mut self, root: &Node) -> Result<(), ImageError> {
+        let mut images = HashMap::new();
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            if node.kind == Kind::Image
+                && let Some(src) = &node.style.src
+            {
+                images.insert(node.key.clone(), self.image_cache.load(src)?);
+            }
+            stack.extend(node.children.iter());
+        }
+        self.image_cache.trim(images.len());
+        self.images = images;
+        Ok(())
+    }
+
     /// Si el foco está en un campo de texto.
     pub fn focus_is_editable(&self) -> bool {
         self.focused
@@ -232,17 +265,30 @@ impl Engine {
     // ----------------------------------------------------------------- layout
 
     /// `in_scroll`: el padre se desplaza a lo largo de su eje principal.
-    fn build_layout(
-        &self,
-        tree: &mut TaffyTree<TextCtx>,
-        node: &Node,
-        in_scroll: bool,
-    ) -> LayoutNode {
+    fn build_layout(&self, tree: &mut TaffyTree<Leaf>, node: &Node, in_scroll: bool) -> LayoutNode {
         let mut style = taffy_style(&node.style);
         // Dentro de un scroll los hijos no se encogen por defecto: el contenido que
         // no cabe se desplaza en vez de aplastarse.
         if in_scroll && node.style.shrink.is_none() {
             style.flex_shrink = 0.0;
+        }
+        if node.kind == Kind::Image {
+            let natural = self
+                .images
+                .get(&node.key)
+                .map_or(skia_safe::Size::default(), |l| l.size);
+            // Sin ancho propio, una imagen no se estira en el eje cruzado: se
+            // queda a su tamaño (o al que quepa) sin deformarse.
+            if node.style.width.is_none() {
+                style.align_self = Some(AlignItems::FLEX_START);
+            }
+            let id = tree
+                .new_leaf_with_context(style, Leaf::Image(natural))
+                .expect("taffy leaf");
+            return LayoutNode {
+                id,
+                children: Vec::new(),
+            };
         }
         if matches!(node.kind, Kind::Text | Kind::Input) {
             let (paragraph, input) = if node.is_editable() {
@@ -256,7 +302,7 @@ impl Engine {
                 (self.paragraph(text, &node.text_props, &node.style), None)
             };
             let id = tree
-                .new_leaf_with_context(style, TextCtx { paragraph, input })
+                .new_leaf_with_context(style, Leaf::Text(TextCtx { paragraph, input }))
                 .expect("taffy leaf");
             return LayoutNode {
                 id,
@@ -277,8 +323,8 @@ impl Engine {
         LayoutNode { id, children }
     }
 
-    pub fn layout(&self, root: &Node, width: f32, height: f32) -> (TaffyTree<TextCtx>, LayoutNode) {
-        let mut tree: TaffyTree<TextCtx> = TaffyTree::new();
+    pub fn layout(&self, root: &Node, width: f32, height: f32) -> (TaffyTree<Leaf>, LayoutNode) {
+        let mut tree: TaffyTree<Leaf> = TaffyTree::new();
         let lroot = self.build_layout(&mut tree, root, false);
 
         // La raíz siempre ocupa la ventana completa.
@@ -302,7 +348,13 @@ impl Engine {
                     style,
                     |_, _| 0.0,
                     |known, avail| {
-                        let Some(ctx) = ctx else { return Size::ZERO };
+                        let ctx = match ctx {
+                            Some(Leaf::Text(ctx)) => ctx,
+                            Some(Leaf::Image(natural)) => {
+                                return measure_image(*natural, known, avail);
+                            }
+                            None => return Size::ZERO,
+                        };
                         let size = match ctx.input {
                             Some(leaf) => measure_input(&mut ctx.paragraph, leaf, known, avail),
                             None => measure_text(&mut ctx.paragraph, known, avail),
@@ -459,7 +511,7 @@ type Deferred<'a> = (&'a Node, &'a LayoutNode, Point, Option<usize>);
 struct Painter<'a> {
     engine: &'a Engine,
     canvas: &'a Canvas,
-    tree: &'a TaffyTree<TextCtx>,
+    tree: &'a TaffyTree<Leaf>,
     /// Densidad de píxeles, para alinear el desplazamiento a píxeles físicos.
     scale: f32,
     regions: Vec<HitRegion>,
@@ -545,6 +597,32 @@ impl<'a> Painter<'a> {
             canvas.draw_rrect(rrect, &paint);
         }
 
+        if node.kind == Kind::Image
+            && let Some(loaded) = self.engine.images.get(&node.key)
+        {
+            let (b, pad) = (layout.border, layout.padding);
+            let inner = Rect::new(
+                rect.left + b.left,
+                rect.top + b.top,
+                rect.right - b.right,
+                rect.bottom - b.bottom,
+            );
+            let content = Rect::new(
+                inner.left + pad.left,
+                inner.top + pad.top,
+                inner.right - pad.right,
+                inner.bottom - pad.bottom,
+            );
+            let r = (s.radius - s.border_width).max(0.0);
+            paint_image(
+                canvas,
+                loaded,
+                s.fit,
+                content,
+                RRect::new_rect_xy(inner, r, r),
+            );
+        }
+
         if s.border_width > 0.0
             && let Some(color) = s.border_color
         {
@@ -563,7 +641,7 @@ impl<'a> Painter<'a> {
         }
 
         if node.kind == Kind::Text
-            && let Some(ctx) = self.tree.get_node_context(lnode.id)
+            && let Some(Leaf::Text(ctx)) = self.tree.get_node_context(lnode.id)
         {
             let pad = layout.padding;
             ctx.paragraph
@@ -644,7 +722,7 @@ impl<'a> Painter<'a> {
     /// composición del IME y cursor, recortados a la caja de relleno. Un campo
     /// de una línea se desplaza en horizontal para que el cursor siempre se vea.
     fn paint_input(&mut self, node: &Node, lnode: &LayoutNode, rect: Rect) {
-        let Some(ctx) = self.tree.get_node_context(lnode.id) else {
+        let Some(Leaf::Text(ctx)) = self.tree.get_node_context(lnode.id) else {
             return;
         };
         let layout = self.tree.layout(lnode.id).expect("layout");
@@ -758,6 +836,31 @@ impl<'a> Painter<'a> {
     }
 }
 
+/// Pinta la imagen encajada (`fit`) en `content`, recortada a `clip` (las
+/// esquinas redondeadas del nodo, para avatares y miniaturas).
+fn paint_image(canvas: &Canvas, loaded: &Loaded, fit: Fit, content: Rect, clip: RRect) {
+    let dest = fit.place(loaded.size, content);
+    canvas.save();
+    canvas.clip_rrect(clip, ClipOp::Intersect, true);
+    match &loaded.decoded {
+        Decoded::Raster(image) => {
+            let sampling = SamplingOptions::new(FilterMode::Linear, MipmapMode::Linear);
+            let mut p = Paint::default();
+            p.set_anti_alias(true);
+            canvas.draw_image_rect_with_sampling_options(image, None, dest, sampling, &p);
+        }
+        Decoded::Svg(dom) => {
+            let (sx, sy) = (
+                dest.width() / loaded.size.width.max(1e-3),
+                dest.height() / loaded.size.height.max(1e-3),
+            );
+            canvas.translate((dest.left, dest.top)).scale((sx, sy));
+            dom.render(canvas);
+        }
+    }
+    canvas.restore();
+}
+
 fn paint_scrollbars(canvas: &Canvas, state: &ScrollState, color: Option<Color>) {
     if state.bar <= 0.0 {
         return;
@@ -844,6 +947,36 @@ fn measure_input(
     }
 }
 
+/// Una imagen mantiene su proporción: con un lado fijado, el otro sale de él;
+/// sin ninguno, ocupa su tamaño natural sin pasar del ancho disponible.
+fn measure_image(
+    natural: skia_safe::Size,
+    known: Size<Option<f32>>,
+    avail: Size<AvailableSpace>,
+) -> Size<f32> {
+    let ratio = if natural.height > 0.0 {
+        natural.width / natural.height
+    } else {
+        1.0
+    };
+    let (width, height) = match (known.width, known.height) {
+        (Some(w), Some(h)) => (w, h),
+        (Some(w), None) => (w, w / ratio),
+        (None, Some(h)) => (h * ratio, h),
+        (None, None) => {
+            let max = match avail.width {
+                AvailableSpace::Definite(w) => w,
+                // Como `max-width: 100%`: en una fila sin sitio, la imagen se encoge.
+                AvailableSpace::MinContent => 0.0,
+                AvailableSpace::MaxContent => f32::INFINITY,
+            };
+            let w = natural.width.min(max);
+            (w, w / ratio)
+        }
+    };
+    Size { width, height }
+}
+
 fn measure_text(
     p: &mut Paragraph,
     known: Size<Option<f32>>,
@@ -866,9 +999,9 @@ fn measure_text(
     }
 }
 
-fn finalize_text(tree: &mut TaffyTree<TextCtx>, lnode: &LayoutNode) {
+fn finalize_text(tree: &mut TaffyTree<Leaf>, lnode: &LayoutNode) {
     let layout = *tree.layout(lnode.id).expect("layout");
-    if let Some(ctx) = tree.get_node_context_mut(lnode.id) {
+    if let Some(Leaf::Text(ctx)) = tree.get_node_context_mut(lnode.id) {
         let w = layout.content_box_width();
         // +0.5 evita cortes de línea espurios por redondeo del layout.
         let w = match ctx.input {
@@ -989,11 +1122,13 @@ pub fn render_png(
     height: f32,
     scale: f32,
     path: &str,
-) -> Result<(), String> {
+) -> pyo3::PyResult<()> {
+    use pyo3::exceptions::PyRuntimeError;
     let mut engine = Engine::new();
-    let mut surface = raster_surface(width, height, scale)?;
+    engine.load_images(root)?;
+    let mut surface = raster_surface(width, height, scale).map_err(PyRuntimeError::new_err)?;
     engine.draw(surface.canvas(), root, width, height, scale);
-    write_png(&mut surface, path)
+    write_png(&mut surface, path).map_err(PyRuntimeError::new_err)
 }
 
 /// Superficie en memoria de `width × height` píxeles lógicos a la escala dada.

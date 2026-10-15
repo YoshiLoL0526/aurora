@@ -10,6 +10,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- Primitiva `image(src, fit=...)`: PNG, JPEG, WebP, GIF, BMP, ICO y SVG (vectorial) desde una ruta
+  o desde `bytes`, con proporción automática, `fit` (`contain`, `cover`, `fill`, `none`), recorte a
+  las esquinas redondeadas, caché de decodificación que detecta cambios en disco y errores claros
+  (`FileNotFoundError`, `ValueError`).
 - Campos de texto `text_input` y `textarea`, enlazados en los dos sentidos a un `Signal[str]`:
   cursor que parpadea, selección con teclado y ratón (doble y triple clic), recorrido por grafemas y
   palabras, portapapeles, deshacer/rehacer agrupando lo escrito, composición con IME, placeholder,

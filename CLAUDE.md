@@ -29,7 +29,10 @@ cargo fmt --check && cargo clippy --release -- -D warnings
   trigger an automatic rebuild on the next `uv run` (configured via `tool.uv.cache-keys`).
 - Rust unit tests (`uv run cargo test --release`) only link on Windows: with `extension-module`,
   the test binary doesn't link libpython on Linux/macOS.
-- First build downloads prebuilt Skia binaries and takes minutes. Linux needs
+- First build downloads prebuilt Skia binaries and takes minutes. The `skia-safe` features in
+  `Cargo.toml` (per OS) must match a combination published in rust-skia/skia-binaries; any other
+  combination silently falls back to building Skia from source (needs LLVM, very slow). Check the
+  release assets before adding a Skia feature. Linux needs
   `libfontconfig-dev` and `libfreetype-dev`.
 
 ## Architecture

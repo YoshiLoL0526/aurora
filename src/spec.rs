@@ -6,10 +6,11 @@ use std::collections::{HashMap, HashSet};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyBytes, PyDict, PyList};
 use skia_safe::Color;
 
 use crate::color::parse_color;
+use crate::image::{Fit, Source};
 
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Edges {
@@ -141,6 +142,9 @@ pub struct Style {
     pub selection_color: Option<Color>,
     /// Alto mínimo de un campo multilínea, en líneas.
     pub rows: usize,
+    // Imágenes
+    pub src: Option<Source>,
+    pub fit: Fit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,6 +153,8 @@ pub enum Kind {
     Text,
     /// Campo de texto editable (`text_input`, `textarea`).
     Input,
+    /// Imagen de un archivo o de bytes en memoria.
+    Image,
 }
 
 #[derive(Debug)]
@@ -347,6 +353,21 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         placeholder_color: color_of(d, "placeholder_color")?,
         selection_color: color_of(d, "selection_color")?,
         rows: f32_of(d, "rows")?.map_or(1, |n| n.max(1.0) as usize),
+        src: match get(d, "src")? {
+            Some(v) if v.is_instance_of::<PyBytes>() => Some(Source::Bytes(v.extract()?)),
+            Some(v) => Some(Source::Path(v.extract::<String>().map_err(|_| {
+                PyValueError::new_err("src debe ser una ruta (str o Path) o bytes")
+            })?)),
+            None => None,
+        },
+        fit: match str_of(d, "fit")? {
+            None => Fit::default(),
+            Some(f) => Fit::parse(&f).ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "fit inválido: {f:?} (usa \"contain\", \"cover\", \"fill\" o \"none\")"
+                ))
+            })?,
+        },
     })
 }
 
@@ -383,6 +404,7 @@ fn parse_node(
     let kind = match str_of(d, "kind")?.as_deref() {
         Some("text") => Kind::Text,
         Some("input") => Kind::Input,
+        Some("image") => Kind::Image,
         _ => Kind::Box,
     };
     let style_dict = match get(d, "style")? {

@@ -129,6 +129,33 @@ Dentro de los corchetes se aceptan elementos, listas (se aplanan), strings (se c
 | `text(contenido, **estilo)` | Texto. `contenido` puede ser un `str` o un callable (`lambda: f"{x()}"`), que se evalúa en cada reconstrucción. |
 | `spacer()` | Caja con `grow=1`: ocupa todo el espacio libre del eje principal. |
 | `scroll(*, axis="y", **estilo)` | Contenedor desplazable (rueda, trackpad y barra arrastrable). Ver abajo. |
+| `image(src, *, fit="contain", **estilo)` | Imagen de un archivo o de bytes. Ver abajo. |
+
+### `image(src, *, fit="contain", **estilo)`
+
+Muestra una imagen **PNG, JPEG, WebP, GIF** (primer fotograma), **BMP, ICO o SVG**. `src` es una
+ruta (`str` o `Path`) o `bytes` con el archivo ya en memoria (p. ej. una gráfica generada con
+matplotlib).
+
+```python
+image("assets/logo.svg", width=32)
+image(cover_path, height=160, fit="cover", radius="$lg")
+image(png_bytes)
+```
+
+- **Tamaño:** sin `width` ni `height`, ocupa su tamaño natural (1 píxel de la imagen = 1 píxel
+  lógico) sin pasar del ancho disponible, como `max-width: 100%` en CSS. Con uno de los dos, el
+  otro sale de su proporción. Sin `width`, no se estira en el eje cruzado de su contenedor.
+- **`fit`** decide cómo encaja cuando fijas los dos lados: `"contain"` (entera, sin deformar,
+  con márgenes si hace falta), `"cover"` (llena la caja recortando lo que sobra), `"fill"`
+  (estirada) o `"none"` (tamaño natural, centrada y recortada).
+- Se recorta a las esquinas del elemento: con `radius="$full"` y `fit="cover"` tienes un avatar.
+- Los SVG se pintan como vectores: se ven nítidos a cualquier tamaño y densidad de pantalla. Su
+  tamaño natural sale de `width`/`height` o, si no los tienen, del `viewBox`.
+- Cada imagen se decodifica **una vez** y se reutiliza entre reconstrucciones. Si el archivo
+  cambia en disco, se vuelve a leer en la siguiente reconstrucción.
+- Un archivo que no existe lanza `FileNotFoundError`, y uno que no se puede decodificar,
+  `ValueError`, ambos con la ruta en el mensaje.
 
 ### `scroll(*, axis="y", **estilo)`
 
@@ -305,6 +332,8 @@ contenedores (como en CSS).
 | `wrap` | `bool` | `False` | Permite saltar de línea a los hijos (rejillas de tarjetas). |
 | `position` | `"absolute"` | relativo | Saca al elemento del flujo; se coloca con `top/right/bottom/left` respecto a su padre. Útil para modales, toasts y superposiciones. |
 | `top`, `right`, `bottom`, `left` | número | — | Desplazamientos para `position="absolute"`. |
+| `src` | ruta o `bytes` | — | Origen de una imagen. Usa la primitiva `image()`. |
+| `fit` | `"contain"`, `"cover"`, `"fill"`, `"none"` | `"contain"` | Encaje de una imagen en su caja. |
 | `scroll` | `"x"`, `"y"`, `"both"` | — | Convierte la caja en contenedor desplazable. Usa la primitiva `scroll()`, que añade buenos valores por defecto. |
 
 > **Truco: columnas de igual ancho.** `grow=1, width=0` en cada hijo de una `row` reparte el

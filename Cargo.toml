@@ -9,11 +9,18 @@ publish = false
 [dependencies]
 arboard = { version = "3", default-features = false }
 pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py310"] }
-skia-safe = { version = "0.153.3", features = ["textlayout"] }
+# Las features coinciden con binarios precompilados de Skia (rust-skia/skia-binaries)
+# para cada sistema: con otra combinación, la primera compilación construiría Skia
+# desde el código fuente (requiere LLVM y tarda mucho). SVG solo existe junto a
+# `webp` y, fuera de macOS, junto a `ganesh` + `vulkan`.
+skia-safe = { version = "0.153.3", features = ["svg", "textlayout", "webp"] }
 softbuffer = "0.4.8"
 taffy = "0.15.0"
 unicode-segmentation = { version = "1.13.3", default-features = false }
 winit = "0.30.13"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+skia-safe = { version = "0.153.3", features = ["ganesh", "vulkan"] }
 
 [lib]
 name = "_core"

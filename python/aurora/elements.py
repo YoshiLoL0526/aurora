@@ -11,6 +11,7 @@ añaden con corchetes, lo que deja leer la jerarquía como si fuera markup:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterable
 from typing import Any, Literal, Union
 
@@ -22,7 +23,7 @@ TextLike = str | Callable[[], Any]
 # Alias cómodos para los props de texto más usados.
 _ALIASES = {"size": "font_size", "weight": "font_weight", "family": "font_family"}
 # Texto libre que no se interpreta como token de tema aunque empiece por "$".
-_LITERAL = {"placeholder"}
+_LITERAL = {"placeholder", "src"}
 
 
 class Element:
@@ -111,6 +112,20 @@ def text(content: TextLike, **style: Any) -> Element:
 
 def spacer() -> Element:
     return Element("box", grow=1)
+
+
+Fit = Literal["contain", "cover", "fill", "none"]
+
+
+def image(src: str | os.PathLike[str] | bytes, *, fit: Fit = "contain", **style: Any) -> Element:
+    """Imagen de un archivo (PNG, JPEG, WebP, GIF, BMP, ICO o SVG) o de bytes en memoria.
+
+    Sin `width` ni `height` ocupa su tamaño natural (sin pasar del ancho
+    disponible); con uno de los dos, el otro sale de su proporción. `fit` decide
+    cómo encaja si se fijan ambos. Se decodifica una vez y se reutiliza.
+    """
+    source = bytes(src) if isinstance(src, (bytes, bytearray, memoryview)) else os.fspath(src)
+    return Element("image", src=source, fit=fit, **style)
 
 
 def scroll(*, axis: Literal["x", "y", "both"] = "y", **style: Any) -> Element:

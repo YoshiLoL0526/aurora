@@ -2,6 +2,7 @@
 
 mod color;
 mod edit;
+mod image;
 mod input;
 mod keys;
 mod pilot;
@@ -11,7 +12,6 @@ mod scroll;
 mod spec;
 mod window;
 
-use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
 /// Renderiza un árbol de vista a PNG sin abrir ventana.
@@ -25,7 +25,7 @@ fn render_png(
     scale: f32,
 ) -> PyResult<()> {
     let node = spec::parse(tree)?;
-    render::render_png(&node, width, height, scale, path).map_err(PyRuntimeError::new_err)
+    render::render_png(&node, width, height, scale, path)
 }
 
 /// Abre una ventana y ejecuta el bucle de eventos hasta que se cierre.

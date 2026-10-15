@@ -126,6 +126,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1643,8 +1649,22 @@ version = "0.153.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c61cb643dac43067f3eb76c866635a74377ac0abca0ff2590674e1e295514c3d"
 dependencies = [
+ "base64",
  "bitflags 2.13.2",
+ "percent-encoding",
  "skia-bindings",
+ "skia-svg-macros",
+]
+
+[[package]]
+name = "skia-svg-macros"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fec38aa7a389d249e1ce357b050ae5bdb302fd9943661fa650f39cf6ea51be97"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
 ]
 
 [[package]]
