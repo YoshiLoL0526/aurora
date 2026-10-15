@@ -34,6 +34,23 @@ pub fn wake() {
     crate::window::notify();
 }
 
+/// Cuánto costó cada fase del último frame. Base de la suite de benchmarks
+/// (`benchmarks/`) y de la invalidación por fases: `build` y `parse` valen cero
+/// si el frame no reconstruyó la vista.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FrameStats {
+    /// Llamada a Python: `view()` + serialización (`Element.to_spec`).
+    pub build: Duration,
+    /// Dicts de Python → `Node` (`spec::parse`).
+    pub parse: Duration,
+    pub layout: Duration,
+    /// Pintura y registro de `HitRegion`s (todo el `draw` salvo el layout).
+    pub paint: Duration,
+    /// Nodos del árbol actual.
+    pub nodes: usize,
+    pub rebuilt: bool,
+}
+
 pub struct Runtime {
     build: Py<PyAny>,
     pub engine: Engine,
@@ -59,6 +76,7 @@ pub struct Runtime {
     clipboard: Clipboard,
     /// Último texto escrito con el teclado, para no duplicarlo si el IME lo confirma también.
     last_typed: Option<(String, Instant)>,
+    pub stats: FrameStats,
 }
 
 /// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
@@ -133,6 +151,7 @@ impl Runtime {
             last_click: None,
             clipboard,
             last_typed: None,
+            stats: FrameStats::default(),
         }
     }
 
@@ -151,14 +170,24 @@ impl Runtime {
         if WAKE_PENDING.swap(false, Ordering::AcqRel) {
             self.dirty = true;
         }
+        self.stats.build = Duration::ZERO;
+        self.stats.parse = Duration::ZERO;
+        self.stats.rebuilt = false;
         if !self.dirty && self.tree.is_some() {
             return Ok(());
         }
         self.dirty = false;
-        let tree = Python::attach(|py| -> PyResult<Node> {
+        let (tree, build, parse) = Python::attach(|py| -> PyResult<_> {
+            let start = Instant::now();
             let obj = self.build.call0(py)?;
-            spec::parse(obj.bind(py))
+            let built = Instant::now();
+            let tree = spec::parse(obj.bind(py))?;
+            Ok((tree, built - start, built.elapsed()))
         })?;
+        self.stats.build = build;
+        self.stats.parse = parse;
+        self.stats.rebuilt = true;
+        self.stats.nodes = tree.count();
 
         // El foco se pierde si su nodo desaparece o deja de ser enfocable.
         if let Some(focused) = &self.engine.focused
@@ -205,7 +234,10 @@ impl Runtime {
     /// Devuelve `true` si hace falta otro frame.
     pub fn draw(&mut self, canvas: &Canvas, width: f32, height: f32, scale: f32) -> bool {
         if let Some(tree) = &self.tree {
+            let start = Instant::now();
             self.regions = self.engine.draw(canvas, tree, width, height, scale);
+            self.stats.layout = self.engine.layout_time;
+            self.stats.paint = start.elapsed().saturating_sub(self.engine.layout_time);
         }
         let revealed = std::mem::take(&mut self.reveal_focus) && self.reveal_focused();
         self.refresh_hover() || revealed

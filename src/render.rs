@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use skia_safe::{
     BlurStyle, Canvas, ClipOp, Color, Color4f, EncodedImageFormat, FilterMode, FontMgr, FontStyle,
@@ -137,6 +138,8 @@ pub struct Engine {
     /// `:focus-visible` en CSS): un clic enfoca sin dibujar el anillo.
     pub focus_visible: bool,
     pub tip: Tip,
+    /// Lo que tardó el layout del último `draw` (para las estadísticas del frame).
+    pub layout_time: Duration,
 }
 
 /// Retardo antes de mostrar un tooltip (segundos).
@@ -192,6 +195,7 @@ impl Engine {
             focused: None,
             focus_visible: false,
             tip: Tip::default(),
+            layout_time: Duration::ZERO,
         }
     }
 
@@ -474,7 +478,9 @@ impl Engine {
         height: f32,
         scale: f32,
     ) -> Vec<HitRegion> {
+        let start = Instant::now();
         let (tree, lroot) = self.layout(root, width, height);
+        self.layout_time = start.elapsed();
         canvas.clear(root.style.bg.unwrap_or(Color::from_rgb(0x0B, 0x0D, 0x14)));
         // `restore_to_count` al final: un frame nunca deja la pila del canvas
         // desequilibrada (la superficie del piloto se reutiliza entre frames).

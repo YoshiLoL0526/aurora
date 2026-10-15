@@ -179,6 +179,11 @@ pub struct Node {
 }
 
 impl Node {
+    /// Número de nodos del subárbol, incluido este.
+    pub fn count(&self) -> usize {
+        1 + self.children.iter().map(Node::count).sum::<usize>()
+    }
+
     pub fn is_interactive(&self) -> bool {
         self.handlers.contains_key("click")
     }

@@ -8,6 +8,14 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ## [Sin publicar]
 
+### Añadido
+
+- `Pilot.stats`: coste del último frame por fases (`build`, `parse`, `layout`, `paint`), número de
+  nodos y si se reconstruyó la vista.
+- Suite de benchmarks reproducible (`benchmarks/run.py`): lista de 10 000 filas, dashboard de 50
+  paneles y escritura en un formulario de 500 filas, con mediana y p95 por fase, salida JSON,
+  comparación con una medición anterior (`--compare`) y ejecución en CI con resumen en cada build.
+
 ## [0.2.0] — 2026-10-15
 
 Apps de verdad: scroll, teclado y foco, campos de texto, imágenes y más componentes.

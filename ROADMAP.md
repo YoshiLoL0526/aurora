@@ -34,7 +34,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Despertar el bucle cuando un `Signal` cambia desde otro hilo o una corrutina `asyncio` (`app.spawn`)
 - ✅ Piloto headless (`app.pilot()`) para tests de interacción y capas (`layer="overlay"`)
 
-## v0.3 — Rendimiento ⏳
+## v0.3 — Rendimiento 🚧
 
 *Escalar a miles de elementos manteniendo 60 fps.*
 
@@ -43,7 +43,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ⏳ Invalidación por fases (estilo → layout → pintura → composición)
 - ⏳ **Backend GPU** de Skia (Metal, Direct3D, Vulkan) detrás de un trait `Surface`
 - ⏳ Listas virtualizadas
-- ⏳ Suite de benchmarks reproducible en CI (lista de 10k ítems, dashboard con 50 gráficos)
+- ✅ Suite de benchmarks reproducible en CI (lista de 10k ítems, dashboard de 50 paneles, escritura)
 
 ## v0.4 — Datos y gráficos ⏳
 

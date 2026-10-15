@@ -34,6 +34,30 @@ jobs:
       - name: Clippy
         run: cargo clippy --release -- -D warnings
 
+  bench:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Dependencias del sistema
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype-dev
+      - name: Compilar e instalar
+        run: uv sync
+      # Los runners compartidos tienen ruido: no se falla por tiempos, se publican para comparar.
+      # Para comparar dos ejecuciones, descarga los JSON y usa `--compare`.
+      - name: Ejecutar la suite
+        run: uv run benchmarks/run.py --json bench.json --markdown >> "$GITHUB_STEP_SUMMARY"
+      - name: Subir resultados
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-${{ github.sha }}
+          path: bench.json
+
   test:
     name: Tests (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}

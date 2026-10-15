@@ -88,6 +88,9 @@ class Pilot:
     def focused(self) -> str | None:
         """Key del nodo enfocado."""
     @property
+    def stats(self) -> dict[str, Any]:
+        """Coste del último frame en ms (`build`, `parse`, `layout`, `paint`), `nodes` y `rebuilt`."""
+    @property
     def hovered(self) -> str | None:
         """Key del nodo interactivo bajo el puntero."""
     def resize(self, width: float, height: float) -> None: ...

@@ -254,3 +254,22 @@ def test_spawn_runs_coroutine_in_background():
 
 def test_wake_without_event_loop_is_harmless():
     _core.wake()
+
+
+def test_stats_report_phases_of_last_frame():
+    count = Signal(0)
+    view = lambda: column()[text(f"n = {count()}"), box(key="a", width=20, height=20)]
+    pilot = App(view, size=(200, 100)).pilot()
+    stats = pilot.stats
+    assert stats["rebuilt"] is True
+    assert stats["nodes"] == 3
+    assert all(stats[p] >= 0 for p in ("build", "parse", "layout", "paint"))
+
+    # Sin cambios no se reconstruye: build y parse a cero, layout y pintura siguen.
+    pilot.frame()
+    assert pilot.stats["rebuilt"] is False
+    assert pilot.stats["build"] == pilot.stats["parse"] == 0
+
+    count.set(1)
+    pilot.frame()
+    assert pilot.stats["rebuilt"] is True

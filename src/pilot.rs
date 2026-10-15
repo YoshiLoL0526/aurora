@@ -4,6 +4,7 @@
 
 use pyo3::exceptions::{PyLookupError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use skia_safe::{Point, Surface};
 
 use crate::keys::KeyInput;
@@ -245,6 +246,22 @@ impl Pilot {
         self.rt
             .rect(key)
             .map(|r| (r.left, r.top, r.width(), r.height()))
+    }
+
+    /// Coste por fases del último frame, en milisegundos: `build` (Python),
+    /// `parse`, `layout` y `paint`; además `nodes` y `rebuilt`.
+    #[getter]
+    fn stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let s = self.rt.stats;
+        let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0;
+        let out = PyDict::new(py);
+        out.set_item("build", ms(s.build))?;
+        out.set_item("parse", ms(s.parse))?;
+        out.set_item("layout", ms(s.layout))?;
+        out.set_item("paint", ms(s.paint))?;
+        out.set_item("nodes", s.nodes)?;
+        out.set_item("rebuilt", s.rebuilt)?;
+        Ok(out)
     }
 
     #[getter]

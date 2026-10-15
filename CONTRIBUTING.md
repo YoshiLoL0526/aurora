@@ -43,6 +43,8 @@ Y verifica a mano:
       `uv run examples/studio.py` sigue viéndose bien.
 - [ ] Si cambia la **API pública**, están actualizados `docs/reference.md`, la guía si aplica,
       los stubs (`_core.pyi`) y el `CHANGELOG.md` (sección *Sin publicar*).
+- [ ] Si el cambio toca el **camino de un frame** (layout, pintura, reconstrucción), compara la
+      [suite de benchmarks](benchmarks/README.md) antes y después (`--json` / `--compare`).
 - [ ] Si añades una **propiedad de estilo**, sigue los pasos de
       [Extender Aurora](docs/architecture.md#extender-aurora).
 
@@ -74,6 +76,7 @@ Y verifica a mano:
 python/aurora/   API pública en Python
 src/             Núcleo nativo en Rust (módulo aurora._core)
 tests/           Tests (pytest), incluidos tests de render headless
+benchmarks/      Suite de rendimiento: coste por frame y por fase
 examples/        Apps de ejemplo; brand.py genera las imágenes del README
 docs/            Guía, referencia, arquitectura y recursos gráficos
 ```
