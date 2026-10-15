@@ -40,7 +40,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 - ⏳ **Reactividad de grano fino**: cada `Signal` sabe qué nodos dependen de él; solo se reconstruye esa rama
 - ✅ Caché de layout y de párrafos entre frames (con mediciones de texto memorizadas)
-- ⏳ Diff del árbol por `key`: reutilizar el layout de las ramas que no cambian al reconstruir
+- ✅ Diff del árbol por `key`: el layout de las ramas que no cambian se reutiliza al reconstruir
 - ⏳ Invalidación por fases (estilo → layout → pintura → composición)
 - ⏳ **Backend GPU** de Skia (Metal, Direct3D, Vulkan) detrás de un trait `Surface`
 - ⏳ Listas virtualizadas

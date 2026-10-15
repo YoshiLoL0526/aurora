@@ -22,7 +22,7 @@ use skia_safe::{
 use taffy::{
     AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, JustifyContent,
     LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Position, Size, TaffyTree,
-    compute_leaf_layout,
+    TraversePartialTree, compute_leaf_layout,
 };
 
 use crate::color::lerp;
@@ -50,10 +50,10 @@ pub struct TextCtx {
     /// máx., definitivo…) y cada medición rehace el layout del párrafo en Skia:
     /// memorizarlas, y conservarlas con el párrafo entre frames, lo evita.
     measures: Vec<Measured>,
+    /// Ancho con el que está maquetado el párrafo ahora mismo, si se conoce:
+    /// `finalize_text` no lo repite si ya coincide.
+    laid_out: Option<f32>,
 }
-
-/// Párrafo ya "shapeado" con sus mediciones, a la espera de reutilizarse.
-type Shaped = (Paragraph, Vec<Measured>);
 
 /// Una medición memorizada: restricciones de Taffy → tamaño y baseline.
 #[derive(Clone, Copy)]
@@ -107,14 +107,38 @@ impl ParagraphKey {
     }
 }
 
-/// Layout de un frame, reutilizable mientras no cambie nada de lo que lo
-/// determina: el árbol, el tamaño de la ventana y el texto de los campos.
+/// Layout persistente entre frames. Se reutiliza tal cual mientras no cambie
+/// nada de lo que lo determina (el árbol, el tamaño de la ventana y el texto de
+/// los campos); si algo cambia, se reconcilia por key en vez de rehacerse.
 struct LayoutCache {
     tree: TaffyTree<Leaf>,
-    root: LayoutNode,
+    root: Option<LayoutNode>,
     width: f32,
     height: f32,
     inputs: u64,
+}
+
+impl Default for LayoutCache {
+    fn default() -> Self {
+        Self {
+            tree: TaffyTree::new(),
+            root: None,
+            width: 0.0,
+            height: 0.0,
+            inputs: 0,
+        }
+    }
+}
+
+/// Lo que debe llevar una hoja del árbol de Taffy, antes de crearlo: así se
+/// compara con lo que ya tiene sin repetir el shaping.
+enum LeafSpec {
+    Image(skia_safe::Size),
+    Text {
+        key: ParagraphKey,
+        props: TextProps,
+        input: Option<InputLeaf>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -132,6 +156,8 @@ const UNBOUNDED: f32 = 1.0e6;
 /// Árbol de layout paralelo al árbol de nodos.
 pub struct LayoutNode {
     id: NodeId,
+    /// Key del nodo: identifica su nodo de Taffy al reconciliar el siguiente árbol.
+    key: String,
     children: Vec<LayoutNode>,
 }
 
@@ -220,7 +246,7 @@ pub struct Engine {
     tree_changed: bool,
     /// Párrafos del layout anterior, por contenido, a la espera de reutilizarse
     /// mientras se construye el siguiente.
-    recycled: RefCell<HashMap<ParagraphKey, Vec<Shaped>>>,
+    recycled: RefCell<HashMap<ParagraphKey, Vec<TextCtx>>>,
 }
 
 /// Retardo antes de mostrar un tooltip (segundos).
@@ -316,24 +342,25 @@ impl Engine {
         builder.build()
     }
 
-    /// Como `paragraph`, pero reutiliza el shaping de un párrafo idéntico del
-    /// layout anterior si lo hay.
+    /// Contexto de una hoja de texto. Reutiliza el shaping (y las mediciones)
+    /// de un párrafo idéntico que haya quedado libre en este layout, si lo hay.
     fn text_ctx(
         &self,
-        text: &str,
-        tp: &TextProps,
+        key: ParagraphKey,
+        props: &TextProps,
         style: &Style,
         input: Option<InputLeaf>,
     ) -> TextCtx {
-        let key = ParagraphKey::new(text, tp, style);
-        let reused = self.recycled.borrow_mut().get_mut(&key).and_then(Vec::pop);
-        let (paragraph, measures) =
-            reused.unwrap_or_else(|| (self.paragraph(text, tp, style), Vec::new()));
+        if let Some(mut ctx) = self.recycled.borrow_mut().get_mut(&key).and_then(Vec::pop) {
+            ctx.input = input;
+            return ctx;
+        }
         TextCtx {
-            paragraph,
+            paragraph: self.paragraph(&key.text, props, style),
             key,
             input,
-            measures,
+            measures: Vec::new(),
+            laid_out: None,
         }
     }
 
@@ -379,23 +406,15 @@ impl Engine {
         self.tree_changed = true;
     }
 
-    /// Devuelve los párrafos de un layout descartado a la reserva, para que el
-    /// siguiente los reutilice en vez de repetir el shaping.
-    fn recycle(&self, cache: LayoutCache) {
-        let LayoutCache { mut tree, root, .. } = cache;
-        let mut recycled = self.recycled.borrow_mut();
-        let mut stack = vec![&root];
-        while let Some(lnode) = stack.pop() {
-            if let Some(leaf) = tree.get_node_context_mut(lnode.id)
-                && let Leaf::Text(ctx) =
-                    std::mem::replace(leaf, Leaf::Image(skia_safe::Size::default()))
-            {
-                recycled
-                    .entry(ctx.key)
-                    .or_default()
-                    .push((ctx.paragraph, ctx.measures));
-            }
-            stack.extend(&lnode.children);
+    /// Deja el párrafo de una hoja que cambia en la reserva, para que otro nodo
+    /// de este mismo layout pueda reutilizarlo (p. ej. al reordenar textos).
+    fn recycle(&self, leaf: Leaf) {
+        if let Leaf::Text(ctx) = leaf {
+            self.recycled
+                .borrow_mut()
+                .entry(ctx.key.clone())
+                .or_default()
+                .push(ctx);
         }
     }
 
@@ -447,77 +466,153 @@ impl Engine {
 
     // ----------------------------------------------------------------- layout
 
-    /// `in_scroll`: el padre se desplaza a lo largo de su eje principal.
-    fn build_layout(&self, tree: &mut TaffyTree<Leaf>, node: &Node, in_scroll: bool) -> LayoutNode {
+    /// Hoja que corresponde a `node` (ninguna si es un contenedor). Ajusta el
+    /// estilo de las imágenes, que no se estiran en el eje cruzado.
+    fn leaf_spec(&self, node: &Node, style: &mut taffy::Style) -> Option<LeafSpec> {
+        match node.kind {
+            Kind::Box => None,
+            Kind::Image => {
+                // Sin ancho propio, una imagen no se estira en el eje cruzado: se
+                // queda a su tamaño (o al que quepa) sin deformarse.
+                if node.style.width.is_none() {
+                    style.align_self = Some(AlignItems::FLEX_START);
+                }
+                let natural = self
+                    .images
+                    .get(&node.key)
+                    .map_or(skia_safe::Size::default(), |l| l.size);
+                Some(LeafSpec::Image(natural))
+            }
+            Kind::Text | Kind::Input => {
+                let (text, props, input) = if node.is_editable() {
+                    let (text, props, _) = self.input_display(node);
+                    let leaf = InputLeaf {
+                        multiline: node.style.multiline,
+                        rows: node.style.rows,
+                    };
+                    (text, props, Some(leaf))
+                } else {
+                    let text = node.text.clone().unwrap_or_default();
+                    (text, node.text_props.clone(), None)
+                };
+                let key = ParagraphKey::new(&text, &props, &node.style);
+                Some(LeafSpec::Text { key, props, input })
+            }
+        }
+    }
+
+    fn make_leaf(&self, spec: LeafSpec, style: &Style) -> Leaf {
+        match spec {
+            LeafSpec::Image(natural) => Leaf::Image(natural),
+            LeafSpec::Text { key, props, input } => {
+                Leaf::Text(self.text_ctx(key, &props, style, input))
+            }
+        }
+    }
+
+    /// Hace que el árbol de Taffy refleje `node`. Cada nodo reutiliza por key el
+    /// nodo de Taffy del layout anterior (`old`) y solo lo marca sucio si cambia
+    /// algo que afecte al layout: su estilo de Taffy, su contenido (texto o
+    /// imagen) o sus hijos. Así Taffy conserva la caché de las ramas intactas, y
+    /// un cambio que solo afecta a la pintura (colores, sombras…) no rehace el
+    /// layout. `in_scroll`: el padre se desplaza a lo largo de su eje principal.
+    fn reconcile(
+        &self,
+        tree: &mut TaffyTree<Leaf>,
+        node: &Node,
+        in_scroll: bool,
+        root_size: Option<(f32, f32)>,
+        old: &mut HashMap<String, NodeId>,
+    ) -> LayoutNode {
         let mut style = taffy_style(&node.style);
         // Dentro de un scroll los hijos no se encogen por defecto: el contenido que
         // no cabe se desplaza en vez de aplastarse.
         if in_scroll && node.style.shrink.is_none() {
             style.flex_shrink = 0.0;
         }
-        if node.kind == Kind::Image {
-            let natural = self
-                .images
-                .get(&node.key)
-                .map_or(skia_safe::Size::default(), |l| l.size);
-            // Sin ancho propio, una imagen no se estira en el eje cruzado: se
-            // queda a su tamaño (o al que quepa) sin deformarse.
-            if node.style.width.is_none() {
-                style.align_self = Some(AlignItems::FLEX_START);
-            }
-            let id = tree
-                .new_leaf_with_context(style, Leaf::Image(natural))
-                .expect("taffy leaf");
-            return LayoutNode {
-                id,
-                children: Vec::new(),
+        // La raíz siempre ocupa la ventana completa.
+        if let Some((width, height)) = root_size {
+            style.size = Size {
+                width: Dimension::length(width),
+                height: Dimension::length(height),
             };
         }
-        if matches!(node.kind, Kind::Text | Kind::Input) {
-            let ctx = if node.is_editable() {
-                let leaf = InputLeaf {
-                    multiline: node.style.multiline,
-                    rows: node.style.rows,
-                };
-                let (text, props, _) = self.input_display(node);
-                self.text_ctx(&text, &props, &node.style, Some(leaf))
-            } else {
-                let text = node.text.as_deref().unwrap_or("");
-                self.text_ctx(text, &node.text_props, &node.style, None)
-            };
-            let id = tree
-                .new_leaf_with_context(style, Leaf::Text(ctx))
-                .expect("taffy leaf");
-            return LayoutNode {
-                id,
-                children: Vec::new(),
-            };
-        }
-        let scrolls_main = node
-            .style
-            .scroll
-            .is_some_and(|a| if node.style.row { a.x() } else { a.y() });
-        let children: Vec<LayoutNode> = node
-            .children
-            .iter()
-            .map(|c| self.build_layout(tree, c, scrolls_main))
-            .collect();
+        let spec = self.leaf_spec(node, &mut style);
+        let children: Vec<LayoutNode> = if spec.is_some() {
+            Vec::new()
+        } else {
+            let scrolls_main = node
+                .style
+                .scroll
+                .is_some_and(|a| if node.style.row { a.x() } else { a.y() });
+            node.children
+                .iter()
+                .map(|c| self.reconcile(tree, c, scrolls_main, None, old))
+                .collect()
+        };
         let ids: Vec<NodeId> = children.iter().map(|c| c.id).collect();
-        let id = tree.new_with_children(style, &ids).expect("taffy node");
-        LayoutNode { id, children }
+
+        let id = match old.remove(&node.key) {
+            Some(id) => {
+                if *tree.style(id).expect("taffy style") != style {
+                    tree.set_style(id, style).expect("taffy style");
+                }
+                let same = match (tree.get_node_context(id), &spec) {
+                    (None, None) => true,
+                    (Some(Leaf::Image(a)), Some(LeafSpec::Image(b))) => a == b,
+                    (Some(Leaf::Text(ctx)), Some(LeafSpec::Text { key, input, .. })) => {
+                        ctx.key == *key && ctx.input == *input
+                    }
+                    _ => false,
+                };
+                if !same {
+                    if let Some(leaf) = tree.get_node_context_mut(id) {
+                        let placeholder = Leaf::Image(skia_safe::Size::default());
+                        self.recycle(std::mem::replace(leaf, placeholder));
+                    }
+                    let leaf = spec.map(|spec| self.make_leaf(spec, &node.style));
+                    tree.set_node_context(id, leaf).expect("taffy context");
+                }
+                id
+            }
+            None => match spec {
+                Some(spec) => {
+                    let leaf = self.make_leaf(spec, &node.style);
+                    tree.new_leaf_with_context(style, leaf).expect("taffy leaf")
+                }
+                None => tree.new_leaf(style).expect("taffy node"),
+            },
+        };
+        // `set_children` (y no `new_with_children`) desengancha a cada hijo de su
+        // padre anterior: un nodo reutilizado puede haber cambiado de padre.
+        let unchanged = tree.child_count(id) == ids.len()
+            && (ids.is_empty() || tree.children(id).expect("taffy children") == ids);
+        if !unchanged {
+            tree.set_children(id, &ids).expect("taffy children");
+        }
+        LayoutNode {
+            id,
+            key: node.key.clone(),
+            children,
+        }
     }
 
-    pub fn layout(&self, root: &Node, width: f32, height: f32) -> (TaffyTree<Leaf>, LayoutNode) {
-        let mut tree: TaffyTree<Leaf> = TaffyTree::new();
-        let lroot = self.build_layout(&mut tree, root, false);
-
-        // La raíz siempre ocupa la ventana completa.
-        let mut root_style = tree.style(lroot.id).expect("root").clone();
-        root_style.size = Size {
-            width: Dimension::length(width),
-            height: Dimension::length(height),
-        };
-        tree.set_style(lroot.id, root_style).expect("root style");
+    /// Actualiza el layout persistente para el árbol `root` y lo calcula.
+    fn update_layout(&self, cache: &mut LayoutCache, root: &Node, width: f32, height: f32) {
+        let tree = &mut cache.tree;
+        let mut old = HashMap::new();
+        if let Some(previous) = cache.root.take() {
+            let mut stack = vec![previous];
+            while let Some(lnode) = stack.pop() {
+                old.insert(lnode.key, lnode.id);
+                stack.extend(lnode.children);
+            }
+        }
+        let lroot = self.reconcile(tree, root, false, Some((width, height)), &mut old);
+        // Los nodos que ya no existen salen del árbol.
+        for id in old.into_values() {
+            tree.remove(id).expect("taffy remove");
+        }
 
         tree.compute_layout_with_measure(
             lroot.id,
@@ -552,6 +647,8 @@ impl Engine {
                             Some(leaf) => measure_input(&mut ctx.paragraph, leaf, known, avail),
                             None => measure_text(&mut ctx.paragraph, known, avail),
                         };
+                        // Medir cambia el ancho con el que está maquetado el párrafo.
+                        ctx.laid_out = None;
                         let b = ctx.paragraph.alphabetic_baseline();
                         if ctx.measures.len() == MAX_MEASURES {
                             ctx.measures.remove(0);
@@ -575,8 +672,8 @@ impl Engine {
         .expect("layout");
 
         // Layout final de cada párrafo con su ancho de contenido definitivo.
-        finalize_text(&mut tree, &lroot);
-        (tree, lroot)
+        finalize_text(tree, &lroot);
+        cache.root = Some(lroot);
     }
 
     // -------------------------------------------------------------- animación
@@ -640,33 +737,23 @@ impl Engine {
     ) -> Vec<HitRegion> {
         let start = Instant::now();
         let inputs = self.inputs_signature();
+        let mut cache = self.layout_cache.take().unwrap_or_default();
         let reuse = !self.tree_changed
-            && self
-                .layout_cache
-                .as_ref()
-                .is_some_and(|c| c.width == width && c.height == height && c.inputs == inputs);
-        let cache = match self.layout_cache.take() {
-            Some(cache) if reuse => cache,
-            old => {
-                if let Some(old) = old {
-                    self.recycle(old);
-                }
-                let (tree, root) = self.layout(root, width, height);
-                // Lo que no se reutilizó ya no corresponde a ningún nodo.
-                self.recycled.borrow_mut().clear();
-                self.tree_changed = false;
-                LayoutCache {
-                    tree,
-                    root,
-                    width,
-                    height,
-                    inputs,
-                }
-            }
-        };
+            && cache.root.is_some()
+            && cache.width == width
+            && cache.height == height
+            && cache.inputs == inputs;
+        if !reuse {
+            self.update_layout(&mut cache, root, width, height);
+            // Lo que no se reutilizó ya no corresponde a ningún nodo.
+            self.recycled.borrow_mut().clear();
+            (cache.width, cache.height, cache.inputs) = (width, height, inputs);
+            self.tree_changed = false;
+        }
         self.layout_cached = reuse;
         self.layout_time = start.elapsed();
-        let (tree, lroot) = (&cache.tree, &cache.root);
+        let tree = &cache.tree;
+        let lroot = cache.root.as_ref().expect("layout calculado");
         canvas.clear(root.style.bg.unwrap_or(Color::from_rgb(0x0B, 0x0D, 0x14)));
         // `restore_to_count` al final: un frame nunca deja la pila del canvas
         // desequilibrada (la superficie del piloto se reutiliza entre frames).
@@ -1315,7 +1402,10 @@ fn finalize_text(tree: &mut TaffyTree<Leaf>, lnode: &LayoutNode) {
             Some(leaf) if !leaf.multiline => UNBOUNDED,
             _ => w + 0.5,
         };
-        ctx.paragraph.layout(w);
+        if ctx.laid_out != Some(w) {
+            ctx.paragraph.layout(w);
+            ctx.laid_out = Some(w);
+        }
     }
     for child in &lnode.children {
         finalize_text(tree, child);

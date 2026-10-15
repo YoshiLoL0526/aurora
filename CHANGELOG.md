@@ -25,6 +25,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 - Al reconstruir la vista se reutiliza el shaping de los párrafos que no cambiaron (por contenido,
   no por key) junto con sus mediciones, que además se memorizan dentro de cada layout. El layout
   de esa misma lista al reconstruir baja de ~1,06 s a ~0,3 s.
+- Al reconstruir, el árbol de layout se reconcilia por key en vez de rehacerse: solo se recalculan
+  las ramas cuyo estilo de layout, texto, imagen o hijos cambiaron. Un cambio que solo afecta a la
+  pintura (fondo, color de borde, sombra…) no rehace el layout. En la lista de 10 000 filas el
+  layout al reconstruir baja a ~60 ms, y en el formulario de 500 filas a ~2 ms por tecla.
 
 ## [0.2.0] — 2026-10-15
 

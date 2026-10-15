@@ -110,23 +110,30 @@ frame. El diseño ya prepara la reactividad de grano fino de la v0.3:
 Pintar es barato; lo caro es el layout, y sobre todo el texto: hacer el shaping de un párrafo y
 maquetarlo en Skia. Por eso el `Engine` evita repetirlo:
 
-- **Layout.** El árbol de Taffy, con los párrafos ya maquetados, se guarda entre frames
-  (`LayoutCache`) y se reutiliza mientras no cambie nada de lo que lo determina: el árbol de
-  nodos (`Runtime::sync` llama a `invalidate_layout` al reconstruir), el tamaño de la ventana y
+- **Layout.** El árbol de Taffy, con los párrafos ya maquetados, vive entre frames
+  (`LayoutCache`) y se reutiliza tal cual mientras no cambie nada de lo que lo determina: el árbol
+  de nodos (`Runtime::sync` llama a `invalidate_layout` al reconstruir), el tamaño de la ventana y
   el texto que muestran los campos (una huella de todos, porque se puede escribir o componer con
   el IME sin pasar por Python). Hover, scroll, animaciones y parpadeo solo repintan.
-- **Párrafos.** Al rehacer el layout, los párrafos del anterior van a una reserva indexada por
-  `ParagraphKey` (texto, fuente, tamaño, color, interlineado…) y el nuevo los toma de ahí antes de
-  crear uno. Se emparejan por **contenido**, no por key: sobreviven a reordenaciones y a keys de
-  ruta. Lo que queda en la reserva tras el layout se descarta.
+- **Diff por key.** Si algo cambió, el árbol de Taffy no se rehace: `Engine::reconcile` recorre
+  el árbol nuevo y cada nodo reutiliza el nodo de Taffy que tenía su key en el layout anterior.
+  Solo lo marca sucio si cambia lo que afecta al layout: su estilo de Taffy (que es exactamente lo
+  que el layout ve, así que colores, sombras u opacidad no cuentan), su contenido (el
+  `ParagraphKey` de un texto, el tamaño natural de una imagen) o la lista de hijos. Taffy propaga
+  la marca a los ancestros y conserva su caché en todo lo demás: cambiar el fondo de una fila no
+  rehace el layout, y cambiar su texto solo recalcula esa rama. Los nodos con keys que ya no
+  existen se eliminan. Los hijos se asignan siempre con `set_children`, que desengancha a un nodo
+  reutilizado de su padre anterior si cambió de sitio.
+- **Párrafos.** El párrafo de un texto que no cambió sigue en su nodo. El de uno que cambia va a
+  una reserva indexada por `ParagraphKey` (texto, fuente, tamaño, color, interlineado…) de la que
+  otro nodo de este mismo layout puede tomarlo, por **contenido** y no por key: al reordenar textos
+  no se repite el shaping. Lo que queda en la reserva tras el layout se descarta.
 - **Mediciones.** Taffy mide cada hoja varias veces por layout (mínimo, máximo, definitivo…) y
   cada medición maqueta el párrafo. Cada `TextCtx` memoriza sus mediciones (restricciones →
-  tamaño y baseline) y las conserva al reciclarse, así que un texto que no cambió no vuelve a
-  maquetarse hasta `finalize_text`.
+  tamaño y baseline) y recuerda con qué ancho está maquetado, así que `finalize_text` solo lo
+  vuelve a maquetar si el ancho final cambió.
 
-Lo que todavía se paga al reconstruir es construir y calcular el árbol de Taffy entero; reutilizar
-las ramas que no cambian (diff por key) es el siguiente paso. `Pilot.stats` y la suite de
-`benchmarks/` miden cada fase.
+`Pilot.stats` y la suite de `benchmarks/` miden cada fase.
 
 ### Animaciones en Rust
 
