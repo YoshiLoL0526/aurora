@@ -10,6 +10,12 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- Campos de texto `text_input` y `textarea`, enlazados en los dos sentidos a un `Signal[str]`:
+  cursor que parpadea, selección con teclado y ratón (doble y triple clic), recorrido por grafemas y
+  palabras, portapapeles, deshacer/rehacer agrupando lo escrito, composición con IME, placeholder,
+  `on_submit`, desplazamiento horizontal en una línea y crecimiento con el contenido en varias.
+- Propiedades `placeholder_color` y `selection_color`; cursor de texto del ratón sobre los campos.
+- `Pilot.type()`, `ime_preedit()`, `ime_commit()`, `selection()` y `clipboard`.
 - Teclado y foco: Tab / Shift+Tab en orden de pintura (atrapado dentro de barreras `capture`),
   activación con Enter y Espacio, anillo de foco animado solo al navegar con teclado
   (`focus_color`, heredable) y desplazamiento automático del `scroll` para mostrar el foco.

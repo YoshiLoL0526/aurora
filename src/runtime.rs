@@ -7,11 +7,15 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
+use pyo3::types::PyString;
 
 use pyo3::prelude::*;
 use skia_safe::{Canvas, Point, Rect};
 
-use crate::keys::{KeyEvent, KeyInput};
+use crate::input::InputState;
+use crate::keys::{KeyEvent, KeyInput, Mods};
 use crate::render::{Engine, HitRegion, ancestors, hit_test, topmost};
 use crate::scroll::LINE;
 use crate::spec::{self, Node};
@@ -46,7 +50,63 @@ pub struct Runtime {
     autofocus_seen: HashSet<String>,
     /// Desplazar los `scroll` para mostrar el nodo enfocado tras el próximo frame.
     reveal_focus: bool,
+    /// Modificadores pulsados (para Mayús+clic).
+    pub mods: Mods,
+    /// Campo en el que se está seleccionando con el ratón.
+    selecting: Option<String>,
+    /// Último clic (momento, punto y número de clics seguidos) para dobles y triples clics.
+    last_click: Option<(Instant, Point, u8)>,
+    clipboard: Clipboard,
+    /// Último texto escrito con el teclado, para no duplicarlo si el IME lo confirma también.
+    last_typed: Option<(String, Instant)>,
 }
+
+/// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorKind {
+    Default,
+    Pointer,
+    Text,
+}
+
+/// Portapapeles del sistema (ventana) o en memoria (piloto, tests deterministas).
+pub enum Clipboard {
+    System(Option<arboard::Clipboard>),
+    Memory(String),
+}
+
+impl Clipboard {
+    pub fn get(&mut self) -> Option<String> {
+        match self {
+            Clipboard::System(slot) => system(slot)?.get_text().ok(),
+            Clipboard::Memory(text) => Some(text.clone()),
+        }
+    }
+
+    pub fn set(&mut self, text: String) {
+        match self {
+            Clipboard::System(slot) => {
+                if let Some(cb) = system(slot) {
+                    let _ = cb.set_text(text);
+                }
+            }
+            Clipboard::Memory(slot) => *slot = text,
+        }
+    }
+}
+
+/// El portapapeles del sistema se abre una vez y se conserva: en X11 su
+/// contenido vive mientras viva el objeto.
+fn system(slot: &mut Option<arboard::Clipboard>) -> Option<&mut arboard::Clipboard> {
+    if slot.is_none() {
+        *slot = arboard::Clipboard::new().ok();
+    }
+    slot.as_mut()
+}
+
+/// Dos clics más cerca que esto (en tiempo y distancia) cuentan como doble clic.
+const MULTI_CLICK: Duration = Duration::from_millis(400);
+const MULTI_CLICK_DISTANCE: f32 = 4.0;
 
 struct Drag {
     key: String,
@@ -56,7 +116,7 @@ struct Drag {
 }
 
 impl Runtime {
-    pub fn new(build: Py<PyAny>) -> Self {
+    pub fn new(build: Py<PyAny>, clipboard: Clipboard) -> Self {
         Self {
             build,
             engine: Engine::new(),
@@ -68,6 +128,11 @@ impl Runtime {
             space_pressed: None,
             autofocus_seen: HashSet::new(),
             reveal_focus: false,
+            mods: Mods::default(),
+            selecting: None,
+            last_click: None,
+            clipboard,
+            last_typed: None,
         }
     }
 
@@ -109,6 +174,7 @@ impl Runtime {
             .find(|k| !self.autofocus_seen.contains(*k))
             .cloned();
         self.autofocus_seen = autofocus.into_iter().collect();
+        self.engine.sync_inputs(&tree);
         self.tree = Some(tree);
 
         if let Some(key) = appeared {
@@ -121,6 +187,13 @@ impl Runtime {
     /// Avanza las transiciones. Devuelve `true` si alguna sigue en curso.
     pub fn tick(&mut self, dt: f32) -> bool {
         self.engine.tick(dt)
+    }
+
+    /// Avanza el reloj real (parpadeo del cursor), independiente de las transiciones.
+    pub fn advance_clock(&mut self, elapsed: f32) {
+        if let Some(state) = self.focused_input() {
+            state.blink += elapsed;
+        }
     }
 
     /// Pinta el árbol y recalcula el hover: tras una reconstrucción, lo que
@@ -143,6 +216,15 @@ impl Runtime {
     /// Devuelve `true` si hace falta pintar otro frame.
     pub fn pointer_move(&mut self, x: f32, y: f32) -> bool {
         self.pointer = Some((x, y));
+        if let Some(key) = &self.selecting
+            && let Some(state) = self.engine.inputs.get_mut(key)
+        {
+            if let Some(pos) = state.position_at(Point::new(x, y)) {
+                state.editor.move_to(pos, true);
+                state.blink = 0.0;
+            }
+            return true;
+        }
         if let Some(drag) = &self.drag {
             if let Some(state) = self.engine.scroll.get_mut(&drag.key) {
                 let pos = if drag.vertical { y } else { x };
@@ -172,13 +254,62 @@ impl Runtime {
         let target = self.pointer.and_then(|(x, y)| {
             ancestors(&self.regions, topmost(&self.regions, x, y))
                 .find(|r| r.focusable)
-                .map(|r| r.key.clone())
+                .map(|r| (r.key.clone(), r.editable))
         });
-        self.focus(target)
+        let editable = target.as_ref().filter(|(_, e)| *e).map(|(k, _)| k.clone());
+        let result = self.focus(target.map(|(k, _)| k));
+        if let (Some(key), Some((x, y))) = (editable, self.pointer) {
+            self.place_cursor(key, Point::new(x, y));
+        }
+        result
+    }
+
+    /// Clic en un campo: coloca el cursor (Mayús amplía la selección); doble
+    /// clic selecciona la palabra y triple clic todo el texto.
+    fn place_cursor(&mut self, key: String, at: Point) {
+        let now = Instant::now();
+        let count = match self.last_click {
+            Some((t, p, n))
+                if now.duration_since(t) < MULTI_CLICK
+                    && (p - at).length() < MULTI_CLICK_DISTANCE =>
+            {
+                n % 3 + 1
+            }
+            _ => 1,
+        };
+        self.last_click = Some((now, at, count));
+        let Some(state) = self.engine.inputs.get_mut(&key) else {
+            return;
+        };
+        let Some(pos) = state.position_at(at) else {
+            return;
+        };
+        match count {
+            1 => state.editor.move_to(pos, self.mods.shift),
+            2 => state.editor.select_word_at(pos),
+            _ => state.editor.select_all(),
+        }
+        state.blink = 0.0;
+        self.selecting = (count == 1).then_some(key);
+    }
+
+    /// Cursor del ratón para lo que hay bajo el puntero.
+    pub fn cursor(&self) -> CursorKind {
+        if self.selecting.is_some() {
+            return CursorKind::Text;
+        }
+        match self.engine.hovered.as_ref() {
+            Some(key) if self.regions.iter().any(|r| &r.key == key && r.editable) => {
+                CursorKind::Text
+            }
+            Some(_) => CursorKind::Pointer,
+            None => CursorKind::Default,
+        }
     }
 
     /// Un clic se completa si se suelta sobre el mismo nodo que se pulsó.
     pub fn pointer_up(&mut self) -> PyResult<()> {
+        self.selecting = None;
         if let Some(drag) = self.drag.take() {
             if let Some(state) = self.engine.scroll.get_mut(&drag.key) {
                 state.dragging = false;
@@ -276,7 +407,34 @@ impl Runtime {
         else {
             return false;
         };
-        let mut rect = self.regions[idx].rect;
+        // En un campo de texto lo que tiene que verse es el cursor; en la primera
+        // o la última línea, también el borde del campo.
+        let field = self.regions[idx].rect;
+        let mut rect = match self
+            .engine
+            .inputs
+            .get(&self.regions[idx].key)
+            .and_then(InputState::caret)
+        {
+            Some(caret) => {
+                let edge = 2.0 * caret.height();
+                Rect::new(
+                    caret.left,
+                    if caret.top - field.top < edge {
+                        field.top
+                    } else {
+                        caret.top
+                    },
+                    caret.right,
+                    if field.bottom - caret.bottom < edge {
+                        field.bottom
+                    } else {
+                        caret.bottom
+                    },
+                )
+            }
+            None => field,
+        };
         let scrolls: Vec<String> = ancestors(&self.regions, self.regions[idx].parent)
             .filter(|r| r.scroll.is_some())
             .map(|r| r.key.clone())
@@ -309,6 +467,9 @@ impl Runtime {
             return self.key_up(input);
         }
         if self.dispatch_key(input)? {
+            return Ok(true);
+        }
+        if self.edit_key(input)? {
             return Ok(true);
         }
         let shortcut = input.mods.ctrl || input.mods.alt || input.mods.meta;
@@ -416,6 +577,177 @@ impl Runtime {
                 delta(state.viewport).is_some_and(|d| state.scroll_by(d, true))
             })
         })
+    }
+
+    // -------------------------------------------------------- campos de texto
+
+    /// Edición en el campo enfocado. Devuelve `true` si la tecla era suya.
+    fn edit_key(&mut self, input: &KeyInput) -> PyResult<bool> {
+        let Some(key) = self.engine.focused.clone() else {
+            return Ok(false);
+        };
+        let Some(state) = self.engine.inputs.get_mut(&key) else {
+            return Ok(false);
+        };
+        let m = input.mods;
+        let mac = cfg!(target_os = "macos");
+        // Atajos: Cmd en macOS, Ctrl en el resto. Saltar palabras: Alt en macOS, Ctrl en el resto.
+        let cmd = if mac { m.meta } else { m.ctrl };
+        let word = if mac { m.alt } else { m.ctrl };
+        let (shift, multiline) = (m.shift, state.multiline);
+        let before = state.editor.text().to_owned();
+        let len = before.len();
+        let mut submit = false;
+        let letter = input.key.to_lowercase();
+        match input.key.as_str() {
+            "Backspace" => {
+                state.editor.backspace(word);
+            }
+            "Delete" => {
+                state.editor.delete(word);
+            }
+            "ArrowLeft" if mac && m.meta => line_edge(state, false, shift),
+            "ArrowRight" if mac && m.meta => line_edge(state, true, shift),
+            "ArrowLeft" => state.editor.left(word, shift),
+            "ArrowRight" => state.editor.right(word, shift),
+            "ArrowUp" | "ArrowDown" if multiline => {
+                vertical(state, input.key == "ArrowDown", shift);
+            }
+            "ArrowUp" => state.editor.move_to(0, shift),
+            "ArrowDown" => state.editor.move_to(len, shift),
+            "Home" if multiline && !m.ctrl => line_edge(state, false, shift),
+            "End" if multiline && !m.ctrl => line_edge(state, true, shift),
+            "Home" => state.editor.move_to(0, shift),
+            "End" => state.editor.move_to(len, shift),
+            "Enter" if multiline && !cmd => {
+                state.editor.insert("\n");
+            }
+            "Enter" => submit = true,
+            _ if cmd && letter == "a" => state.editor.select_all(),
+            _ if cmd && (letter == "c" || letter == "x") => {
+                if state.editor.has_selection() {
+                    self.clipboard.set(state.editor.selected_text().to_owned());
+                    if letter == "x" {
+                        state.editor.delete_selection();
+                    }
+                }
+            }
+            _ if cmd && letter == "v" => {
+                if let Some(text) = self.clipboard.get() {
+                    state.editor.insert(&clean(&text, multiline));
+                }
+            }
+            _ if cmd && letter == "z" && !shift => {
+                state.editor.undo();
+            }
+            _ if cmd && (letter == "z" || letter == "y") => {
+                state.editor.redo();
+            }
+            _ => {
+                // AltGr llega como Ctrl+Alt y sí escribe texto.
+                let shortcut = (m.ctrl && !m.alt) || m.meta;
+                match &input.text {
+                    Some(text) if !shortcut && state.preedit.is_none() => {
+                        state.editor.insert(&clean(text, multiline));
+                        self.last_typed = Some((text.clone(), Instant::now()));
+                    }
+                    _ => return Ok(false),
+                }
+            }
+        }
+        self.after_edit(&key, &before, submit)?;
+        Ok(true)
+    }
+
+    /// Tras editar: reinicia el parpadeo, muestra el cursor y avisa a Python
+    /// con `on_change(texto)` si cambió y `on_submit(texto)` al enviar.
+    fn after_edit(&mut self, key: &str, before: &str, submit: bool) -> PyResult<()> {
+        let Some(state) = self.engine.inputs.get_mut(key) else {
+            return Ok(());
+        };
+        state.blink = 0.0;
+        self.reveal_focus = true;
+        let text = state.editor.text().to_owned();
+        let arg = |t: &str| Python::attach(|py| PyString::new(py, t).into_any().unbind());
+        if text != before {
+            // Se reconstruye aunque no haya `on_change`: si Python no acepta el
+            // cambio, el campo vuelve a mostrar su valor (campo controlado).
+            self.dirty = true;
+        }
+        let changed = if text != before {
+            self.dispatch(key, "change", Some(arg(&text))).map(drop)
+        } else {
+            Ok(())
+        };
+        let submitted = if submit {
+            self.dispatch(key, "submit", Some(arg(&text))).map(drop)
+        } else {
+            Ok(())
+        };
+        changed.and(submitted)
+    }
+
+    /// Texto en composición del IME (vacío = se canceló la composición).
+    pub fn ime_preedit(&mut self, text: &str) -> bool {
+        let Some(state) = self.focused_input() else {
+            return false;
+        };
+        state.preedit = (!text.is_empty()).then(|| text.to_owned());
+        state.blink = 0.0;
+        true
+    }
+
+    /// El IME confirma texto. Si es justo lo que acaba de llegar como tecla,
+    /// se ignora: algunas plataformas entregan ambos.
+    pub fn ime_commit(&mut self, text: &str) -> PyResult<bool> {
+        let recent = self
+            .last_typed
+            .take()
+            .is_some_and(|(t, at)| t == text && at.elapsed() < Duration::from_millis(50));
+        let Some(key) = self.engine.focused.clone() else {
+            return Ok(false);
+        };
+        let Some(state) = self.engine.inputs.get_mut(&key) else {
+            return Ok(false);
+        };
+        state.preedit = None;
+        if recent {
+            return Ok(true);
+        }
+        let before = state.editor.text().to_owned();
+        let multiline = state.multiline;
+        state.editor.insert(&clean(text, multiline));
+        self.after_edit(&key, &before, false)?;
+        Ok(true)
+    }
+
+    fn focused_input(&mut self) -> Option<&mut InputState> {
+        let key = self.engine.focused.as_ref()?;
+        self.engine.inputs.get_mut(key)
+    }
+
+    /// Cursor del campo enfocado (para colocar la ventana del IME).
+    pub fn ime_area(&self) -> Option<Rect> {
+        let key = self.engine.focused.as_ref()?;
+        self.engine.inputs.get(key)?.caret()
+    }
+
+    /// Segundos hasta el próximo parpadeo del cursor, si hay un campo enfocado.
+    pub fn next_blink(&self) -> Option<f32> {
+        let key = self.engine.focused.as_ref()?;
+        self.engine.inputs.get(key).map(InputState::until_blink)
+    }
+
+    /// Selección del campo `key` en caracteres (no bytes): `(inicio, fin)`.
+    pub fn selection(&self, key: &str) -> Option<(usize, usize)> {
+        let editor = &self.engine.inputs.get(key)?.editor;
+        let chars = |b: usize| editor.text()[..b].chars().count();
+        let r = editor.selection();
+        Some((chars(r.start), chars(r.end)))
+    }
+
+    pub fn clipboard(&mut self) -> &mut Clipboard {
+        &mut self.clipboard
     }
 
     // ----------------------------------------------------------------- scroll
@@ -576,5 +908,51 @@ fn collect_autofocus(node: &Node, out: &mut Vec<String>) {
     }
     for child in &node.children {
         collect_autofocus(child, out);
+    }
+}
+
+/// Normaliza texto pegado o escrito: sin `\r` y, en un campo de una línea, sin saltos.
+fn clean(text: &str, multiline: bool) -> String {
+    let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    if multiline {
+        text
+    } else {
+        text.replace('\n', " ")
+    }
+}
+
+/// Inicio o fin de la línea visual del cursor (Inicio/Fin en un campo multilínea).
+fn line_edge(state: &mut InputState, end: bool, extend: bool) {
+    let Some(caret) = state.caret() else {
+        return;
+    };
+    let x = if end { 1.0e6 } else { -1.0e6 };
+    if let Some(pos) = state.position_at(Point::new(x, caret.center_y())) {
+        state.editor.move_to(pos, extend);
+    }
+}
+
+/// Flecha arriba/abajo en un campo multilínea: misma columna en la línea
+/// vecina; desde la primera (o última) línea, al principio (o al final).
+fn vertical(state: &mut InputState, down: bool, extend: bool) {
+    let (Some(caret), Some(frame)) = (state.caret(), state.frame.as_ref()) else {
+        return;
+    };
+    let top = frame.origin.y;
+    let bottom = top + frame.paragraph.height();
+    let y = if down {
+        caret.bottom + 1.0
+    } else {
+        caret.top - 1.0
+    };
+    let pos = if y < top {
+        Some(0)
+    } else if y >= bottom {
+        Some(state.editor.text().len())
+    } else {
+        state.position_at(Point::new(caret.left, y))
+    };
+    if let Some(pos) = pos {
+        state.editor.move_to(pos, extend);
     }
 }

@@ -94,6 +94,10 @@ def test_counter():
 | `scroll_offset(key)` | `(x, y)` desplazados del `scroll` con esa key, o `None`. |
 | `press(combo)` | Pulsa y suelta una tecla o combinación: `"tab"`, `"shift+tab"`, `"enter"`, `"ctrl+s"`, `"a"`. |
 | `key_down(combo)` / `key_up(combo)` | Pulsa / suelta por separado (p. ej. mantener Espacio). |
+| `type(texto)` | Escribe en el campo enfocado, grafema a grafema, como desde el teclado (`"\n"` = Enter). |
+| `ime_preedit(texto)` / `ime_commit(texto)` | Simulan la composición y la confirmación de un IME. |
+| `selection(key)` | Selección del campo `key` en caracteres: `(inicio, fin)`, iguales si solo hay cursor. |
+| `clipboard` | Portapapeles del piloto, en memoria (se puede leer y asignar); no toca el del sistema. |
 | `focus(key)` | Enfoca `key` como si se llegara con el teclado. `LookupError` si no se pintó o no es enfocable. |
 | `focused` | Key del nodo enfocado, o `None`. |
 | `hovered` | Key del nodo interactivo bajo el puntero, o `None`. |
@@ -242,6 +246,43 @@ Píldora compacta de texto. `tone` es el nombre de un token de color del tema.
 Tarjeta de métrica: etiqueta, valor grande y variación opcional en verde (`positive=True`) o rojo.
 Tiene `grow=1`, así que varias `stat` en una `row` se reparten el ancho.
 
+### `text_input(value, *, placeholder="", on_change=None, on_submit=None, key=None, **estilo)`
+
+Campo de texto de una línea. `value` es normalmente un `Signal[str]`, y entonces queda **enlazado
+en los dos sentidos**: lo que se escribe actualiza el Signal y lo que asignes al Signal aparece en
+el campo (por ejemplo, vaciarlo al enviar).
+
+```python
+query = Signal("")
+text_input(query, placeholder="Buscar…", on_submit=lambda q: search(q))
+```
+
+| Parámetro | Descripción |
+|---|---|
+| `value` | `Signal[str]` (enlazado), o un `str`/callable con `on_change` para gestionar el valor tú. Sin `on_change`, un valor fijo no cambia al escribir. |
+| `placeholder` | Texto atenuado que se muestra con el campo vacío. Se toma literalmente (un `"$"` inicial no es un token). |
+| `on_change` | `fn(texto)` en cada cambio (después de actualizar el Signal). |
+| `on_submit` | `fn(texto)` al pulsar Enter. |
+
+Por defecto: `bg="$surface"`, borde de 1 px `$border`, `radius="$md"`, `padding=(9, 12)` y
+200 px de ancho si su contenedor no le da otro (con `align="stretch"`, ocupa el ancho disponible).
+Un campo con foco siempre muestra el anillo de foco, también tras un clic.
+
+**Edición:** escribir (incluido texto compuesto con IME), Retroceso/Supr (con Ctrl, o Alt en macOS,
+por palabras), flechas (con Mayús seleccionan; con Ctrl/Alt saltan palabras), Inicio/Fin,
+Ctrl+A, Ctrl+C/X/V, Ctrl+Z y Ctrl+Mayús+Z o Ctrl+Y (Cmd en macOS). Con el ratón: clic coloca el
+cursor (Mayús+clic amplía la selección), arrastrar selecciona, doble clic selecciona una palabra y
+triple clic todo. El texto se recorre por grafemas: un emoji compuesto o una letra con tilde
+combinada se borran de una vez. Tab sale del campo; las teclas pasan antes por los `on_key`.
+
+### `textarea(value, *, placeholder="", rows=3, on_change=None, on_submit=None, key=None, **estilo)`
+
+Como `text_input`, pero multilínea: Enter inserta un salto de línea y **Ctrl+Enter** (Cmd+Enter en
+macOS) llama a `on_submit`. Las líneas largas se parten solas, y el campo **crece con el contenido**
+a partir de un mínimo de `rows` líneas. Las flechas ↑ ↓ cambian de línea e Inicio/Fin van al
+principio y al final de la línea. Para limitar su altura, ponlo dentro de un
+`scroll(max_height=...)`: el cursor siempre se mantiene a la vista.
+
 ## Propiedades de estilo
 
 Las longitudes están en **píxeles lógicos**. Las propiedades marcadas con *H* se **heredan** de los
@@ -284,6 +325,8 @@ contenedores (como en CSS).
 | `opacity` | `0.0` – `1.0` | Opacidad del elemento y todos sus hijos. |
 | `press_scale` | número | Escala al pulsar (p. ej. `0.96`). Animada. |
 | `scrollbar_color` | color | Color del pulgar de la barra de un `scroll` (se pinta translúcido). `scroll()` usa `$muted`. |
+| `placeholder_color` | color | Color del placeholder de un campo de texto. Por defecto, el color del texto al 45 %. |
+| `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
 | `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |
 

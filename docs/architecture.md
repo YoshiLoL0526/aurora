@@ -32,6 +32,8 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── runtime.rs       Estado de la app en marcha: árbol, puntero, rueda, despacho de eventos, wake
 ├── scroll.rs        Estado de los contenedores scroll: desplazamiento, suavizado, barra
 ├── keys.rs          KeyEvent y parseo de combinaciones ("ctrl+s", "mod+k")
+├── edit.rs          Modelo de edición puro: texto, cursor, selección, deshacer, grafemas
+├── input.rs         Estado de los campos de texto y geometría de cursor y selección
 ├── window.rs        Bucle de ventana (winit) sobre Runtime, framebuffer (softbuffer)
 └── pilot.rs         Piloto headless sobre Runtime para tests de interacción
 ```
@@ -167,6 +169,25 @@ contienen), así que lo que está fuera de la zona visible no recibe eventos.
 
 La rueda se resuelve con las regiones del último frame: desde la región bajo el puntero se sube
 por los ancestros hasta el primer `scroll` que todavía pueda moverse en esa dirección.
+
+## Campos de texto
+
+Un `text_input` es un nodo `input` (`Kind::Input`): una hoja con párrafo, como `text`, cuyo valor
+llega de Python en cada reconstrucción. La edición vive en Rust, en un `InputState` por key en el
+`Engine` (`src/input.rs`): un `Editor` puro (`src/edit.rs`: texto, cursor, selección y deshacer,
+con posiciones en bytes UTF-8 alineadas a grafemas), la composición del IME, el parpadeo y el
+desplazamiento horizontal.
+
+Cada tecla que el editor atiende modifica el `Editor` y llama a `on_change(texto)`; el Signal se
+actualiza y la vista se reconstruye. Al reconstruir, `Engine::sync_inputs` compara el valor que
+llega de Python con el del editor: si difieren, Python manda (`set_external`), lo que permite vaciar
+un campo al enviar o rechazar un cambio.
+
+Skia mide las posiciones en UTF-16: `input.rs` convierte en ambos sentidos para colocar el cursor
+(`get_line_metrics_at` y `get_rects_for_range`), pintar la selección y resolver un clic
+(`get_glyph_position_at_coordinate`). Tras pintar, cada campo guarda una copia de su párrafo y su
+origen para resolver clics y flechas verticales hasta el siguiente frame. El parpadeo no anima a
+60 fps: la ventana programa un despertar (`ControlFlow::WaitUntil`) para el próximo cambio.
 
 ## Teclado y foco
 

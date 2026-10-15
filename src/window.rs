@@ -6,19 +6,21 @@
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use pyo3::prelude::*;
 use skia_safe::{ImageInfo, Point, surfaces};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
-use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::dpi::{LogicalPosition, LogicalSize};
+use winit::event::{
+    ElementState, Ime, KeyEvent, MouseButton, MouseScrollDelta, StartCause, WindowEvent,
+};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::Key;
 use winit::window::{CursorIcon, Window, WindowId};
 
 use crate::keys::{KeyInput, Mods};
-use crate::runtime::Runtime;
+use crate::runtime::{Clipboard, CursorKind, Runtime};
 use crate::scroll::LINE;
 
 type SoftSurface = softbuffer::Surface<Rc<Window>, Rc<Window>>;
@@ -53,6 +55,10 @@ struct App {
     window: Option<Rc<Window>>,
     surface: Option<SoftSurface>,
     mods: Mods,
+    /// Si el IME del sistema está activado (solo mientras hay un campo enfocado).
+    ime_allowed: bool,
+    /// Próximo cambio del parpadeo del cursor, si no hay animaciones en curso.
+    blink_at: Option<Instant>,
     last_frame: Instant,
     /// Si el frame anterior dejó transiciones en curso.
     animating: bool,
@@ -72,12 +78,12 @@ impl App {
         };
 
         let now = Instant::now();
-        let dt = frame_dt(
-            now.duration_since(self.last_frame).as_secs_f32(),
-            self.animating,
-        );
+        let elapsed = now.duration_since(self.last_frame).as_secs_f32();
+        let dt = frame_dt(elapsed, self.animating);
         self.last_frame = now;
         let animating = self.rt.tick(dt);
+        // El parpadeo usa el tiempo real: entre parpadeos el bucle está dormido.
+        self.rt.advance_clock(elapsed.min(1.0));
         self.animating = animating;
 
         let size = window.inner_size();
@@ -111,14 +117,44 @@ impl App {
         if animating || hover_changed {
             window.request_redraw();
         }
+        self.blink_at = match self.rt.next_blink() {
+            Some(secs) if !animating => Some(now + Duration::from_secs_f32(secs)),
+            _ => None,
+        };
+        self.update_ime();
+    }
+
+    /// El IME del sistema solo se activa con un campo enfocado, y su ventana
+    /// de composición se coloca junto al cursor.
+    fn update_ime(&mut self) {
+        let Some(window) = &self.window else {
+            return;
+        };
+        match self.rt.ime_area() {
+            Some(caret) => {
+                if !self.ime_allowed {
+                    window.set_ime_allowed(true);
+                    self.ime_allowed = true;
+                }
+                window.set_ime_cursor_area(
+                    LogicalPosition::new(caret.left, caret.top),
+                    LogicalSize::new(caret.width().max(1.0), caret.height()),
+                );
+            }
+            None if self.ime_allowed => {
+                window.set_ime_allowed(false);
+                self.ime_allowed = false;
+            }
+            None => {}
+        }
     }
 
     fn update_cursor(&self) {
         if let Some(window) = &self.window {
-            window.set_cursor(if self.rt.hovered().is_some() {
-                CursorIcon::Pointer
-            } else {
-                CursorIcon::Default
+            window.set_cursor(match self.rt.cursor() {
+                CursorKind::Pointer => CursorIcon::Pointer,
+                CursorKind::Text => CursorIcon::Text,
+                CursorKind::Default => CursorIcon::Default,
             });
         }
     }
@@ -234,6 +270,20 @@ impl ApplicationHandler<Wake> for App {
                     alt: s.alt_key(),
                     meta: s.super_key(),
                 };
+                self.rt.mods = self.mods;
+            }
+            WindowEvent::Ime(ime) => {
+                match ime {
+                    Ime::Preedit(text, _) => {
+                        self.rt.ime_preedit(&text);
+                    }
+                    Ime::Commit(text) => report(self.rt.ime_commit(&text).map(drop)),
+                    Ime::Disabled => {
+                        self.rt.ime_preedit("");
+                    }
+                    Ime::Enabled => {}
+                }
+                window.request_redraw();
             }
             WindowEvent::KeyboardInput {
                 event,
@@ -265,6 +315,22 @@ impl ApplicationHandler<Wake> for App {
         }
     }
 
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
+        // Despertar programado: toca cambiar el parpadeo del cursor.
+        if let StartCause::ResumeTimeReached { .. } = cause
+            && let Some(window) = &self.window
+        {
+            window.request_redraw();
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        event_loop.set_control_flow(match self.blink_at {
+            Some(at) => ControlFlow::WaitUntil(at),
+            None => ControlFlow::Wait,
+        });
+    }
+
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: Wake) {
         // `Runtime::sync` consume la marca de `wake()` y reconstruye la vista.
         if let Some(window) = &self.window {
@@ -286,12 +352,14 @@ pub fn run(
             .map_err(|e| e.to_string())?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut app = App {
-            rt: Runtime::new(build),
+            rt: Runtime::new(build, Clipboard::System(None)),
             title,
             size: (width, height),
             window: None,
             surface: None,
             mods: Mods::default(),
+            ime_allowed: false,
+            blink_at: None,
             last_frame: Instant::now(),
             animating: false,
             fatal: None,

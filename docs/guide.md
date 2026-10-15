@@ -289,6 +289,34 @@ def view():
 `not visible and text(...)` es un patrón habitual: si la condición es falsa, el valor es `False`
 y Aurora lo ignora.
 
+### Formularios
+
+`text_input` y `textarea` se enlazan directamente a un `Signal[str]`: no hace falta escribir
+manejadores para que el valor llegue a tu estado.
+
+```python
+from aurora import text_input, textarea
+
+title = Signal("")
+notes = Signal("")
+
+
+def save(_text=None):
+    add_note(title(), notes())
+    title.set("")  # el campo se vacía solo
+    notes.set("")
+
+
+def form():
+    return card(gap=10)[
+        text_input(title, placeholder="Título", on_submit=save),
+        textarea(notes, placeholder="Notas (Ctrl+Enter para guardar)", on_submit=save),
+        button("Guardar", save, key="save"),
+    ]
+```
+
+En los tests, `pilot.click("…")` enfoca un campo y `pilot.type("hola\n")` escribe en él.
+
 ## 8. Superposiciones: modales y toasts
 
 Para dibujar algo **encima** del resto, usa `position="absolute"` con desplazamientos. Un modal

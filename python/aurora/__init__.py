@@ -10,7 +10,7 @@ from typing import Any, TypeVar
 
 from . import _core
 from ._core import KeyEvent, Pilot
-from .components import badge, button, card, stat
+from .components import badge, button, card, stat, text_input, textarea
 from .elements import Element, box, column, row, scroll, spacer, text
 from .signal import Signal
 from .theme import DAYLIGHT, MIDNIGHT, Theme
@@ -34,6 +34,8 @@ __all__ = [
     "spacer",
     "stat",
     "text",
+    "text_input",
+    "textarea",
 ]
 __version__ = _core.__version__
 

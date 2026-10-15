@@ -134,12 +134,21 @@ pub struct Style {
     // Texto (nivel párrafo, no heredable)
     pub max_lines: Option<usize>,
     pub text_align: Option<String>,
+    // Campos de texto
+    pub multiline: bool,
+    pub placeholder: Option<String>,
+    pub placeholder_color: Option<Color>,
+    pub selection_color: Option<Color>,
+    /// Alto mínimo de un campo multilínea, en líneas.
+    pub rows: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Box,
     Text,
+    /// Campo de texto editable (`text_input`, `textarea`).
+    Input,
 }
 
 #[derive(Debug)]
@@ -161,10 +170,14 @@ impl Node {
         self.handlers.contains_key("click")
     }
 
+    pub fn is_editable(&self) -> bool {
+        self.kind == Kind::Input
+    }
+
     pub fn is_focusable(&self) -> bool {
         self.style
             .focusable
-            .unwrap_or_else(|| self.is_interactive())
+            .unwrap_or_else(|| self.is_interactive() || self.is_editable())
     }
 
     pub fn handler(&self, event: &str) -> Option<&Py<PyAny>> {
@@ -329,6 +342,11 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         },
         max_lines: f32_of(d, "max_lines")?.map(|n| n as usize),
         text_align: str_of(d, "text_align")?,
+        multiline: bool_of(d, "multiline")?,
+        placeholder: str_of(d, "placeholder")?,
+        placeholder_color: color_of(d, "placeholder_color")?,
+        selection_color: color_of(d, "selection_color")?,
+        rows: f32_of(d, "rows")?.map_or(1, |n| n.max(1.0) as usize),
     })
 }
 
@@ -364,6 +382,7 @@ fn parse_node(
     let d = obj.cast::<PyDict>()?;
     let kind = match str_of(d, "kind")?.as_deref() {
         Some("text") => Kind::Text,
+        Some("input") => Kind::Input,
         _ => Kind::Box,
     };
     let style_dict = match get(d, "style")? {

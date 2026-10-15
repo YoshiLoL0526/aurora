@@ -21,6 +21,8 @@ TextLike = str | Callable[[], Any]
 
 # Alias cómodos para los props de texto más usados.
 _ALIASES = {"size": "font_size", "weight": "font_weight", "family": "font_family"}
+# Texto libre que no se interpreta como token de tema aunque empiece por "$".
+_LITERAL = {"placeholder"}
 
 
 class Element:
@@ -66,7 +68,7 @@ class Element:
             "kind": self.kind,
             "key": self.key,
             "text": None if content is None else str(content),
-            "style": {k: theme.resolve(v) for k, v in self.style.items()},
+            "style": {k: v if k in _LITERAL else theme.resolve(v) for k, v in self.style.items()},
             "handlers": self.handlers,
             "children": [c.to_spec(theme) for c in self.children],
         }

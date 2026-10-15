@@ -8,7 +8,7 @@ use skia_safe::{Point, Surface};
 
 use crate::keys::KeyInput;
 use crate::render::{raster_surface, write_png};
-use crate::runtime::Runtime;
+use crate::runtime::{Clipboard, Runtime};
 use crate::scroll::LINE;
 
 /// Paso de tiempo de un frame simulado.
@@ -33,6 +33,7 @@ impl Pilot {
     fn step(&mut self, dt: f32) -> PyResult<bool> {
         self.rt.sync()?;
         let animating = self.rt.tick(dt);
+        self.rt.advance_clock(dt);
         let canvas = self.surface.canvas();
         let hover_changed = self.rt.draw(canvas, self.width, self.height, self.scale);
         Ok(animating || hover_changed)
@@ -54,7 +55,7 @@ impl Pilot {
     #[pyo3(signature = (build, width = 960.0, height = 640.0, scale = 1.0))]
     fn new(build: Py<PyAny>, width: f32, height: f32, scale: f32) -> PyResult<Self> {
         let mut pilot = Self {
-            rt: Runtime::new(build),
+            rt: Runtime::new(build, Clipboard::Memory(String::new())),
             width,
             height,
             scale,
@@ -120,6 +121,57 @@ impl Pilot {
         let result = self.rt.key_event(&input, false);
         self.step(FRAME)?;
         result.map(drop)
+    }
+
+    /// Escribe texto en el campo enfocado, grafema a grafema, como desde el teclado.
+    fn r#type(&mut self, text: &str) -> PyResult<()> {
+        use unicode_segmentation::UnicodeSegmentation;
+        for g in text.graphemes(true) {
+            let input = match g {
+                "\n" => KeyInput::from_combo("enter").map_err(PyValueError::new_err)?,
+                " " => KeyInput::from_combo("space").map_err(PyValueError::new_err)?,
+                _ => KeyInput {
+                    key: g.to_owned(),
+                    text: Some(g.to_owned()),
+                    mods: Default::default(),
+                    repeat: false,
+                },
+            };
+            let down = self.rt.key_event(&input, true);
+            self.rt.key_event(&input, false)?;
+            self.step(FRAME)?;
+            down?;
+        }
+        Ok(())
+    }
+
+    /// Simula la composición de un IME (texto aún sin confirmar).
+    fn ime_preedit(&mut self, text: &str) -> PyResult<()> {
+        self.rt.ime_preedit(text);
+        self.step(FRAME).map(drop)
+    }
+
+    /// Simula que el IME confirma texto.
+    fn ime_commit(&mut self, text: &str) -> PyResult<()> {
+        let result = self.rt.ime_commit(text);
+        self.step(FRAME)?;
+        result.map(drop)
+    }
+
+    /// Selección del campo `key` en caracteres: `(inicio, fin)`; iguales si solo hay cursor.
+    fn selection(&self, key: &str) -> Option<(usize, usize)> {
+        self.rt.selection(key)
+    }
+
+    /// Portapapeles del piloto (en memoria, no toca el del sistema).
+    #[getter]
+    fn get_clipboard(&mut self) -> String {
+        self.rt.clipboard().get().unwrap_or_default()
+    }
+
+    #[setter]
+    fn set_clipboard(&mut self, text: String) {
+        self.rt.clipboard().set(text);
     }
 
     /// Enfoca `key` como si se llegara con el teclado. `LookupError` si no se

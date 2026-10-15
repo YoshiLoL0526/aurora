@@ -1,8 +1,8 @@
 """Componentes con estilo por defecto, construidos solo con primitivas.
 
-Ningún componente necesita código nativo: el núcleo Rust sabe pintar cajas,
-texto, sombras y gradientes, y animar estados hover/pressed. Todo lo demás
-se compone aquí, en Python.
+Casi ningún componente necesita código nativo: el núcleo Rust sabe pintar
+cajas, texto, sombras y gradientes, animar estados hover/pressed y editar texto
+(el nodo `input`). Todo lo demás se compone aquí, en Python.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from .elements import Element, TextLike, box, column, row, text
+from .signal import Signal
 
 Variant = Literal["primary", "soft", "ghost"]
 
@@ -90,3 +91,77 @@ def stat(label: str, value: TextLike, delta: str | None = None, *, positive: boo
             delta and text(delta, size=13, weight=600, color="$success" if positive else "$danger"),
         ],
     ]
+
+
+_INPUT_STYLE: dict[str, Any] = dict(
+    bg="$surface",
+    border_width=1,
+    border_color="$border",
+    radius="$md",
+    padding=(9, 12),
+)
+
+
+def _field(
+    value: Signal[str] | TextLike,
+    on_change: Callable[[str], Any] | None,
+    on_submit: Callable[[str], Any] | None,
+    key: str | None,
+    style: dict[str, Any],
+) -> Element:
+    if isinstance(value, Signal):
+        signal = value
+
+        def change(text: str) -> None:
+            signal.set(text)
+            if on_change is not None:
+                on_change(text)
+
+        handler: Callable[[str], Any] | None = change
+    else:
+        handler = on_change
+    return Element(
+        "input",
+        content=value,
+        key=key,
+        on_change=handler,
+        on_submit=on_submit,
+        **{**_INPUT_STYLE, **style},
+    )
+
+
+def text_input(
+    value: Signal[str] | TextLike,
+    *,
+    placeholder: str = "",
+    on_change: Callable[[str], Any] | None = None,
+    on_submit: Callable[[str], Any] | None = None,
+    key: str | None = None,
+    **style: Any,
+) -> Element:
+    """Campo de texto de una línea.
+
+    Con un `Signal[str]` queda enlazado en los dos sentidos: lo que se escribe
+    actualiza el Signal y lo que se asigna al Signal aparece en el campo.
+    `on_submit(texto)` se llama al pulsar Enter.
+    """
+    return _field(value, on_change, on_submit, key, {"placeholder": placeholder, **style})
+
+
+def textarea(
+    value: Signal[str] | TextLike,
+    *,
+    placeholder: str = "",
+    rows: int = 3,
+    on_change: Callable[[str], Any] | None = None,
+    on_submit: Callable[[str], Any] | None = None,
+    key: str | None = None,
+    **style: Any,
+) -> Element:
+    """Campo de texto multilínea. Crece con el contenido (mínimo `rows` líneas).
+
+    Enter inserta un salto de línea; Ctrl+Enter (Cmd+Enter en macOS) llama a
+    `on_submit(texto)`.
+    """
+    styles = {"placeholder": placeholder, "multiline": True, "rows": rows, "padding": (10, 12), **style}
+    return _field(value, on_change, on_submit, key, styles)

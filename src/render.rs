@@ -21,6 +21,7 @@ use taffy::{
 };
 
 use crate::color::lerp;
+use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
 use crate::scroll::{BAR_WIDTH, ScrollState};
 use crate::spec::{Axis, Kind, Len, Node, Style, TextProps};
 
@@ -28,7 +29,21 @@ use crate::spec::{Axis, Kind, Len, Node, Style, TextProps};
 /// para medir (durante el layout) y para pintar.
 pub struct TextCtx {
     paragraph: Paragraph,
+    /// Solo en campos de texto: cómo se mide y se maqueta el párrafo.
+    input: Option<InputLeaf>,
 }
+
+#[derive(Clone, Copy)]
+struct InputLeaf {
+    multiline: bool,
+    rows: usize,
+}
+
+/// Ancho por defecto de un campo sin tamaño (como unos 25 caracteres).
+const INPUT_WIDTH: f32 = 200.0;
+const INPUT_MIN_WIDTH: f32 = 40.0;
+/// Ancho "infinito" para maquetar texto sin saltos de línea.
+const UNBOUNDED: f32 = 1.0e6;
 
 /// Árbol de layout paralelo al árbol de nodos.
 pub struct LayoutNode {
@@ -45,6 +60,8 @@ pub struct HitRegion {
     pub interactive: bool,
     pub capture: bool,
     pub focusable: bool,
+    /// Campo de texto: cursor de texto al pasar y el clic coloca el cursor.
+    pub editable: bool,
     pub scroll: Option<Axis>,
     /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
     pub parent: Option<usize>,
@@ -96,6 +113,8 @@ pub struct Engine {
     anim: HashMap<String, AnimState>,
     /// Estado de cada contenedor `scroll`, por key.
     pub scroll: HashMap<String, ScrollState>,
+    /// Estado de cada campo de texto, por key.
+    pub inputs: HashMap<String, InputState>,
     pub hovered: Option<String>,
     pub pressed: Option<String>,
     pub focused: Option<String>,
@@ -115,6 +134,7 @@ impl Engine {
             fonts,
             anim: HashMap::new(),
             scroll: HashMap::new(),
+            inputs: HashMap::new(),
             hovered: None,
             pressed: None,
             focused: None,
@@ -154,6 +174,61 @@ impl Engine {
         builder.build()
     }
 
+    // ---------------------------------------------------------- campos de texto
+
+    /// Párrafo de un campo: su valor (con la composición del IME) o, si está
+    /// vacío, el placeholder en un color atenuado. Devuelve también el texto
+    /// pintado y si es el placeholder.
+    fn input_paragraph(&self, node: &Node) -> (Paragraph, String, bool) {
+        let value = match self.inputs.get(&node.key) {
+            Some(state) => state.display(),
+            None => node.text.clone().unwrap_or_default(),
+        };
+        let s = &node.style;
+        if !value.is_empty() {
+            let mut text = value;
+            if !s.multiline {
+                text = text.replace('\n', " ");
+            }
+            return (self.paragraph(&text, &node.text_props, s), text, false);
+        }
+        let tp = &node.text_props;
+        let mut props = tp.clone();
+        props.color = s
+            .placeholder_color
+            .unwrap_or_else(|| tp.color.with_a((tp.color.a() as f32 * 0.45) as u8));
+        let text = s.placeholder.clone().unwrap_or_default();
+        (self.paragraph(&text, &props, s), text, true)
+    }
+
+    /// Crea, actualiza o descarta el estado de los campos según el árbol nuevo.
+    /// Si Python cambió el valor (p. ej. lo vació al enviar), se adopta.
+    pub fn sync_inputs(&mut self, root: &Node) {
+        let mut alive = HashSet::new();
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            if node.is_editable() {
+                let text = node.text.as_deref().unwrap_or("");
+                let state = self
+                    .inputs
+                    .entry(node.key.clone())
+                    .or_insert_with(|| InputState::new(text, node.style.multiline));
+                state.editor.set_external(text);
+                state.multiline = node.style.multiline;
+                alive.insert(node.key.clone());
+            }
+            stack.extend(node.children.iter());
+        }
+        self.inputs.retain(|k, _| alive.contains(k));
+    }
+
+    /// Si el foco está en un campo de texto.
+    pub fn focus_is_editable(&self) -> bool {
+        self.focused
+            .as_ref()
+            .is_some_and(|f| self.inputs.contains_key(f))
+    }
+
     // ----------------------------------------------------------------- layout
 
     /// `in_scroll`: el padre se desplaza a lo largo de su eje principal.
@@ -169,14 +244,19 @@ impl Engine {
         if in_scroll && node.style.shrink.is_none() {
             style.flex_shrink = 0.0;
         }
-        if node.kind == Kind::Text {
-            let paragraph = self.paragraph(
-                node.text.as_deref().unwrap_or(""),
-                &node.text_props,
-                &node.style,
-            );
+        if matches!(node.kind, Kind::Text | Kind::Input) {
+            let (paragraph, input) = if node.is_editable() {
+                let leaf = InputLeaf {
+                    multiline: node.style.multiline,
+                    rows: node.style.rows,
+                };
+                (self.input_paragraph(node).0, Some(leaf))
+            } else {
+                let text = node.text.as_deref().unwrap_or("");
+                (self.paragraph(text, &node.text_props, &node.style), None)
+            };
             let id = tree
-                .new_leaf_with_context(style, TextCtx { paragraph })
+                .new_leaf_with_context(style, TextCtx { paragraph, input })
                 .expect("taffy leaf");
             return LayoutNode {
                 id,
@@ -223,7 +303,10 @@ impl Engine {
                     |_, _| 0.0,
                     |known, avail| {
                         let Some(ctx) = ctx else { return Size::ZERO };
-                        let size = measure_text(&mut ctx.paragraph, known, avail);
+                        let size = match ctx.input {
+                            Some(leaf) => measure_input(&mut ctx.paragraph, leaf, known, avail),
+                            None => measure_text(&mut ctx.paragraph, known, avail),
+                        };
                         baseline = Some(ctx.paragraph.alphabetic_baseline());
                         size
                     },
@@ -246,7 +329,11 @@ impl Engine {
 
     /// Avanza las transiciones `dt` segundos. Devuelve `true` si alguna sigue en curso.
     pub fn tick(&mut self, dt: f32) -> bool {
-        let ring = self.focused.clone().filter(|_| self.focus_visible);
+        // En un campo de texto el foco siempre se marca (como `:focus-visible` en CSS).
+        let ring = self
+            .focused
+            .clone()
+            .filter(|_| self.focus_visible || self.focus_is_editable());
         for key in [self.hovered.clone(), self.pressed.clone(), ring.clone()]
             .into_iter()
             .flatten()
@@ -302,6 +389,7 @@ impl Engine {
             regions: Vec::new(),
             overlays: Vec::new(),
             scrolls: Vec::new(),
+            inputs: Vec::new(),
         };
         painter.paint(root, &lroot, Point::new(0.0, 0.0), None, no_clip());
         // Las capas superiores se pintan al final, en orden de aparición. Una capa
@@ -314,9 +402,18 @@ impl Engine {
         }
         canvas.restore();
         let Painter {
-            regions, scrolls, ..
+            regions,
+            scrolls,
+            inputs,
+            ..
         } = painter;
         self.sync_scroll(scrolls);
+        for (key, scroll_x, frame) in inputs {
+            if let Some(state) = self.inputs.get_mut(&key) {
+                state.scroll_x = scroll_x;
+                state.frame = Some(frame);
+            }
+        }
         regions
     }
 
@@ -369,6 +466,8 @@ struct Painter<'a> {
     /// Nodos con `layer="overlay"` aplazados hasta el final del frame.
     overlays: Vec<Deferred<'a>>,
     scrolls: Vec<ScrollMetrics>,
+    /// Geometría de cada campo pintado: key, desplazamiento horizontal y frame.
+    inputs: Vec<(String, f32, InputFrame)>,
 }
 
 impl<'a> Painter<'a> {
@@ -410,9 +509,10 @@ impl<'a> Painter<'a> {
             key: node.key.clone(),
             rect,
             clip,
-            interactive: node.is_interactive(),
+            interactive: node.is_interactive() || node.is_editable(),
             capture: node.style.capture,
             focusable: node.is_focusable(),
+            editable: node.is_editable(),
             scroll: node.style.scroll,
             parent,
         });
@@ -468,6 +568,9 @@ impl<'a> Painter<'a> {
             let pad = layout.padding;
             ctx.paragraph
                 .paint(canvas, (rect.left + pad.left, rect.top + pad.top));
+        }
+        if node.is_editable() {
+            self.paint_input(node, lnode, rect);
         }
 
         let mut child_origin = Point::new(rect.left, rect.top);
@@ -536,6 +639,125 @@ fn paint_focus_ring(canvas: &Canvas, rect: Rect, radius: f32, color: Color, t: f
     canvas.draw_rrect(ring, &p);
 }
 
+impl<'a> Painter<'a> {
+    /// Campo de texto: selección, texto (o placeholder), subrayado de la
+    /// composición del IME y cursor, recortados a la caja de relleno. Un campo
+    /// de una línea se desplaza en horizontal para que el cursor siempre se vea.
+    fn paint_input(&mut self, node: &Node, lnode: &LayoutNode, rect: Rect) {
+        let Some(ctx) = self.tree.get_node_context(lnode.id) else {
+            return;
+        };
+        let layout = self.tree.layout(lnode.id).expect("layout");
+        let canvas = self.canvas;
+        let (s, tp) = (&node.style, &node.text_props);
+        let (b, pad) = (layout.border, layout.padding);
+        let padding_box = Rect::new(
+            rect.left + b.left,
+            rect.top + b.top,
+            rect.right - b.right,
+            rect.bottom - b.bottom,
+        );
+        let content = Rect::new(
+            padding_box.left + pad.left,
+            padding_box.top + pad.top,
+            padding_box.right - pad.right,
+            padding_box.bottom - pad.bottom,
+        );
+        let state = self.engine.inputs.get(&node.key);
+        let focused = self.engine.focused.as_deref() == Some(node.key.as_str());
+        let (mut copy, display, placeholder) = self.engine.input_paragraph(node);
+        let paragraph = &ctx.paragraph;
+
+        let cursor = match state {
+            Some(st) if !placeholder => {
+                st.editor.cursor() + st.preedit.as_ref().map_or(0, String::len)
+            }
+            _ => 0,
+        };
+        let caret = if placeholder {
+            caret_rect(paragraph, "", 0)
+        } else {
+            caret_rect(paragraph, &display, cursor)
+        };
+
+        let mut scroll_x = 0.0;
+        if !s.multiline {
+            scroll_x = state.map_or(0.0, |st| st.scroll_x);
+            let view = content.width();
+            if focused {
+                if caret.left - scroll_x > view - CARET_WIDTH {
+                    scroll_x = caret.left - view + CARET_WIDTH;
+                }
+                if caret.left - scroll_x < 0.0 {
+                    scroll_x = caret.left;
+                }
+            }
+            let text_width = if placeholder {
+                0.0
+            } else {
+                paragraph.longest_line()
+            };
+            scroll_x = scroll_x.clamp(0.0, (text_width + CARET_WIDTH - view).max(0.0));
+        }
+        let origin = Point::new(content.left - scroll_x, content.top);
+
+        canvas.save();
+        canvas.clip_rect(padding_box, ClipOp::Intersect, true);
+        if focused
+            && let Some(st) = state
+            && st.editor.has_selection()
+            && st.preedit.is_none()
+        {
+            let color = s
+                .selection_color
+                .unwrap_or_else(|| tp.focus_color.with_a(110));
+            let mut p = Paint::default();
+            p.set_anti_alias(true).set_color(color);
+            for r in range_rects(paragraph, &display, st.editor.selection()) {
+                canvas.draw_rect(r.with_offset(origin), &p);
+            }
+        }
+        paragraph.paint(canvas, origin);
+        let mut ink = Paint::default();
+        ink.set_anti_alias(true).set_color(tp.color);
+        if let Some(st) = state
+            && let Some(pre) = &st.preedit
+            && !placeholder
+        {
+            let start = st.editor.cursor();
+            for r in range_rects(paragraph, &display, start..start + pre.len()) {
+                let r = r.with_offset(origin);
+                canvas.draw_rect(
+                    Rect::new(r.left, r.bottom - 1.5, r.right, r.bottom - 0.5),
+                    &ink,
+                );
+            }
+        }
+        if focused && state.is_some_and(|st| st.caret_visible() && !st.editor.has_selection()) {
+            canvas.draw_rect(caret.with_offset(origin), &ink);
+        }
+        canvas.restore();
+
+        // Copia del párrafo para resolver clics y teclas hasta el próximo frame.
+        copy.layout(if s.multiline {
+            content.width() + 0.5
+        } else {
+            UNBOUNDED
+        });
+        self.inputs.push((
+            node.key.clone(),
+            scroll_x,
+            InputFrame {
+                paragraph: copy,
+                display,
+                placeholder,
+                origin,
+                caret: caret.with_offset(origin),
+            },
+        ));
+    }
+}
+
 fn paint_scrollbars(canvas: &Canvas, state: &ScrollState, color: Option<Color>) {
     if state.bar <= 0.0 {
         return;
@@ -592,12 +814,41 @@ fn background_paint(s: &Style, rect: Rect, st: AnimState) -> Option<Paint> {
     Some(p)
 }
 
+/// Un campo ocupa el ancho que le den (o `INPUT_WIDTH`) y el alto de una línea;
+/// uno multilínea crece con el texto, con un mínimo de `rows` líneas.
+fn measure_input(
+    p: &mut Paragraph,
+    leaf: InputLeaf,
+    known: Size<Option<f32>>,
+    avail: Size<AvailableSpace>,
+) -> Size<f32> {
+    let width = known.width.unwrap_or(match avail.width {
+        AvailableSpace::Definite(w) => INPUT_WIDTH.min(w).max(INPUT_MIN_WIDTH.min(w)),
+        AvailableSpace::MinContent => INPUT_MIN_WIDTH,
+        AvailableSpace::MaxContent => INPUT_WIDTH,
+    });
+    p.layout(if leaf.multiline {
+        width.max(1.0)
+    } else {
+        UNBOUNDED
+    });
+    let line = p.height() / p.line_number().max(1) as f32;
+    let height = if leaf.multiline {
+        p.height().max(leaf.rows as f32 * line)
+    } else {
+        line
+    };
+    Size {
+        width,
+        height: known.height.unwrap_or(height.ceil()),
+    }
+}
+
 fn measure_text(
     p: &mut Paragraph,
     known: Size<Option<f32>>,
     avail: Size<AvailableSpace>,
 ) -> Size<f32> {
-    const UNBOUNDED: f32 = 1.0e6;
     let max_w = known.width.unwrap_or(match avail.width {
         AvailableSpace::Definite(w) => w,
         AvailableSpace::MinContent => {
@@ -618,9 +869,13 @@ fn measure_text(
 fn finalize_text(tree: &mut TaffyTree<TextCtx>, lnode: &LayoutNode) {
     let layout = *tree.layout(lnode.id).expect("layout");
     if let Some(ctx) = tree.get_node_context_mut(lnode.id) {
-        let w = layout.size.width - layout.padding.left - layout.padding.right;
+        let w = layout.content_box_width();
         // +0.5 evita cortes de línea espurios por redondeo del layout.
-        ctx.paragraph.layout(w + 0.5);
+        let w = match ctx.input {
+            Some(leaf) if !leaf.multiline => UNBOUNDED,
+            _ => w + 0.5,
+        };
+        ctx.paragraph.layout(w);
     }
     for child in &lnode.children {
         finalize_text(tree, child);

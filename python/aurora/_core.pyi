@@ -69,6 +69,16 @@ class Pilot:
         """Pulsa y suelta una tecla o combinación (`"tab"`, `"shift+tab"`, `"ctrl+s"`)."""
     def key_down(self, combo: str) -> None: ...
     def key_up(self, combo: str) -> None: ...
+    def type(self, text: str) -> None:
+        """Escribe texto en el campo enfocado, como desde el teclado (`\\n` = Enter)."""
+    def ime_preedit(self, text: str) -> None:
+        """Simula la composición de un IME (texto sin confirmar; vacío la cancela)."""
+    def ime_commit(self, text: str) -> None:
+        """Simula que el IME confirma texto."""
+    def selection(self, key: str) -> tuple[int, int] | None:
+        """Selección del campo `key` en caracteres; `(n, n)` si solo hay cursor."""
+    clipboard: str
+    """Portapapeles del piloto (en memoria)."""
     def focus(self, key: str) -> None:
         """Enfoca `key` como con el teclado. `LookupError` si no es enfocable."""
     @property

@@ -27,7 +27,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 *Lo mínimo para construir herramientas que se usen a diario.*
 
 - ✅ **Scroll**: contenedor `scroll` con clipping, rueda suave, trackpad, encadenado y barra arrastrable
-- ⏳ **Input de texto**: cursor, selección, copiar/pegar, IME, deshacer; `text_input` y `textarea`
+- ✅ **Input de texto**: cursor, selección, copiar/pegar, IME, deshacer; `text_input` y `textarea`
 - ✅ **Teclado y foco**: navegación con Tab, atajos (`on_key`), anillo de foco visible
 - ⏳ **Imágenes**: PNG/JPEG/SVG con `fit` (cover, contain) y caché
 - ⏳ Más componentes: `checkbox`, `switch`, `select`, `tabs`, `tooltip`, `divider`, `avatar`
