@@ -107,7 +107,7 @@ def test_counter():
 | `settle()` | Avanza frames hasta que terminen todas las transiciones. |
 | `resize(ancho, alto)` | Cambia el tamaño de la "ventana". |
 | `png(path)` | Guarda el último frame como PNG. |
-| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `layout` y `paint`; además `nodes` (nodos del árbol) y `rebuilt` (si se reconstruyó la vista; si no, `build` y `parse` valen 0). Lo usa la [suite de benchmarks](../benchmarks/README.md). |
+| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `layout` y `paint`; además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build` y `parse` valen 0) y `layout_cached` (si se reutilizó el layout del frame anterior). Lo usa la [suite de benchmarks](../benchmarks/README.md). |
 
 Las excepciones de la vista y de los manejadores **se propagan** al test (con ventana, se
 imprimen y la app sigue viva).

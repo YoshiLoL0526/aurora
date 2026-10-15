@@ -15,6 +15,16 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 - Suite de benchmarks reproducible (`benchmarks/run.py`): lista de 10 000 filas, dashboard de 50
   paneles y escritura en un formulario de 500 filas, con mediana y p95 por fase, salida JSON,
   comparación con una medición anterior (`--compare`) y ejecución en CI con resumen en cada build.
+- `Pilot.stats["layout_cached"]`: si el frame reutilizó el layout del anterior.
+
+### Cambiado
+
+- El layout se cachea entre frames: si no cambia el árbol, el tamaño ni el texto de los campos
+  (hover, scroll, animaciones, parpadeo del cursor), solo se vuelve a pintar. En una lista de
+  10 000 filas un frame sin reconstrucción pasa de ~1,2 s a ~30 ms.
+- Al reconstruir la vista se reutiliza el shaping de los párrafos que no cambiaron (por contenido,
+  no por key) junto con sus mediciones, que además se memorizan dentro de cada layout. El layout
+  de esa misma lista al reconstruir baja de ~1,06 s a ~0,3 s.
 
 ## [0.2.0] — 2026-10-15
 

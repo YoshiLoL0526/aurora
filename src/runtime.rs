@@ -44,6 +44,8 @@ pub struct FrameStats {
     /// Dicts de Python → `Node` (`spec::parse`).
     pub parse: Duration,
     pub layout: Duration,
+    /// El layout se reutilizó del frame anterior (no cambió nada que lo afecte).
+    pub layout_cached: bool,
     /// Pintura y registro de `HitRegion`s (todo el `draw` salvo el layout).
     pub paint: Duration,
     /// Nodos del árbol actual.
@@ -205,6 +207,7 @@ impl Runtime {
         self.engine.load_images(&tree)?;
         self.autofocus_seen = autofocus.into_iter().collect();
         self.engine.sync_inputs(&tree);
+        self.engine.invalidate_layout();
         self.tree = Some(tree);
 
         if let Some(key) = appeared {
@@ -237,6 +240,7 @@ impl Runtime {
             let start = Instant::now();
             self.regions = self.engine.draw(canvas, tree, width, height, scale);
             self.stats.layout = self.engine.layout_time;
+            self.stats.layout_cached = self.engine.layout_cached;
             self.stats.paint = start.elapsed().saturating_sub(self.engine.layout_time);
         }
         let revealed = std::mem::take(&mut self.reveal_focus) && self.reveal_focused();

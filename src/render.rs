@@ -2,7 +2,9 @@
 //!
 //! Todo lo que ocurre por frame vive aquí, fuera del intérprete de Python.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -40,11 +42,82 @@ pub enum Leaf {
 /// para medir (durante el layout) y para pintar.
 pub struct TextCtx {
     paragraph: Paragraph,
+    /// Lo que determina el párrafo: permite reutilizarlo en el siguiente layout.
+    key: ParagraphKey,
     /// Solo en campos de texto: cómo se mide y se maqueta el párrafo.
+    input: Option<InputLeaf>,
+    /// Mediciones ya hechas. Taffy mide cada hoja varias veces por layout (mín.,
+    /// máx., definitivo…) y cada medición rehace el layout del párrafo en Skia:
+    /// memorizarlas, y conservarlas con el párrafo entre frames, lo evita.
+    measures: Vec<Measured>,
+}
+
+/// Párrafo ya "shapeado" con sus mediciones, a la espera de reutilizarse.
+type Shaped = (Paragraph, Vec<Measured>);
+
+/// Una medición memorizada: restricciones de Taffy → tamaño y baseline.
+#[derive(Clone, Copy)]
+struct Measured {
+    key: MeasureKey,
+    size: Size<f32>,
+    baseline: f32,
+}
+
+/// Restricciones de una medición. El alto disponible no influye en el texto.
+#[derive(Clone, Copy, PartialEq)]
+struct MeasureKey {
+    known: Size<Option<f32>>,
+    avail_width: AvailableSpace,
+    /// El mismo párrafo se mide distinto en un campo de texto.
     input: Option<InputLeaf>,
 }
 
-#[derive(Clone, Copy)]
+/// Mediciones que se memorizan por párrafo (los textos rara vez pasan de 3 o 4).
+const MAX_MEASURES: usize = 8;
+
+/// Todo lo que determina el shaping de un párrafo. Dos párrafos con la misma
+/// clave son intercambiables, así que al rehacer el layout se reutilizan por
+/// contenido (no por key): sobreviven a reordenaciones y a keys de ruta.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct ParagraphKey {
+    text: String,
+    family: String,
+    color: u32,
+    size: u32,
+    weight: i32,
+    line_height: Option<u32>,
+    letter_spacing: u32,
+    max_lines: Option<usize>,
+    align: Option<String>,
+}
+
+impl ParagraphKey {
+    fn new(text: &str, tp: &TextProps, style: &Style) -> Self {
+        Self {
+            text: text.to_owned(),
+            family: tp.family.clone(),
+            color: u32::from_be_bytes([tp.color.a(), tp.color.r(), tp.color.g(), tp.color.b()]),
+            size: tp.size.to_bits(),
+            weight: tp.weight,
+            line_height: tp.line_height.map(f32::to_bits),
+            letter_spacing: tp.letter_spacing.to_bits(),
+            max_lines: style.max_lines,
+            align: style.text_align.clone(),
+        }
+    }
+}
+
+/// Layout de un frame, reutilizable mientras no cambie nada de lo que lo
+/// determina: el árbol, el tamaño de la ventana y el texto de los campos.
+struct LayoutCache {
+    tree: TaffyTree<Leaf>,
+    root: LayoutNode,
+    width: f32,
+    height: f32,
+    inputs: u64,
+}
+
+#[derive(Clone, Copy, PartialEq)]
 struct InputLeaf {
     multiline: bool,
     rows: usize,
@@ -140,6 +213,14 @@ pub struct Engine {
     pub tip: Tip,
     /// Lo que tardó el layout del último `draw` (para las estadísticas del frame).
     pub layout_time: Duration,
+    /// Si el último `draw` reutilizó el layout del frame anterior.
+    pub layout_cached: bool,
+    layout_cache: Option<LayoutCache>,
+    /// El árbol cambió desde el último layout (`invalidate_layout`).
+    tree_changed: bool,
+    /// Párrafos del layout anterior, por contenido, a la espera de reutilizarse
+    /// mientras se construye el siguiente.
+    recycled: RefCell<HashMap<ParagraphKey, Vec<Shaped>>>,
 }
 
 /// Retardo antes de mostrar un tooltip (segundos).
@@ -196,6 +277,10 @@ impl Engine {
             focus_visible: false,
             tip: Tip::default(),
             layout_time: Duration::ZERO,
+            layout_cached: false,
+            layout_cache: None,
+            tree_changed: true,
+            recycled: RefCell::default(),
         }
     }
 
@@ -231,12 +316,33 @@ impl Engine {
         builder.build()
     }
 
+    /// Como `paragraph`, pero reutiliza el shaping de un párrafo idéntico del
+    /// layout anterior si lo hay.
+    fn text_ctx(
+        &self,
+        text: &str,
+        tp: &TextProps,
+        style: &Style,
+        input: Option<InputLeaf>,
+    ) -> TextCtx {
+        let key = ParagraphKey::new(text, tp, style);
+        let reused = self.recycled.borrow_mut().get_mut(&key).and_then(Vec::pop);
+        let (paragraph, measures) =
+            reused.unwrap_or_else(|| (self.paragraph(text, tp, style), Vec::new()));
+        TextCtx {
+            paragraph,
+            key,
+            input,
+            measures,
+        }
+    }
+
     // ---------------------------------------------------------- campos de texto
 
-    /// Párrafo de un campo: su valor (con la composición del IME) o, si está
-    /// vacío, el placeholder en un color atenuado. Devuelve también el texto
-    /// pintado y si es el placeholder.
-    fn input_paragraph(&self, node: &Node) -> (Paragraph, String, bool) {
+    /// Lo que muestra un campo: su valor (con la composición del IME) o, si
+    /// está vacío, el placeholder en un color atenuado. Devuelve el texto, sus
+    /// propiedades y si es el placeholder.
+    fn input_display(&self, node: &Node) -> (String, TextProps, bool) {
         let value = match self.inputs.get(&node.key) {
             Some(state) => state.display(),
             None => node.text.clone().unwrap_or_default(),
@@ -247,15 +353,50 @@ impl Engine {
             if !s.multiline {
                 text = text.replace('\n', " ");
             }
-            return (self.paragraph(&text, &node.text_props, s), text, false);
+            return (text, node.text_props.clone(), false);
         }
         let tp = &node.text_props;
         let mut props = tp.clone();
         props.color = s
             .placeholder_color
             .unwrap_or_else(|| tp.color.with_a((tp.color.a() as f32 * 0.45) as u8));
-        let text = s.placeholder.clone().unwrap_or_default();
-        (self.paragraph(&text, &props, s), text, true)
+        (s.placeholder.clone().unwrap_or_default(), props, true)
+    }
+
+    /// Huella del texto que muestran los campos: si cambia (se escribe, se
+    /// compone o se deshace sin reconstruir la vista), el layout cacheado no vale.
+    fn inputs_signature(&self) -> u64 {
+        self.inputs.iter().fold(0u64, |acc, (key, state)| {
+            let mut h = DefaultHasher::new();
+            (key, state.display()).hash(&mut h);
+            // Suma: no depende del orden de iteración del mapa.
+            acc.wrapping_add(h.finish())
+        })
+    }
+
+    /// El árbol de nodos cambió: el próximo `draw` rehace el layout.
+    pub fn invalidate_layout(&mut self) {
+        self.tree_changed = true;
+    }
+
+    /// Devuelve los párrafos de un layout descartado a la reserva, para que el
+    /// siguiente los reutilice en vez de repetir el shaping.
+    fn recycle(&self, cache: LayoutCache) {
+        let LayoutCache { mut tree, root, .. } = cache;
+        let mut recycled = self.recycled.borrow_mut();
+        let mut stack = vec![&root];
+        while let Some(lnode) = stack.pop() {
+            if let Some(leaf) = tree.get_node_context_mut(lnode.id)
+                && let Leaf::Text(ctx) =
+                    std::mem::replace(leaf, Leaf::Image(skia_safe::Size::default()))
+            {
+                recycled
+                    .entry(ctx.key)
+                    .or_default()
+                    .push((ctx.paragraph, ctx.measures));
+            }
+            stack.extend(&lnode.children);
+        }
     }
 
     /// Crea, actualiza o descarta el estado de los campos según el árbol nuevo.
@@ -333,18 +474,19 @@ impl Engine {
             };
         }
         if matches!(node.kind, Kind::Text | Kind::Input) {
-            let (paragraph, input) = if node.is_editable() {
+            let ctx = if node.is_editable() {
                 let leaf = InputLeaf {
                     multiline: node.style.multiline,
                     rows: node.style.rows,
                 };
-                (self.input_paragraph(node).0, Some(leaf))
+                let (text, props, _) = self.input_display(node);
+                self.text_ctx(&text, &props, &node.style, Some(leaf))
             } else {
                 let text = node.text.as_deref().unwrap_or("");
-                (self.paragraph(text, &node.text_props, &node.style), None)
+                self.text_ctx(text, &node.text_props, &node.style, None)
             };
             let id = tree
-                .new_leaf_with_context(style, Leaf::Text(TextCtx { paragraph, input }))
+                .new_leaf_with_context(style, Leaf::Text(ctx))
                 .expect("taffy leaf");
             return LayoutNode {
                 id,
@@ -397,11 +539,29 @@ impl Engine {
                             }
                             None => return Size::ZERO,
                         };
+                        let key = MeasureKey {
+                            known,
+                            avail_width: avail.width,
+                            input: ctx.input,
+                        };
+                        if let Some(m) = ctx.measures.iter().find(|m| m.key == key) {
+                            baseline = Some(m.baseline);
+                            return m.size;
+                        }
                         let size = match ctx.input {
                             Some(leaf) => measure_input(&mut ctx.paragraph, leaf, known, avail),
                             None => measure_text(&mut ctx.paragraph, known, avail),
                         };
-                        baseline = Some(ctx.paragraph.alphabetic_baseline());
+                        let b = ctx.paragraph.alphabetic_baseline();
+                        if ctx.measures.len() == MAX_MEASURES {
+                            ctx.measures.remove(0);
+                        }
+                        ctx.measures.push(Measured {
+                            key,
+                            size,
+                            baseline: b,
+                        });
+                        baseline = Some(b);
                         size
                     },
                 );
@@ -479,8 +639,34 @@ impl Engine {
         scale: f32,
     ) -> Vec<HitRegion> {
         let start = Instant::now();
-        let (tree, lroot) = self.layout(root, width, height);
+        let inputs = self.inputs_signature();
+        let reuse = !self.tree_changed
+            && self
+                .layout_cache
+                .as_ref()
+                .is_some_and(|c| c.width == width && c.height == height && c.inputs == inputs);
+        let cache = match self.layout_cache.take() {
+            Some(cache) if reuse => cache,
+            old => {
+                if let Some(old) = old {
+                    self.recycle(old);
+                }
+                let (tree, root) = self.layout(root, width, height);
+                // Lo que no se reutilizó ya no corresponde a ningún nodo.
+                self.recycled.borrow_mut().clear();
+                self.tree_changed = false;
+                LayoutCache {
+                    tree,
+                    root,
+                    width,
+                    height,
+                    inputs,
+                }
+            }
+        };
+        self.layout_cached = reuse;
         self.layout_time = start.elapsed();
+        let (tree, lroot) = (&cache.tree, &cache.root);
         canvas.clear(root.style.bg.unwrap_or(Color::from_rgb(0x0B, 0x0D, 0x14)));
         // `restore_to_count` al final: un frame nunca deja la pila del canvas
         // desequilibrada (la superficie del piloto se reutiliza entre frames).
@@ -489,7 +675,7 @@ impl Engine {
         let mut painter = Painter {
             engine: self,
             canvas,
-            tree: &tree,
+            tree,
             scale,
             regions: Vec::new(),
             overlays: Vec::new(),
@@ -497,7 +683,7 @@ impl Engine {
             inputs: Vec::new(),
             tip: None,
         };
-        painter.paint(root, &lroot, Point::new(0.0, 0.0), None, no_clip());
+        painter.paint(root, lroot, Point::new(0.0, 0.0), None, no_clip());
         // Las capas superiores se pintan al final, en orden de aparición. Una capa
         // anidada dentro de otra se encola al pintar la primera y queda por encima.
         // Escapan del recorte de los `scroll` que las contienen.
@@ -517,6 +703,7 @@ impl Engine {
             inputs,
             ..
         } = painter;
+        self.layout_cache = Some(cache);
         self.sync_scroll(scrolls);
         for (key, scroll_x, frame) in inputs {
             if let Some(state) = self.inputs.get_mut(&key) {
@@ -862,7 +1049,8 @@ impl<'a> Painter<'a> {
         );
         let state = self.engine.inputs.get(&node.key);
         let focused = self.engine.focused.as_deref() == Some(node.key.as_str());
-        let (mut copy, display, placeholder) = self.engine.input_paragraph(node);
+        let (display, props, placeholder) = self.engine.input_display(node);
+        let mut copy = self.engine.paragraph(&display, &props, s);
         let paragraph = &ctx.paragraph;
 
         let cursor = match state {

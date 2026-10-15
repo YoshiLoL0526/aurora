@@ -249,7 +249,7 @@ impl Pilot {
     }
 
     /// Coste por fases del último frame, en milisegundos: `build` (Python),
-    /// `parse`, `layout` y `paint`; además `nodes` y `rebuilt`.
+    /// `parse`, `layout` y `paint`; además `nodes`, `rebuilt` y `layout_cached`.
     #[getter]
     fn stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let s = self.rt.stats;
@@ -261,6 +261,7 @@ impl Pilot {
         out.set_item("paint", ms(s.paint))?;
         out.set_item("nodes", s.nodes)?;
         out.set_item("rebuilt", s.rebuilt)?;
+        out.set_item("layout_cached", s.layout_cached)?;
         Ok(out)
     }
 

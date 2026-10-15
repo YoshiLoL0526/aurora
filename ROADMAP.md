@@ -39,7 +39,8 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 *Escalar a miles de elementos manteniendo 60 fps.*
 
 - ⏳ **Reactividad de grano fino**: cada `Signal` sabe qué nodos dependen de él; solo se reconstruye esa rama
-- ⏳ Diff del árbol por `key` y caché de layout y de párrafos entre frames
+- ✅ Caché de layout y de párrafos entre frames (con mediciones de texto memorizadas)
+- ⏳ Diff del árbol por `key`: reutilizar el layout de las ramas que no cambian al reconstruir
 - ⏳ Invalidación por fases (estilo → layout → pintura → composición)
 - ⏳ **Backend GPU** de Skia (Metal, Direct3D, Vulkan) detrás de un trait `Surface`
 - ⏳ Listas virtualizadas

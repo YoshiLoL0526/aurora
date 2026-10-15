@@ -96,14 +96,37 @@ del mismo punto.
 
 ### Árbol completo por actualización (de momento)
 
-Aurora reconstruye la vista entera tras cada evento (también tras cada tecla en un campo de
-texto). Es una simplificación deliberada:
+Aurora reconstruye la vista entera tras cada evento que cambia estado (también tras cada tecla en
+un campo de texto). Es una simplificación deliberada:
 el coste real es serializar el árbol en Python, que para apps medianas está muy por debajo de un
 frame. El diseño ya prepara la reactividad de grano fino de la v0.3:
 
 - Los nodos tienen **identidad estable** (`key` explícita o ruta en el árbol), que ya hoy se usa
   para conservar el estado de animación entre reconstrucciones.
 - `Signal` tiene suscriptores, y es el punto natural para registrar dependencias por rama.
+
+### Cachés entre frames
+
+Pintar es barato; lo caro es el layout, y sobre todo el texto: hacer el shaping de un párrafo y
+maquetarlo en Skia. Por eso el `Engine` evita repetirlo:
+
+- **Layout.** El árbol de Taffy, con los párrafos ya maquetados, se guarda entre frames
+  (`LayoutCache`) y se reutiliza mientras no cambie nada de lo que lo determina: el árbol de
+  nodos (`Runtime::sync` llama a `invalidate_layout` al reconstruir), el tamaño de la ventana y
+  el texto que muestran los campos (una huella de todos, porque se puede escribir o componer con
+  el IME sin pasar por Python). Hover, scroll, animaciones y parpadeo solo repintan.
+- **Párrafos.** Al rehacer el layout, los párrafos del anterior van a una reserva indexada por
+  `ParagraphKey` (texto, fuente, tamaño, color, interlineado…) y el nuevo los toma de ahí antes de
+  crear uno. Se emparejan por **contenido**, no por key: sobreviven a reordenaciones y a keys de
+  ruta. Lo que queda en la reserva tras el layout se descarta.
+- **Mediciones.** Taffy mide cada hoja varias veces por layout (mínimo, máximo, definitivo…) y
+  cada medición maqueta el párrafo. Cada `TextCtx` memoriza sus mediciones (restricciones →
+  tamaño y baseline) y las conserva al reciclarse, así que un texto que no cambió no vuelve a
+  maquetarse hasta `finalize_text`.
+
+Lo que todavía se paga al reconstruir es construir y calcular el árbol de Taffy entero; reutilizar
+las ramas que no cambian (diff por key) es el siguiente paso. `Pilot.stats` y la suite de
+`benchmarks/` miden cada fase.
 
 ### Animaciones en Rust
 
