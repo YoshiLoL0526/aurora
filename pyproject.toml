@@ -18,3 +18,16 @@ classifiers = [
 python-source = "python"
 module-name = "aurora._core"
 features = ["pyo3/extension-module"]
+
+[dependency-groups]
+dev = ["maturin>=1.7,<2"]
+
+[tool.uv]
+# uv cachea el paquete construido: estas claves hacen que recompile
+# automáticamente el núcleo Rust cuando cambie el código nativo.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+]

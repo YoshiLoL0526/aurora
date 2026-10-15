@@ -38,18 +38,23 @@ Rust    spec.rs   dict → Node tipado (+ herencia de estilos de texto)
 | Render + texto | `skia-safe` (raster CPU por ahora) + `textlayout` |
 | Ventana | `winit` + `softbuffer` |
 
-## Desarrollo
+## Desarrollo (con uv)
+
+Requisitos: [uv](https://docs.astral.sh/uv/) y Rust (`rustup`). En Linux, además,
+`libfontconfig` y `libfreetype` (paquetes `-dev`).
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install maturin
-maturin develop --release
-python examples/hello.py               # ventana
-python examples/hello.py --png out.png # render headless (tests de snapshot / CI)
+uv sync                                     # crea .venv, compila el núcleo Rust (release) e instala editable
+uv run examples/hello.py                    # abre la ventana
+uv run examples/hello.py --png out.png      # render headless (tests de snapshot / CI)
 ```
 
-En Linux necesitas `libfontconfig` y `libfreetype` (dev). La primera
-compilación descarga los binarios precompilados de Skia.
+- Los cambios en `python/aurora/` se ven al instante (instalación editable).
+- Los cambios en `src/*.rs` o `Cargo.toml` disparan la recompilación solos en el
+  siguiente `uv run` (ver `cache-keys` en `pyproject.toml`).
+- Para forzarla a mano: `uv sync --reinstall-package aurora-ui`.
+
+La primera compilación descarga los binarios precompilados de Skia (~2 min).
 
 ## Estado del MVP
 
