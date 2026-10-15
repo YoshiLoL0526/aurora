@@ -1,9 +1,11 @@
 //! Bucle de ventana (winit) con rasterizado Skia directo en el framebuffer
 //! (softbuffer, sin copias). El bucle corre SIN el GIL: Python solo se toma
-//! al reconstruir el árbol o al despachar un callback.
+//! al reconstruir el árbol o al despachar un callback. El estado de la app vive
+//! en `Runtime`; aquí solo se traducen los eventos de winit y se presenta el frame.
 
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use pyo3::prelude::*;
@@ -11,24 +13,42 @@ use skia_safe::{ImageInfo, surfaces};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{CursorIcon, Window, WindowId};
 
-use crate::render::{Engine, HitRegion};
-use crate::spec::{self, Node};
+use crate::runtime::Runtime;
 
 type SoftSurface = softbuffer::Surface<Rc<Window>, Rc<Window>>;
 
+/// Evento propio del bucle: alguien llamó a `wake()`, quizá desde otro hilo.
+#[derive(Debug)]
+pub struct Wake;
+
+/// Proxy del bucle en marcha (si lo hay), para despertarlo desde cualquier hilo.
+static PROXY: Mutex<Option<EventLoopProxy<Wake>>> = Mutex::new(None);
+
+/// Despierta el bucle de eventos para que pinte un frame. Sin bucle, no hace nada.
+pub fn notify() {
+    if let Ok(proxy) = PROXY.lock()
+        && let Some(proxy) = proxy.as_ref()
+    {
+        // Solo falla si el bucle ya terminó: no queda nada que despertar.
+        let _ = proxy.send_event(Wake);
+    }
+}
+
+fn set_proxy(proxy: Option<EventLoopProxy<Wake>>) {
+    if let Ok(mut slot) = PROXY.lock() {
+        *slot = proxy;
+    }
+}
+
 struct App {
-    build: Py<PyAny>,
+    rt: Runtime,
     title: String,
     size: (f64, f64),
     window: Option<Rc<Window>>,
     surface: Option<SoftSurface>,
-    engine: Engine,
-    tree: Option<Node>,
-    regions: Vec<HitRegion>,
-    dirty: bool,
     last_frame: Instant,
     /// Si el frame anterior dejó transiciones en curso.
     animating: bool,
@@ -36,48 +56,14 @@ struct App {
 }
 
 impl App {
-    fn rebuild(&mut self) {
-        let result = Python::attach(|py| -> PyResult<Node> {
-            let obj = self.build.call0(py)?;
-            spec::parse(obj.bind(py))
-        });
-        match result {
-            Ok(tree) => self.tree = Some(tree),
-            Err(err) => {
-                Python::attach(|py| err.print(py));
-                if self.tree.is_none() {
-                    self.fatal = Some("la vista inicial falló al construirse".into());
-                }
-            }
-        }
-        self.dirty = false;
-    }
-
-    fn hit(&self, x: f32, y: f32) -> Option<String> {
-        crate::render::hit_test(&self.regions, x, y)
-    }
-
-    fn dispatch_click(&mut self, key: &str) {
-        let Some(tree) = &self.tree else { return };
-        let Some(node) = find(tree, key) else { return };
-        let Some(cb) = &node.on_click else { return };
-        Python::attach(|py| {
-            if let Err(err) = cb.call0(py) {
-                err.print(py);
-            }
-        });
-        // MVP: tras cualquier evento se reconstruye la vista completa.
-        // Próximo paso: signals de grano fino que invaliden solo su rama.
-        self.dirty = true;
-    }
-
     fn redraw(&mut self) {
-        if self.dirty || self.tree.is_none() {
-            self.rebuild();
+        if let Err(err) = self.rt.sync() {
+            Python::attach(|py| err.print(py));
+            if !self.rt.has_tree() {
+                self.fatal = Some("la vista inicial falló al construirse".into());
+            }
         }
-        let (Some(window), Some(surface), Some(tree)) =
-            (&self.window, &mut self.surface, &self.tree)
-        else {
+        let (Some(window), Some(surface)) = (&self.window, &mut self.surface) else {
             return;
         };
 
@@ -87,7 +73,7 @@ impl App {
             self.animating,
         );
         self.last_frame = now;
-        let animating = self.engine.tick(dt);
+        let animating = self.rt.tick(dt);
         self.animating = animating;
 
         let size = window.inner_size();
@@ -104,10 +90,10 @@ impl App {
         };
         let info = ImageInfo::new_n32_premul((w.get() as i32, h.get() as i32), None);
         let scale = window.scale_factor() as f32;
+        let mut hover_changed = false;
         if let Some(mut sk) = surfaces::wrap_pixels(&info, bytes, w.get() as usize * 4, None) {
-            self.regions = self.engine.draw(
+            hover_changed = self.rt.draw(
                 sk.canvas(),
-                tree,
                 w.get() as f32 / scale,
                 h.get() as f32 / scale,
                 scale,
@@ -115,9 +101,29 @@ impl App {
         }
         buffer.present().expect("present");
 
-        if animating {
+        if hover_changed {
+            self.update_cursor();
+        }
+        if animating || hover_changed {
             window.request_redraw();
         }
+    }
+
+    fn update_cursor(&self) {
+        if let Some(window) = &self.window {
+            window.set_cursor(if self.rt.hovered().is_some() {
+                CursorIcon::Pointer
+            } else {
+                CursorIcon::Default
+            });
+        }
+    }
+}
+
+/// Un error en un manejador del usuario se muestra y la app sigue viva.
+fn report(result: PyResult<()>) {
+    if let Err(err) = result {
+        Python::attach(|py| err.print(py));
     }
 }
 
@@ -135,14 +141,7 @@ fn frame_dt(elapsed: f32, was_animating: bool) -> f32 {
     }
 }
 
-fn find<'a>(node: &'a Node, key: &str) -> Option<&'a Node> {
-    if node.key == key {
-        return Some(node);
-    }
-    node.children.iter().find_map(|c| find(c, key))
-}
-
-impl ApplicationHandler for App {
+impl ApplicationHandler<Wake> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.window.is_some() {
             return;
@@ -168,19 +167,13 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let p = position.to_logical::<f32>(window.scale_factor());
-                let hovered = self.hit(p.x, p.y);
-                if hovered != self.engine.hovered {
-                    window.set_cursor(if hovered.is_some() {
-                        CursorIcon::Pointer
-                    } else {
-                        CursorIcon::Default
-                    });
-                    self.engine.hovered = hovered;
+                if self.rt.pointer_move(p.x, p.y) {
+                    self.update_cursor();
                     window.request_redraw();
                 }
             }
             WindowEvent::CursorLeft { .. } => {
-                self.engine.hovered = None;
+                self.rt.pointer_leave();
                 window.request_redraw();
             }
             WindowEvent::MouseInput {
@@ -189,14 +182,8 @@ impl ApplicationHandler for App {
                 ..
             } => {
                 match state {
-                    ElementState::Pressed => self.engine.pressed = self.engine.hovered.clone(),
-                    ElementState::Released => {
-                        if let Some(key) = self.engine.pressed.take()
-                            && self.engine.hovered.as_deref() == Some(key.as_str())
-                        {
-                            self.dispatch_click(&key);
-                        }
-                    }
+                    ElementState::Pressed => self.rt.pointer_down(),
+                    ElementState::Released => report(self.rt.pointer_up()),
                 }
                 window.request_redraw();
             }
@@ -209,6 +196,13 @@ impl ApplicationHandler for App {
             _ => {}
         }
     }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: Wake) {
+        // `Runtime::sync` consume la marca de `wake()` y reconstruye la vista.
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
+    }
 }
 
 pub fn run(
@@ -219,23 +213,24 @@ pub fn run(
     height: f64,
 ) -> PyResult<()> {
     let fatal = py.detach(move || -> Result<Option<String>, String> {
-        let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
+        let event_loop = EventLoop::<Wake>::with_user_event()
+            .build()
+            .map_err(|e| e.to_string())?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut app = App {
-            build,
+            rt: Runtime::new(build),
             title,
             size: (width, height),
             window: None,
             surface: None,
-            engine: Engine::new(),
-            tree: None,
-            regions: Vec::new(),
-            dirty: true,
             last_frame: Instant::now(),
             animating: false,
             fatal: None,
         };
-        event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
+        set_proxy(Some(event_loop.create_proxy()));
+        let result = event_loop.run_app(&mut app).map_err(|e| e.to_string());
+        set_proxy(None);
+        result?;
         Ok(app.fatal)
     });
     match fatal {

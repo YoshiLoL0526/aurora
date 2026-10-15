@@ -1,10 +1,11 @@
 # Referencia
 
-Referencia completa de la API pública de Aurora v0.1. Para un recorrido paso a paso, empieza por la
+Referencia completa de la API pública de Aurora. Para un recorrido paso a paso, empieza por la
 [guía](guide.md).
 
 - [App](#app)
 - [Signal](#signal)
+- [Pilot (tests de interacción)](#pilot-tests-de-interacción)
 - [Primitivas](#primitivas)
 - [Componentes](#componentes)
 - [Propiedades de estilo](#propiedades-de-estilo)
@@ -30,6 +31,8 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT)
 |---|---|
 | `run()` | Abre la ventana y bloquea hasta que se cierra. |
 | `render_png(path, *, size=None, scale=2.0)` | Renderiza la vista a PNG sin abrir ventana. `scale` es la densidad de píxeles (2.0 ≈ pantalla Retina). |
+| `pilot(*, size=None, scale=1.0)` | Ejecuta la app sin ventana y devuelve un [`Pilot`](#pilot-tests-de-interacción) para simular interacción en tests. |
+| `spawn(coro)` | Ejecuta una corrutina en un bucle `asyncio` en segundo plano (un hilo propio, creado la primera vez). Devuelve un `concurrent.futures.Future` con su resultado. |
 
 El elemento raíz siempre ocupa la ventana completa. Si no defines `bg`, `color` o `font_family`
 en la raíz, se toman del tema (`$background`, `$text` y la fuente del tema).
@@ -47,8 +50,53 @@ count = Signal(0)
 | `count.update(fn)` | Atajo para `count.set(fn(count()))`. |
 | `count.subscribe(fn)` | Llama a `fn(valor)` en cada cambio. Devuelve una función para cancelar la suscripción. |
 
-En la v0.1, la interfaz se reconstruye tras cada evento de usuario, así que basta con cambiar un
-`Signal` dentro de un callback para que la vista se actualice.
+La interfaz se reconstruye tras cada evento de usuario y tras cada `set` que cambie un valor.
+`set` es seguro desde **cualquier hilo o corrutina**: despierta el bucle de eventos, así que un
+`Signal` actualizado por un hilo de trabajo o por una tarea de `app.spawn()` se ve en pantalla sin
+esperar a que el usuario mueva el ratón.
+
+```python
+status = Signal("cargando…")
+
+
+async def load():
+    data = await fetch_data()
+    status.set(f"{len(data)} filas")
+
+
+app = App(view)
+app.spawn(load())
+app.run()
+```
+
+## Pilot (tests de interacción)
+
+`app.pilot()` ejecuta la app **sin ventana** con el mismo runtime que la ventana real
+(hit-testing, burbujeo, capas, reconstrucción) y simula el puntero frame a frame. Las coordenadas
+están en píxeles lógicos y cada acción avanza un frame.
+
+```python
+def test_counter():
+    pilot = App(view, size=(400, 300)).pilot()
+    pilot.click("add")
+    assert count() == 1
+```
+
+| API | Descripción |
+|---|---|
+| `click(key)` | Clic en el centro del nodo `key`, como una persona: si otro nodo lo tapa, el clic llega a ese otro. `LookupError` si el nodo no se pintó. |
+| `click_at(x, y)` | Mueve el puntero, pulsa y suelta. |
+| `move_to(x, y)` / `leave()` | Mueve el puntero / lo saca de la ventana. |
+| `mouse_down()` / `mouse_up()` | Pulsa / suelta el botón izquierdo por separado. |
+| `hovered` | Key del nodo interactivo bajo el puntero, o `None`. |
+| `rect(key)` | `(x, y, ancho, alto)` del nodo en el último frame, o `None`. |
+| `frame(dt=1/60)` | Avanza un frame. Devuelve `True` si quedan transiciones en curso. |
+| `settle()` | Avanza frames hasta que terminen todas las transiciones. |
+| `resize(ancho, alto)` | Cambia el tamaño de la "ventana". |
+| `png(path)` | Guarda el último frame como PNG. |
+
+Las excepciones de la vista y de los manejadores **se propagan** al test (con ventana, se
+imprimen y la app sigue viva).
 
 ## Primitivas
 
@@ -74,6 +122,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | Argumento | Descripción |
 |---|---|
 | `on_click` | Callable sin argumentos. Hace al elemento interactivo: cursor de mano, estados hover/pressed y clics. |
+| `on_<evento>` | Manejador de evento. Todo argumento que empiece por `on_` se trata como manejador, no como estilo. Por ahora el núcleo solo emite `click`; el resto llegará con teclado, foco e input de texto. |
 | `key` | Identidad estable. Conserva el estado de animación aunque el elemento cambie de posición en el árbol. Recomendado en listas dinámicas. |
 
 ## Componentes
@@ -147,6 +196,7 @@ contenedores (como en CSS).
 | `opacity` | `0.0` – `1.0` | Opacidad del elemento y todos sus hijos. |
 | `press_scale` | número | Escala al pulsar (p. ej. `0.96`). Animada. |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
+| `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |
 
 ### Texto
 

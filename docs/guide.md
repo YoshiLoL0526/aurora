@@ -308,7 +308,8 @@ def detail_modal():
     ]
 ```
 
-Coloca el modal como **último hijo de la raíz** para que se pinte por encima de todo, y abre el
+Coloca el modal como **último hijo de la raíz** para que se pinte por encima de todo (o dale
+`layer="overlay"`, que lo pinta encima aunque esté en otro sitio del árbol), y abre el
 detalle desde la fila cambiando su `on_click` a `lambda: selected.set(s.name)`:
 
 ```python
@@ -357,6 +358,18 @@ def test_monitor_renders(tmp_path):
 
 Como la vista es una función de tus `Signal`, puedes preparar cualquier estado (un servicio caído,
 el modal abierto, el tema claro) y renderizarlo sin simular ningún clic.
+
+Para probar la **interacción**, `app.pilot()` ejecuta la app sin ventana y simula el puntero, con
+el mismo hit-testing que la ventana real:
+
+```python
+def test_modal_opens_and_closes():
+    pilot = App(view, size=(900, 600)).pilot()
+    pilot.click("svc-CDN")  # clic en la fila con key="svc-CDN"
+    assert selected() == "CDN"
+    pilot.click_at(10, 10)  # clic en el fondo: cierra el modal
+    assert selected() is None
+```
 
 ---
 

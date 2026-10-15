@@ -25,11 +25,13 @@ python/aurora/
 └── _core.pyi        Stubs del módulo nativo
 
 src/                 (crate aurora_core → módulo aurora._core)
-├── lib.rs           Funciones expuestas a Python: render_png, run
+├── lib.rs           Funciones expuestas a Python: render_png, run, wake, Pilot
 ├── spec.rs          Árbol de Python (dicts) → Node tipado; herencia de estilos de texto
 ├── color.rs         Parseo de colores e interpolación
-├── render.rs        Engine: layout (Taffy) + pintura (Skia) + animación + hit-testing
-└── window.rs        Bucle de ventana (winit), framebuffer (softbuffer), eventos
+├── render.rs        Engine: layout (Taffy) + pintura (Skia) + capas + animación + hit-testing
+├── runtime.rs       Estado de la app en marcha: árbol, puntero, despacho de eventos, wake
+├── window.rs        Bucle de ventana (winit) sobre Runtime, framebuffer (softbuffer)
+└── pilot.rs         Piloto headless sobre Runtime para tests de interacción
 ```
 
 ## Ciclo de vida de un frame
@@ -125,9 +127,35 @@ se heredan del contenedor más cercano que los define. La herencia se resuelve u
 ## Hilos y el GIL
 
 `aurora._core.run` libera el GIL (`py.detach`) durante todo el bucle de eventos y solo lo toma
-para reconstruir la vista o ejecutar un callback. Esto ya permite que otros hilos de Python
-trabajen mientras la ventana está abierta. Despertar el bucle cuando un `Signal` cambia desde
-otro hilo o una corrutina está previsto para la v0.2 (`EventLoopProxy`).
+para reconstruir la vista o ejecutar un callback. Esto permite que otros hilos de Python trabajen
+mientras la ventana está abierta.
+
+Cuando un `Signal` cambia, llama a `_core.wake()`, que se puede invocar desde cualquier hilo:
+activa una marca atómica (la vista está desactualizada) y envía un evento propio al bucle de winit
+a través de un `EventLoopProxy`. El bucle pide un frame y `Runtime::sync` consume la marca y
+reconstruye. `App.spawn()` usa esto para las corrutinas: corren en un bucle `asyncio` en un hilo
+aparte y cada `set` despierta la ventana.
+
+## Runtime, ventana y piloto
+
+El estado de una app en marcha —árbol, regiones de hit-testing, puntero, despacho de eventos—
+vive en `Runtime` (`src/runtime.rs`), que no sabe nada de ventanas. Hay dos "conductores":
+
+- `window.rs` traduce los eventos de winit a llamadas al `Runtime` y presenta el frame en el
+  framebuffer.
+- `pilot.rs` (`Pilot`, expuesto como `app.pilot()`) simula el puntero y pinta en una superficie
+  en memoria. Como comparte el `Runtime`, un test de interacción ejercita exactamente la misma
+  lógica que la ventana.
+
+Los manejadores se guardan por nombre (`handlers: {"click": fn}`) y se despachan con
+`Runtime::dispatch(key, evento, arg)`: añadir un evento nuevo no requiere tocar el bucle.
+
+## Capas
+
+Un nodo con `layer="overlay"` se maqueta en su sitio, pero el `Painter` lo aplaza: lo encola y lo
+pinta al terminar el árbol, en coordenadas absolutas. Como sus `HitRegion` se registran después,
+también gana el hit-testing; su índice de padre sigue apuntando a su padre en el árbol, así que el
+burbujeo no cambia.
 
 ## Extender Aurora
 

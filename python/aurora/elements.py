@@ -24,23 +24,36 @@ _ALIASES = {"size": "font_size", "weight": "font_weight", "family": "font_family
 
 
 class Element:
-    __slots__ = ("children", "content", "key", "kind", "on_click", "style")
+    """Nodo de la vista.
+
+    Los argumentos `on_<evento>` se guardan como manejadores (`handlers`) y el
+    resto como propiedades de estilo.
+    """
+
+    __slots__ = ("children", "content", "handlers", "key", "kind", "style")
 
     def __init__(
         self,
         kind: str = "box",
         *,
         content: TextLike | None = None,
-        on_click: Callable[[], Any] | None = None,
         key: str | None = None,
-        **style: Any,
+        **props: Any,
     ) -> None:
         self.kind = kind
         self.content = content
-        self.on_click = on_click
         self.key = key
-        self.style = {_ALIASES.get(k, k): v for k, v in style.items() if v is not None}
+        self.handlers: dict[str, Callable[..., Any]] = {
+            k.removeprefix("on_"): v for k, v in props.items() if k.startswith("on_") and v is not None
+        }
+        self.style = {
+            _ALIASES.get(k, k): v for k, v in props.items() if not k.startswith("on_") and v is not None
+        }
         self.children: list[Element] = []
+
+    @property
+    def on_click(self) -> Callable[..., Any] | None:
+        return self.handlers.get("click")
 
     def __getitem__(self, children: Child) -> Element:
         self.children = list(_flatten(children))
@@ -54,7 +67,7 @@ class Element:
             "key": self.key,
             "text": None if content is None else str(content),
             "style": {k: theme.resolve(v) for k, v in self.style.items()},
-            "on_click": self.on_click,
+            "handlers": self.handlers,
             "children": [c.to_spec(theme) for c in self.children],
         }
 

@@ -8,6 +8,22 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ## [Sin publicar]
 
+### Añadido
+
+- `app.pilot()`: piloto headless para tests de interacción (`click`, `move_to`, `hovered`, `rect`,
+  `settle`, `png`…) que usa el mismo runtime que la ventana.
+- `Signal.set` es seguro desde cualquier hilo y despierta el bucle de eventos: la ventana se
+  actualiza sin esperar a un evento del usuario.
+- `app.spawn(coro)`: ejecuta corrutinas en un bucle `asyncio` en segundo plano.
+- Propiedad `layer="overlay"`: pinta un elemento y le da los eventos por encima de todo el árbol.
+- Manejadores genéricos: cualquier argumento `on_<evento>` de un elemento es un manejador.
+
+### Cambiado
+
+- `Element.to_spec()` serializa los manejadores en `"handlers": {"click": fn}` en lugar de
+  `"on_click"`. `Element.on_click` sigue disponible como propiedad de solo lectura.
+- El núcleo separa el estado de la app (`Runtime`) del bucle de ventana.
+
 ## [0.1.0] — 2026-10-15
 
 Primera versión: la base del framework.

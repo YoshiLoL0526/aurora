@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use skia_safe::{
     BlurStyle, Canvas, Color, Color4f, EncodedImageFormat, FontMgr, FontStyle, MaskFilter, Paint,
-    PaintStyle, Point, RRect, Rect, TileMode,
+    PaintStyle, Point, RRect, Rect, Surface, TileMode,
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
@@ -252,12 +252,23 @@ impl Engine {
             canvas,
             tree: &tree,
             regions: Vec::new(),
+            overlays: Vec::new(),
         };
         painter.paint(root, &lroot, Point::new(0.0, 0.0), None);
+        // Las capas superiores se pintan al final, en orden de aparición. Una capa
+        // anidada dentro de otra se encola al pintar la primera y queda por encima.
+        let mut i = 0;
+        while let Some(&(node, lnode, origin, parent)) = painter.overlays.get(i) {
+            painter.paint_node(node, lnode, origin, parent);
+            i += 1;
+        }
         canvas.restore();
         painter.regions
     }
 }
+
+/// Nodo de la capa superior pendiente de pintar: nodo, layout, origen absoluto y región padre.
+type Deferred<'a> = (&'a Node, &'a LayoutNode, Point, Option<usize>);
 
 /// Contexto de un frame de pintura: recorre el árbol y registra las regiones de hit-testing.
 struct Painter<'a> {
@@ -265,10 +276,34 @@ struct Painter<'a> {
     canvas: &'a Canvas,
     tree: &'a TaffyTree<TextCtx>,
     regions: Vec<HitRegion>,
+    /// Nodos con `layer="overlay"` aplazados hasta el final del frame.
+    overlays: Vec<Deferred<'a>>,
 }
 
-impl Painter<'_> {
-    fn paint(&mut self, node: &Node, lnode: &LayoutNode, origin: Point, parent: Option<usize>) {
+impl<'a> Painter<'a> {
+    fn paint(
+        &mut self,
+        node: &'a Node,
+        lnode: &'a LayoutNode,
+        origin: Point,
+        parent: Option<usize>,
+    ) {
+        if node.style.overlay {
+            self.overlays.push((node, lnode, origin, parent));
+            return;
+        }
+        self.paint_node(node, lnode, origin, parent);
+    }
+
+    /// Pinta el nodo y sus hijos. Una capa aplazada se pinta en coordenadas
+    /// absolutas: no hereda la opacidad ni la escala de sus ancestros.
+    fn paint_node(
+        &mut self,
+        node: &'a Node,
+        lnode: &'a LayoutNode,
+        origin: Point,
+        parent: Option<usize>,
+    ) {
         let canvas = self.canvas;
         let layout = self.tree.layout(lnode.id).expect("layout");
         let rect = Rect::from_xywh(
@@ -517,13 +552,22 @@ pub fn render_png(
     path: &str,
 ) -> Result<(), String> {
     let engine = Engine::new();
+    let mut surface = raster_surface(width, height, scale)?;
+    engine.draw(surface.canvas(), root, width, height, scale);
+    write_png(&mut surface, path)
+}
+
+/// Superficie en memoria de `width × height` píxeles lógicos a la escala dada.
+pub fn raster_surface(width: f32, height: f32, scale: f32) -> Result<Surface, String> {
     let (pw, ph) = (
         (width * scale).round() as i32,
         (height * scale).round() as i32,
     );
-    let mut surface =
-        surfaces::raster_n32_premul((pw, ph)).ok_or("no se pudo crear la superficie")?;
-    engine.draw(surface.canvas(), root, width, height, scale);
+    surfaces::raster_n32_premul((pw.max(1), ph.max(1)))
+        .ok_or_else(|| "no se pudo crear la superficie".into())
+}
+
+pub fn write_png(surface: &mut Surface, path: &str) -> Result<(), String> {
     let image = surface.image_snapshot();
     let data = image
         .encode(None, EncodedImageFormat::PNG, None)

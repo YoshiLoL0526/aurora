@@ -22,7 +22,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Componentes base: `button` (3 variantes), `card`, `badge`, `stat`
 - ✅ Render headless a PNG, tests y workflows de CI (lint, tests en 3 SO, release a PyPI)
 
-## v0.2 — Apps de verdad ⏳
+## v0.2 — Apps de verdad 🚧
 
 *Lo mínimo para construir herramientas que se usen a diario.*
 
@@ -31,7 +31,8 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ⏳ **Teclado y foco**: navegación con Tab, atajos (`on_key`), anillo de foco visible
 - ⏳ **Imágenes**: PNG/JPEG/SVG con `fit` (cover, contain) y caché
 - ⏳ Más componentes: `checkbox`, `switch`, `select`, `tabs`, `tooltip`, `divider`, `avatar`
-- ⏳ Despertar el bucle cuando un `Signal` cambia desde otro hilo o una corrutina `asyncio`
+- ✅ Despertar el bucle cuando un `Signal` cambia desde otro hilo o una corrutina `asyncio` (`app.spawn`)
+- ✅ Piloto headless (`app.pilot()`) para tests de interacción y capas (`layer="overlay"`)
 
 ## v0.3 — Rendimiento ⏳
 

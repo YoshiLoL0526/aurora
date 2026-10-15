@@ -49,11 +49,18 @@ Frame lifecycle:
    reused for both measuring and painting), ticks hover/pressed transitions (exponential smoothing,
    τ = 70 ms, real `dt`), and `Painter` paints shadow → bg → border → text → children while
    recording `HitRegion`s in paint order.
-4. `window.rs`: winit loop runs with the GIL released (`py.detach`); the GIL is taken only to run a
-   click callback or rebuild the view. Hover never touches Python.
+4. `runtime.rs` `Runtime`: window-independent app state (tree, hit regions, pointer, event
+   dispatch by handler name via `dispatch(key, event, arg)`). Two drivers share it: `window.rs`
+   (winit loop, runs with the GIL released via `py.detach`; the GIL is taken only to run a handler or
+   rebuild the view; hover never touches Python) and `pilot.rs` (`Pilot`, headless, for interaction
+   tests via `app.pilot()`).
+
+`Signal.set` calls `_core.wake()` (any thread): an atomic flag that `Runtime::sync` consumes, plus an
+`EventLoopProxy` user event to request a frame. Nodes with `layer="overlay"` are deferred by `Painter`
+and painted (and hit-tested) after the whole tree.
 
 Hit-testing: take the last-painted region containing the point, bubble up through parents to the
-first node with `on_click`; a node with `capture=True` stops the bubbling (e.g. modals).
+first node with a `click` handler; a node with `capture=True` stops the bubbling (e.g. modals).
 
 Node identity is stable (explicit `key` or tree path) and is used to keep animation state across
 full rebuilds — every event currently rebuilds the whole view.
@@ -68,7 +75,8 @@ full rebuilds — every event currently rebuilds the whole view.
 - **New style property:** add the field to `spec::Style` and its parsing, its effect in
   `taffy_style` (layout) or `Painter::paint` (paint), and document it in `docs/reference.md`.
 - **New node type:** new `spec::Kind` variant + its layout measurement + its painting.
-- Visual changes need a render test in `tests/test_render.py`. Public API changes must update
+- Visual changes need a render test in `tests/test_render.py`; interaction changes need a `Pilot`
+  test in `tests/test_pilot.py`. Public API changes must update
   `docs/reference.md`, `python/aurora/_core.pyi` stubs (if the native API changes), and the
   "Sin publicar" section of `CHANGELOG.md`.
 

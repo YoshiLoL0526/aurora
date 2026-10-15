@@ -2,7 +2,7 @@
 //! a estructuras Rust tipadas. Es el único punto donde se cruza la frontera
 //! Python → Rust por frame: un solo recorrido, sin llamadas de ida y vuelta.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -97,6 +97,9 @@ pub struct Style {
     pub press_scale: f32,
     /// Barrera de eventos: los clics dentro no llegan a los ancestros (modales).
     pub capture: bool,
+    /// Capa superior: se maqueta en su sitio pero se pinta (y recibe eventos)
+    /// después de todo el árbol (desplegables, tooltips, modales).
+    pub overlay: bool,
     // Texto (nivel párrafo, no heredable)
     pub max_lines: Option<usize>,
     pub text_align: Option<String>,
@@ -118,12 +121,17 @@ pub struct Node {
     pub text: Option<String>,
     pub text_props: TextProps,
     pub children: Vec<Node>,
-    pub on_click: Option<Py<PyAny>>,
+    /// Manejadores de eventos por nombre (`"click"`, …), sin el prefijo `on_`.
+    pub handlers: HashMap<String, Py<PyAny>>,
 }
 
 impl Node {
     pub fn is_interactive(&self) -> bool {
-        self.on_click.is_some()
+        self.handlers.contains_key("click")
+    }
+
+    pub fn handler(&self, event: &str) -> Option<&Py<PyAny>> {
+        self.handlers.get(event)
     }
 }
 
@@ -257,6 +265,15 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         opacity: f32_of(d, "opacity")?.unwrap_or(1.0),
         press_scale: f32_of(d, "press_scale")?.unwrap_or(1.0),
         capture: bool_of(d, "capture")?,
+        overlay: match str_of(d, "layer")?.as_deref() {
+            None | Some("base") => false,
+            Some("overlay") => true,
+            Some(other) => {
+                return Err(PyValueError::new_err(format!(
+                    "layer inválida: {other:?} (usa \"base\" u \"overlay\")"
+                )));
+            }
+        },
         max_lines: f32_of(d, "max_lines")?.map(|n| n as usize),
         text_align: str_of(d, "text_align")?,
     })
@@ -325,6 +342,26 @@ fn parse_node(
         text: str_of(d, "text")?,
         text_props,
         children,
-        on_click: get(d, "on_click")?.map(|f| f.unbind()),
+        handlers: parse_handlers(d)?,
     })
+}
+
+fn parse_handlers(d: &Bound<'_, PyDict>) -> PyResult<HashMap<String, Py<PyAny>>> {
+    let Some(obj) = get(d, "handlers")? else {
+        return Ok(HashMap::new());
+    };
+    let mut handlers = HashMap::new();
+    for (name, cb) in obj.cast::<PyDict>()?.iter() {
+        if cb.is_none() {
+            continue;
+        }
+        if !cb.is_callable() {
+            return Err(PyValueError::new_err(format!(
+                "el manejador on_{} debe ser callable",
+                name.extract::<String>()?
+            )));
+        }
+        handlers.insert(name.extract::<String>()?, cb.unbind());
+    }
+    Ok(handlers)
 }

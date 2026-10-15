@@ -50,6 +50,6 @@ def test_button_keeps_callback_and_key():
         return None
 
     spec = button("OK", cb, key="ok").to_spec(MIDNIGHT)
-    assert spec["on_click"] is cb
+    assert spec["handlers"] == {"click": cb}
     assert spec["key"] == "ok"
     assert spec["children"][0]["text"] == "OK"
