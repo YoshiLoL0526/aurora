@@ -1,0 +1,19 @@
+[package]
+name = "aurora_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py310"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
+softbuffer = "0.4.8"
+taffy = "0.15.0"
+winit = "0.30.13"
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 4

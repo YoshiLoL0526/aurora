@@ -1,0 +1,20 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "aurora-ui"
+version = "0.1.0"
+description = "UI de escritorio declarativa para Python con núcleo nativo en Rust (Skia + Taffy)."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: User Interfaces",
+]
+
+[tool.maturin]
+python-source = "python"
+module-name = "aurora._core"
+features = ["pyo3/extension-module"]
