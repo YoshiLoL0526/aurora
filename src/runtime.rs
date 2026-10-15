@@ -79,6 +79,8 @@ pub struct Runtime {
     /// Último texto escrito con el teclado, para no duplicarlo si el IME lo confirma también.
     last_typed: Option<(String, Instant)>,
     pub stats: FrameStats,
+    /// Recuerda los nodos de los `@component` entre reconstrucciones.
+    parser: spec::Parser,
 }
 
 /// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
@@ -154,6 +156,7 @@ impl Runtime {
             clipboard,
             last_typed: None,
             stats: FrameStats::default(),
+            parser: spec::Parser::default(),
         }
     }
 
@@ -183,7 +186,7 @@ impl Runtime {
             let start = Instant::now();
             let obj = self.build.call0(py)?;
             let built = Instant::now();
-            let tree = spec::parse(obj.bind(py))?;
+            let tree = self.parser.parse(obj.bind(py))?;
             Ok((tree, built - start, built.elapsed()))
         })?;
         self.stats.build = build;

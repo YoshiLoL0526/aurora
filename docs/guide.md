@@ -221,6 +221,24 @@ App(view, title="Monitor", size=(900, 600)).run()
 > por ejemplo) entre actualizaciones. En listas que cambian de orden o de tamaño, `key` le dice
 > qué elemento es cuál.
 
+Cada cambio vuelve a llamar a `view()`, y con cuatro servicios no importa. Con miles de filas sí:
+marca la fila como componente y Aurora solo reconstruirá las que reciban argumentos distintos.
+
+```python
+from aurora import component
+
+
+@component
+def service_row(s: Service):
+    return row(key=f"svc-{s.name}")[...]  # el resto de estilos e hijos, igual que antes
+```
+
+`Service` es una dataclass congelada, así que se compara por valor: al cambiar un servicio solo su
+fila se reconstruye. Pasa como argumento lo que distingue a cada fila (por ejemplo,
+`service_row(s, s.name == selected())`) en lugar de leer dentro un `Signal` que comparten todas:
+el componente depende de los `Signal` que lee. Los detalles están en la
+[referencia](reference.md#component).
+
 Si la lista puede crecer más que la ventana, envuélvela en `scroll`. Recorta lo que no cabe y se
 desplaza con la rueda, el trackpad o arrastrando su barra, que aparece al desplazarse o al acercar
 el puntero al borde:

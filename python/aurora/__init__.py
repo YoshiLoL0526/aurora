@@ -8,7 +8,7 @@ from collections.abc import Callable, Coroutine
 from concurrent.futures import Future
 from typing import Any, TypeVar
 
-from . import _core
+from . import _core, reactive
 from ._core import KeyEvent, Pilot
 from .components import (
     avatar,
@@ -26,6 +26,7 @@ from .components import (
     tooltip,
 )
 from .elements import Element, box, column, image, row, scroll, spacer, text
+from .reactive import component
 from .signal import Signal
 from .theme import DAYLIGHT, MIDNIGHT, Theme
 
@@ -45,6 +46,7 @@ __all__ = [
     "card",
     "checkbox",
     "column",
+    "component",
     "divider",
     "image",
     "row",
@@ -87,17 +89,21 @@ class App:
         self._loop_lock = threading.Lock()
 
     def _build(self) -> dict:
-        # El tema puede ser reactivo (p. ej. un Signal[Theme]) para alternar claro/oscuro.
-        theme = self.theme() if callable(self.theme) else self.theme
-        root = self.view()
-        root.style.setdefault("bg", "$background")
-        root.style.setdefault("font_family", theme.font_family)
-        root.style.setdefault("color", "$text")
-        root.style.setdefault("focus_color", "$primary")
-        # Burbuja de tooltip invertida respecto al tema: destaca en claro y en oscuro.
-        root.style.setdefault("tooltip_bg", "$text")
-        root.style.setdefault("tooltip_color", "$background")
-        return root.to_spec(theme)
+        reactive.begin_build()
+        try:
+            # El tema puede ser reactivo (p. ej. un Signal[Theme]) para alternar claro/oscuro.
+            theme = self.theme() if callable(self.theme) else self.theme
+            root = self.view()
+            root.style.setdefault("bg", "$background")
+            root.style.setdefault("font_family", theme.font_family)
+            root.style.setdefault("color", "$text")
+            root.style.setdefault("focus_color", "$primary")
+            # Burbuja de tooltip invertida respecto al tema: destaca en claro y en oscuro.
+            root.style.setdefault("tooltip_bg", "$text")
+            root.style.setdefault("tooltip_color", "$background")
+            return root.to_spec(theme)
+        finally:
+            reactive.end_build()
 
     def run(self) -> None:
         _core.run(self._build, self.title, *self.size)

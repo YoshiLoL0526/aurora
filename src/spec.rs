@@ -38,7 +38,7 @@ pub struct Gradient {
 
 /// Propiedades heredables (como en CSS): un nodo las hereda de su contenedor.
 /// Casi todas son de texto; `focus_color` es como `accent-color` en CSS.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TextProps {
     pub size: f32,
     pub weight: i32,
@@ -179,6 +179,30 @@ pub struct Node {
 }
 
 impl Node {
+    /// Copia profunda (los manejadores se comparten: son referencias a Python).
+    pub fn clone_ref(&self, py: Python<'_>) -> Node {
+        Node {
+            key: self.key.clone(),
+            kind: self.kind,
+            style: self.style.clone(),
+            text: self.text.clone(),
+            text_props: self.text_props.clone(),
+            children: self.children.iter().map(|c| c.clone_ref(py)).collect(),
+            handlers: self
+                .handlers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone_ref(py)))
+                .collect(),
+        }
+    }
+
+    fn collect_keys(&self, out: &mut Vec<String>) {
+        out.push(self.key.clone());
+        for child in &self.children {
+            child.collect_keys(out);
+        }
+    }
+
     /// Número de nodos del subárbol, incluido este.
     pub fn count(&self) -> usize {
         1 + self.children.iter().map(Node::count).sum::<usize>()
@@ -405,17 +429,111 @@ fn inherit_text(d: &Bound<'_, PyDict>, parent: &TextProps) -> PyResult<TextProps
 /// Las keys deben ser únicas en todo el árbol: identifican al nodo para
 /// despachar clics y conservar el estado de animación. Una key repetida
 /// haría que el clic llegara al callback de otro nodo, así que se rechaza.
+///
+/// Un nodo sin key recibe la de su padre seguida de su posición (`"0/1/2"`, o
+/// `"fila-7/0"` bajo un nodo con key): así su identidad no cambia si su padre
+/// con key se mueve de sitio.
 pub fn parse(obj: &Bound<'_, PyAny>) -> PyResult<Node> {
-    parse_node(obj, "0", &TextProps::default(), &mut HashSet::new())
+    Parser::default().parse(obj)
+}
+
+/// Parser con memoria entre reconstrucciones. Los dicts de los `@component`
+/// que no cambiaron llegan como el **mismo objeto** de Python (marcados con
+/// `memo`): su `Node` se copia del parseo anterior en vez de volver a leer
+/// cada propiedad de cada dict.
+#[derive(Default)]
+pub struct Parser {
+    memo: HashMap<usize, Memo>,
+}
+
+/// Nodo parseado de un dict memorizado.
+struct Memo {
+    /// Mantiene vivo el dict: mientras exista, su dirección no se reutiliza.
+    _dict: Py<PyAny>,
+    /// Key resuelta de la raíz: de ella salen las de todo el subárbol.
+    key: String,
+    /// Lo heredado del padre también forma parte del resultado.
+    inherited: TextProps,
+    node: Node,
+    keys: Vec<String>,
+}
+
+struct Ctx<'a> {
+    seen: HashSet<String>,
+    /// Memoria del parseo anterior (se consume) y la de este (se rellena).
+    old: &'a mut HashMap<usize, Memo>,
+    new: HashMap<usize, Memo>,
+}
+
+impl Parser {
+    pub fn parse(&mut self, obj: &Bound<'_, PyAny>) -> PyResult<Node> {
+        let mut ctx = Ctx {
+            seen: HashSet::new(),
+            old: &mut self.memo,
+            new: HashMap::new(),
+        };
+        let node = parse_node(obj, "0", &TextProps::default(), &mut ctx)?;
+        self.memo = ctx.new;
+        Ok(node)
+    }
+}
+
+fn check_unique(seen: &mut HashSet<String>, key: &str) -> PyResult<()> {
+    if !seen.insert(key.to_owned()) {
+        return Err(PyValueError::new_err(format!(
+            "key duplicada en el árbol de la vista: {key:?}"
+        )));
+    }
+    Ok(())
 }
 
 fn parse_node(
     obj: &Bound<'_, PyAny>,
     path: &str,
     inherited: &TextProps,
-    seen: &mut HashSet<String>,
+    ctx: &mut Ctx<'_>,
 ) -> PyResult<Node> {
     let d = obj.cast::<PyDict>()?;
+    if !bool_of(d, "memo")? {
+        return parse_fresh(d, path, inherited, ctx);
+    }
+    let id = obj.as_ptr() as usize;
+    let key = str_of(d, "key")?.unwrap_or_else(|| path.to_owned());
+    let hit = ctx
+        .old
+        .remove(&id)
+        .filter(|m| m.key == key && m.inherited == *inherited);
+    let memo = match hit {
+        Some(memo) => {
+            for k in &memo.keys {
+                check_unique(&mut ctx.seen, k)?;
+            }
+            memo
+        }
+        None => {
+            let node = parse_fresh(d, path, inherited, ctx)?;
+            let mut keys = Vec::new();
+            node.collect_keys(&mut keys);
+            Memo {
+                _dict: obj.clone().unbind(),
+                key,
+                inherited: inherited.clone(),
+                node,
+                keys,
+            }
+        }
+    };
+    let node = memo.node.clone_ref(obj.py());
+    ctx.new.insert(id, memo);
+    Ok(node)
+}
+
+fn parse_fresh(
+    d: &Bound<'_, PyDict>,
+    path: &str,
+    inherited: &TextProps,
+    ctx: &mut Ctx<'_>,
+) -> PyResult<Node> {
     let kind = match str_of(d, "kind")?.as_deref() {
         Some("text") => Kind::Text,
         Some("input") => Kind::Input,
@@ -429,18 +547,14 @@ fn parse_node(
     let style = parse_style(&style_dict)?;
     let text_props = inherit_text(&style_dict, inherited)?;
     let key = str_of(d, "key")?.unwrap_or_else(|| path.to_owned());
-    if !seen.insert(key.clone()) {
-        return Err(PyValueError::new_err(format!(
-            "key duplicada en el árbol de la vista: {key:?}"
-        )));
-    }
+    check_unique(&mut ctx.seen, &key)?;
 
     let children = match get(d, "children")? {
         Some(list) => list
             .cast::<PyList>()?
             .iter()
             .enumerate()
-            .map(|(i, child)| parse_node(&child, &format!("{path}/{i}"), &text_props, seen))
+            .map(|(i, child)| parse_node(&child, &format!("{key}/{i}"), &text_props, ctx))
             .collect::<PyResult<Vec<_>>>()?,
         None => Vec::new(),
     };

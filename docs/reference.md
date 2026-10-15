@@ -5,6 +5,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 
 - [App](#app)
 - [Signal](#signal)
+- [component](#component)
 - [Pilot (tests de interacción)](#pilot-tests-de-interacción)
 - [Primitivas](#primitivas)
 - [Teclado y foco](#teclado-y-foco)
@@ -51,7 +52,8 @@ count = Signal(0)
 | `count.update(fn)` | Atajo para `count.set(fn(count()))`. |
 | `count.subscribe(fn)` | Llama a `fn(valor)` en cada cambio. Devuelve una función para cancelar la suscripción. |
 
-La interfaz se reconstruye tras cada evento de usuario y tras cada `set` que cambie un valor.
+La interfaz se reconstruye tras cada evento de usuario y tras cada `set` que cambie un valor;
+los [`@component`](#component) que no dependan de lo que cambió se reutilizan.
 `set` es seguro desde **cualquier hilo o corrutina**: despierta el bucle de eventos, así que un
 `Signal` actualizado por un hilo de trabajo o por una tarea de `app.spawn()` se ve en pantalla sin
 esperar a que el usuario mueva el ratón.
@@ -69,6 +71,33 @@ app = App(view)
 app.spawn(load())
 app.run()
 ```
+
+## component
+
+```python
+@component
+def fila(tarea: Tarea, seleccionada: bool):
+    return row(key=f"tarea-{tarea.id}", bg="$surface" if seleccionada else None)[...]
+```
+
+`view()` se vuelve a llamar entera tras cada cambio, pero un `@component` **no se reconstruye** si
+sus argumentos son iguales (`==`) a los de la última vez y no cambió ningún `Signal` que leyera, al
+construirse o al resolver sus textos con lambda. Devuelve el mismo `Element`, que recuerda su
+serialización, y el núcleo reutiliza el nodo ya procesado: el coste de esa rama en Python y en el
+parseo desaparece. Es la forma de escalar listas grandes: en una de 10 000 filas, cambiar la
+selección reconstruye 2 filas en vez de 10 000.
+
+- Pasa como argumento lo que distingue a cada instancia (`seleccionada`) en vez de leer un
+  `Signal` compartido dentro: un componente que lee `selected()` depende de él y se reconstruye
+  cada vez que cambia.
+- Los argumentos deben ser **hashables** (números, cadenas, tuplas, dataclasses congeladas). Con
+  argumentos no hashables el componente funciona, pero no se memoriza.
+- Depende solo de sus argumentos y de `Signal`. Si lee estado mutable normal (una lista global, un
+  atributo de un objeto), no se entera de sus cambios.
+- No pases lambdas creadas en cada llamada como argumento: son distintas cada vez. Créalas dentro
+  del componente (`on_click=lambda: selected.set(tarea.id)`).
+- Un componente puede contener otros: si cambia el de dentro, se reconstruye también el de fuera.
+- Se olvidan las instancias que no aparecen en la última reconstrucción de la vista.
 
 ## Pilot (tests de interacción)
 
@@ -192,7 +221,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | `on_<evento>` | Todo argumento que empiece por `on_` se trata como manejador, no como estilo. |
 | `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`. |
 | `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
-| `key` | Identidad estable. Conserva el estado de animación aunque el elemento cambie de posición en el árbol. Recomendado en listas dinámicas. |
+| `key` | Identidad estable. Conserva el estado de animación aunque el elemento cambie de posición en el árbol. Recomendado en listas dinámicas. Un elemento sin `key` recibe la de su padre seguida de su posición (`"fila-7/0"`, `"fila-7/1"`…), así que los hijos siguen a su padre si este se mueve. |
 
 ## Teclado y foco
 

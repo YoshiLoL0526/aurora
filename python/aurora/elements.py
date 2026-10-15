@@ -33,7 +33,7 @@ class Element:
     resto como propiedades de estilo.
     """
 
-    __slots__ = ("children", "content", "handlers", "key", "kind", "style")
+    __slots__ = ("_memo", "children", "content", "handlers", "key", "kind", "style")
 
     def __init__(
         self,
@@ -46,13 +46,21 @@ class Element:
         self.kind = kind
         self.content = content
         self.key = key
-        self.handlers: dict[str, Callable[..., Any]] = {
-            k.removeprefix("on_"): v for k, v in props.items() if k.startswith("on_") and v is not None
-        }
-        self.style = {
-            _ALIASES.get(k, k): v for k, v in props.items() if not k.startswith("on_") and v is not None
-        }
+        # Un solo recorrido: crear elementos es lo más frecuente al construir la vista.
+        handlers: dict[str, Callable[..., Any]] = {}
+        style: dict[str, Any] = {}
+        for k, v in props.items():
+            if v is None:
+                continue
+            if k[:3] == "on_":
+                handlers[k[3:]] = v
+            else:
+                style[_ALIASES.get(k, k)] = v
+        self.handlers = handlers
+        self.style = style
         self.children: list[Element] = []
+        # Raíz de un `@component`: su `Entry` memoriza la serialización.
+        self._memo: Any = None
 
     @property
     def on_click(self) -> Callable[..., Any] | None:
@@ -64,18 +72,34 @@ class Element:
 
     def to_spec(self, theme: Theme) -> dict[str, Any]:
         """Serializa a la forma que consume el núcleo Rust (resolviendo tokens y lambdas)."""
+        if self._memo is not None:
+            return self._memo.spec_for(theme, lambda: self._to_spec(theme))
+        return self._to_spec(theme)
+
+    def _to_spec(self, theme: Theme) -> dict[str, Any]:
         content = self.content() if callable(self.content) else self.content
         return {
             "kind": self.kind,
             "key": self.key,
             "text": None if content is None else str(content),
-            "style": {k: v if k in _LITERAL else theme.resolve(v) for k, v in self.style.items()},
+            "style": {k: _resolve(theme, k, v) for k, v in self.style.items()},
             "handlers": self.handlers,
             "children": [c.to_spec(theme) for c in self.children],
         }
 
     def __repr__(self) -> str:
         return f"<{self.kind} {self.style} children={len(self.children)}>"
+
+
+def _resolve(theme: Theme, prop: str, value: Any) -> Any:
+    # Solo una cadena "$..." o una tupla pueden contener tokens: el resto pasa sin llamar al tema.
+    if prop in _LITERAL:
+        return value
+    if isinstance(value, str):
+        return theme.resolve(value) if value[:1] == "$" else value
+    if isinstance(value, tuple):
+        return theme.resolve(value)
+    return value
 
 
 def _flatten(children: Child) -> Iterable[Element]:

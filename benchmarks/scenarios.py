@@ -14,7 +14,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from aurora import App, Pilot, Signal, badge, box, card, column, row, scroll, spacer, text, text_input
+from aurora import (
+    App,
+    Pilot,
+    Signal,
+    badge,
+    box,
+    card,
+    column,
+    component,
+    row,
+    scroll,
+    spacer,
+    text,
+    text_input,
+)
 
 Op = Callable[[Pilot], None]
 
@@ -54,13 +68,14 @@ def _idle(pilot: Pilot) -> None:
 # --------------------------------------------------------------- lista de 10k ítems
 
 
-def list_10k(scale: float = 1.0) -> Bench:
+def list_10k(scale: float = 1.0, *, memo: bool = False) -> Bench:
+    """Con `memo=True`, cada fila es un `@component`: solo se reconstruyen las dos
+    filas cuya selección cambia (la que la pierde y la que la gana)."""
     n = max(10, int(10_000 * scale))
     selected = Signal(0)
     names = [f"Tarea {i:05d} · revisión de {('diseño', 'código', 'datos', 'copy')[i % 4]}" for i in range(n)]
 
-    def item(i: int):
-        on = selected() == i
+    def item(i: int, on: bool):
         return row(
             key=f"item-{i}",
             gap=12,
@@ -77,10 +92,14 @@ def list_10k(scale: float = 1.0) -> Bench:
             text(f"{(i * 37) % 100} %", size=13, color="$muted"),
         ]
 
+    if memo:
+        item = component(item)
+
     def view():
+        current = selected()
         return column(padding=16, gap=12)[
             text(f"{n} tareas", size=20, weight=700),
-            scroll(key="lista", gap=2)[[item(i) for i in range(n)]],
+            scroll(key="lista", gap=2)[[item(i, i == current) for i in range(n)]],
         ]
 
     def rebuild(pilot: Pilot) -> None:
@@ -189,6 +208,11 @@ def typing(scale: float = 1.0) -> Bench:
 
 SCENARIOS = [
     Scenario("lista_10k", "Lista de 10 000 filas en un scroll, con selección", list_10k),
+    Scenario(
+        "lista_10k_memo",
+        "La misma lista con cada fila como @component",
+        lambda scale: list_10k(scale, memo=True),
+    ),
     Scenario("dashboard_50", "50 paneles con 24 barras cada uno, datos que cambian", dashboard_50),
     Scenario("typing", "Escribir en un campo que filtra un formulario de 500 filas", typing),
 ]

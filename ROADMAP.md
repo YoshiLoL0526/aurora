@@ -38,7 +38,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 *Escalar a miles de elementos manteniendo 60 fps.*
 
-- ⏳ **Reactividad de grano fino**: cada `Signal` sabe qué nodos dependen de él; solo se reconstruye esa rama
+- ✅ **Reactividad de grano fino**: `@component` registra los `Signal` que lee y solo se reconstruye si cambian ellos o sus argumentos
 - ✅ Caché de layout y de párrafos entre frames (con mediciones de texto memorizadas)
 - ✅ Diff del árbol por `key`: el layout de las ramas que no cambian se reutiliza al reconstruir
 - ⏳ Invalidación por fases (estilo → layout → pintura → composición)

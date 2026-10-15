@@ -94,16 +94,39 @@ contextos de GPU que crear ni drivers con los que pelear. El formato de píxel d
 directamente en el buffer de la ventana, **sin copias**. El backend GPU (v0.3) entra detrás
 del mismo punto.
 
-### Árbol completo por actualización (de momento)
+### Árbol completo por actualización, con ramas memorizadas
 
-Aurora reconstruye la vista entera tras cada evento que cambia estado (también tras cada tecla en
-un campo de texto). Es una simplificación deliberada:
+Aurora llama a la vista entera tras cada evento que cambia estado (también tras cada tecla en un
+campo de texto). Es una simplificación deliberada:
 el coste real es serializar el árbol en Python, que para apps medianas está muy por debajo de un
 frame. El diseño ya prepara la reactividad de grano fino de la v0.3:
 
 - Los nodos tienen **identidad estable** (`key` explícita o ruta en el árbol), que ya hoy se usa
   para conservar el estado de animación entre reconstrucciones.
 - `Signal` tiene suscriptores, y es el punto natural para registrar dependencias por rama.
+
+### Reactividad de grano fino
+
+Llamar a `view()` es lo que más cuesta en una vista grande: crear los `Element`, serializarlos y
+parsear los dicts en Rust. `@component` (`python/aurora/reactive.py`) evita las tres cosas en las
+ramas que no cambiaron:
+
+- **Dependencias.** Cada `Signal` tiene una versión que sube en cada `set`. Mientras un componente
+  se construye hay un `Frame` en una pila (por hilo) y cada lectura de un `Signal` anota su versión
+  ahí. Lo mismo al serializar, porque los textos con lambda se evalúan en `to_spec`. Un componente
+  anidado añade sus dependencias al que lo contiene.
+- **Memoria por argumentos.** La llamada se reutiliza si sus argumentos (hashables) coinciden con
+  una entrada cuyas dependencias siguen en la misma versión: devuelve el mismo `Element`, cuya
+  raíz guarda en `_memo` la serialización (válida para el mismo tema). Cada reconstrucción es una
+  generación, y las entradas que no se usaron en ella se descartan.
+- **Parseo memorizado.** El dict de un componente lleva `memo: True` y llega a Rust como el mismo
+  objeto. `spec::Parser`, que vive en el `Runtime`, guarda el `Node` de cada uno por dirección
+  (sosteniendo una referencia, para que la dirección no se reutilice) junto con la key de su raíz
+  y las propiedades heredadas. Si las tres coinciden, copia el nodo en vez de leer cada propiedad
+  de cada dict.
+- **Keys.** Un nodo sin key toma la de su padre más su posición, así que el subárbol de un nodo con
+  key tiene las mismas keys esté donde esté: un componente con key sigue siendo reutilizable
+  aunque se inserten filas antes que él, y el diff del layout lo empareja con su nodo de Taffy.
 
 ### Cachés entre frames
 

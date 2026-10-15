@@ -16,6 +16,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   paneles y escritura en un formulario de 500 filas, con mediana y p95 por fase, salida JSON,
   comparación con una medición anterior (`--compare`) y ejecución en CI con resumen en cada build.
 - `Pilot.stats["layout_cached"]`: si el frame reutilizó el layout del anterior.
+- Reactividad de grano fino con `@component`: un componente no se reconstruye si sus argumentos
+  son iguales y no cambió ningún `Signal` que leyera (al construirse o en sus textos con lambda).
+  Reutiliza el mismo `Element`, su serialización y el nodo ya parseado en el núcleo. En la lista de
+  10 000 filas con filas como componentes, cambiar la selección pasa de ~0,8 s a ~0,19 s.
 
 ### Cambiado
 
@@ -29,6 +33,11 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   las ramas cuyo estilo de layout, texto, imagen o hijos cambiaron. Un cambio que solo afecta a la
   pintura (fondo, color de borde, sombra…) no rehace el layout. En la lista de 10 000 filas el
   layout al reconstruir baja a ~60 ms, y en el formulario de 500 filas a ~2 ms por tecla.
+- **Incompatible:** un elemento sin `key` recibe la de su padre seguida de su posición
+  (`"fila-7/0"`), no la ruta completa desde la raíz. Los hijos de un elemento con key conservan su
+  identidad (hover, foco, scroll) aunque el padre cambie de sitio. Un test que buscara un nodo por
+  su ruta (`"0/1/2"`) tiene ahora como prefijo la key de su ancestro con key más cercano.
+- Crear elementos y resolver tokens de tema es algo más rápido (un solo recorrido de los argumentos).
 
 ## [0.2.0] — 2026-10-15
 
