@@ -4,10 +4,11 @@
 
 use pyo3::exceptions::{PyLookupError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use skia_safe::Surface;
+use skia_safe::{Point, Surface};
 
 use crate::render::{raster_surface, write_png};
 use crate::runtime::Runtime;
+use crate::scroll::LINE;
 
 /// Paso de tiempo de un frame simulado.
 const FRAME: f32 = 1.0 / 60.0;
@@ -22,6 +23,12 @@ pub struct Pilot {
 }
 
 impl Pilot {
+    fn center(&self, key: &str) -> PyResult<Point> {
+        self.rt.rect(key).map(|r| r.center()).ok_or_else(|| {
+            PyLookupError::new_err(format!("no hay ningún nodo pintado con key {key:?}"))
+        })
+    }
+
     fn step(&mut self, dt: f32) -> PyResult<bool> {
         self.rt.sync()?;
         let animating = self.rt.tick(dt);
@@ -107,11 +114,31 @@ impl Pilot {
     /// Clic en el centro del nodo `key`, como lo haría una persona: si otro
     /// nodo lo tapa, el clic llega a ese otro.
     fn click(&mut self, key: &str) -> PyResult<()> {
-        let rect = self.rt.rect(key).ok_or_else(|| {
-            PyLookupError::new_err(format!("no hay ningún nodo pintado con key {key:?}"))
-        })?;
-        let c = rect.center();
+        let c = self.center(key)?;
         self.click_at(c.x, c.y)
+    }
+
+    /// Rueda bajo el puntero. Positivo = hacia el final del contenido. Con
+    /// `lines=True` cuenta pasos de rueda de ratón (animados); si no, píxeles
+    /// de trackpad (inmediatos).
+    #[pyo3(signature = (dy = 0.0, dx = 0.0, lines = false))]
+    fn wheel(&mut self, dy: f32, dx: f32, lines: bool) -> PyResult<()> {
+        let unit = if lines { LINE } else { 1.0 };
+        self.rt.wheel(Point::new(dx * unit, dy * unit), lines);
+        self.step(FRAME).map(|_| ())
+    }
+
+    /// Mueve el puntero al centro de `key` y desplaza `dy`/`dx` píxeles.
+    #[pyo3(signature = (key, dy = 0.0, dx = 0.0))]
+    fn scroll(&mut self, key: &str, dy: f32, dx: f32) -> PyResult<()> {
+        let c = self.center(key)?;
+        self.move_to(c.x, c.y)?;
+        self.wheel(dy, dx, false)
+    }
+
+    /// `(x, y)` desplazados del contenedor `scroll` con esa key, o `None`.
+    fn scroll_offset(&self, key: &str) -> Option<(f32, f32)> {
+        self.rt.scroll_offset(key).map(|p| (p.x, p.y))
     }
 
     /// `(x, y, ancho, alto)` del nodo en el último frame, o `None` si no se pintó.

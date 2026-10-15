@@ -59,6 +59,24 @@ impl Default for TextProps {
     }
 }
 
+/// Ejes en los que un contenedor `scroll` se desplaza.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Axis {
+    X,
+    Y,
+    Both,
+}
+
+impl Axis {
+    pub fn x(self) -> bool {
+        matches!(self, Axis::X | Axis::Both)
+    }
+
+    pub fn y(self) -> bool {
+        matches!(self, Axis::Y | Axis::Both)
+    }
+}
+
 /// Longitud: píxeles lógicos o porcentaje del contenedor ("50%").
 #[derive(Clone, Copy, Debug)]
 pub enum Len {
@@ -81,9 +99,13 @@ pub struct Style {
     pub inset: [Option<f32>; 4],
     pub min_width: Option<f32>,
     pub max_width: Option<f32>,
+    pub min_height: Option<f32>,
+    pub max_height: Option<f32>,
     pub grow: f32,
     pub shrink: Option<f32>,
     pub wrap: bool,
+    /// Contenedor desplazable: recorta a sus hijos y se desplaza en estos ejes.
+    pub scroll: Option<Axis>,
     // Visual
     pub bg: Option<Color>,
     pub bg_hover: Option<Color>,
@@ -95,6 +117,7 @@ pub struct Style {
     pub shadow: Option<Shadow>,
     pub opacity: f32,
     pub press_scale: f32,
+    pub scrollbar_color: Option<Color>,
     /// Barrera de eventos: los clics dentro no llegan a los ancestros (modales).
     pub capture: bool,
     /// Capa superior: se maqueta en su sitio pero se pinta (y recibe eventos)
@@ -251,9 +274,22 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         ],
         min_width: f32_of(d, "min_width")?,
         max_width: f32_of(d, "max_width")?,
+        min_height: f32_of(d, "min_height")?,
+        max_height: f32_of(d, "max_height")?,
         grow: f32_of(d, "grow")?.unwrap_or(0.0),
         shrink: f32_of(d, "shrink")?,
         wrap: bool_of(d, "wrap")?,
+        scroll: match str_of(d, "scroll")?.as_deref() {
+            None => None,
+            Some("x") => Some(Axis::X),
+            Some("y") => Some(Axis::Y),
+            Some("both") => Some(Axis::Both),
+            Some(other) => {
+                return Err(PyValueError::new_err(format!(
+                    "scroll inválido: {other:?} (usa \"x\", \"y\" o \"both\")"
+                )));
+            }
+        },
         bg: color_of(d, "bg")?,
         bg_hover: color_of(d, "bg_hover")?,
         bg_pressed: color_of(d, "bg_pressed")?,
@@ -264,6 +300,7 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         shadow,
         opacity: f32_of(d, "opacity")?.unwrap_or(1.0),
         press_scale: f32_of(d, "press_scale")?.unwrap_or(1.0),
+        scrollbar_color: color_of(d, "scrollbar_color")?,
         capture: bool_of(d, "capture")?,
         overlay: match str_of(d, "layer")?.as_deref() {
             None | Some("base") => false,

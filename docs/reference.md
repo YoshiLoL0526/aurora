@@ -88,6 +88,9 @@ def test_counter():
 | `click_at(x, y)` | Mueve el puntero, pulsa y suelta. |
 | `move_to(x, y)` / `leave()` | Mueve el puntero / lo saca de la ventana. |
 | `mouse_down()` / `mouse_up()` | Pulsa / suelta el botón izquierdo por separado. |
+| `wheel(dy=0, dx=0, *, lines=False)` | Rueda bajo el puntero; positivo = hacia el final del contenido. En píxeles (trackpad, inmediato) o, con `lines=True`, en pasos de rueda (animado). |
+| `scroll(key, dy=0, dx=0)` | Mueve el puntero al centro de `key` y desplaza esos píxeles. |
+| `scroll_offset(key)` | `(x, y)` desplazados del `scroll` con esa key, o `None`. |
 | `hovered` | Key del nodo interactivo bajo el puntero, o `None`. |
 | `rect(key)` | `(x, y, ancho, alto)` del nodo en el último frame, o `None`. |
 | `frame(dt=1/60)` | Avanza un frame. Devuelve `True` si quedan transiciones en curso. |
@@ -116,6 +119,30 @@ Dentro de los corchetes se aceptan elementos, listas (se aplanan), strings (se c
 | `row(**estilo)` | Contenedor con `direction="row"`. |
 | `text(contenido, **estilo)` | Texto. `contenido` puede ser un `str` o un callable (`lambda: f"{x()}"`), que se evalúa en cada reconstrucción. |
 | `spacer()` | Caja con `grow=1`: ocupa todo el espacio libre del eje principal. |
+| `scroll(*, axis="y", **estilo)` | Contenedor desplazable (rueda, trackpad y barra arrastrable). Ver abajo. |
+
+### `scroll(*, axis="y", **estilo)`
+
+Recorta su contenido a su caja (respetando `radius` y `border_width`) y lo desplaza en el eje
+`axis`: `"y"` (vertical), `"x"` (horizontal) o `"both"`.
+
+- Apila sus hijos en el eje que se desplaza (`direction="row"` con `axis="x"`) y **no los encoge**
+  para que quepan: lo que sobra se desplaza. El `padding` forma parte del contenido desplazable.
+- Uno vertical sin `height` ni `max_height` ocupa el espacio libre (`grow=1`). Con `height` o
+  `max_height` tiene ese tamaño.
+- La rueda del ratón se desplaza con suavizado; el trackpad, píxel a píxel (en macOS, con la inercia
+  del sistema). Al llegar al límite, el desplazamiento pasa al `scroll` que lo contiene. Una rueda
+  vertical también desplaza un `scroll` solo horizontal.
+- La barra se superpone al contenido sin ocupar espacio. Aparece al desplazarse o al acercar el
+  puntero al borde, y se oculta sola. Se puede arrastrar; pulsar fuera del pulgar lo lleva al puntero.
+- Los hijos que quedan fuera de la zona visible no reciben clics ni hover.
+- Dale una `key` para conservar la posición si el `scroll` cambia de sitio en el árbol. Si el
+  contenido se encoge, la posición se ajusta sola.
+
+```python
+scroll(key="log", max_height=240, gap=6)[[text(line) for line in lines()]]
+scroll(axis="x", gap=12)[[card(width=200)[...] for item in items()]]
+```
 
 Además de las propiedades de estilo, todos los elementos aceptan:
 
@@ -172,11 +199,13 @@ contenedores (como en CSS).
 | `justify` | `"start"`, `"center"`, `"end"`, `"between"`, `"around"`, `"evenly"` | `"start"` | Distribución en el eje principal. |
 | `width`, `height` | número · `"50%"` | automático | Tamaño fijo o relativo al contenedor. |
 | `min_width`, `max_width` | número | — | Límites de ancho. |
+| `min_height`, `max_height` | número | — | Límites de alto. `max_height` en un `scroll` limita cuánto crece antes de desplazarse. |
 | `grow` | número | `0` | Cuánto crece para ocupar espacio libre. |
 | `shrink` | número | `1` | Cuánto se encoge si falta espacio. |
 | `wrap` | `bool` | `False` | Permite saltar de línea a los hijos (rejillas de tarjetas). |
 | `position` | `"absolute"` | relativo | Saca al elemento del flujo; se coloca con `top/right/bottom/left` respecto a su padre. Útil para modales, toasts y superposiciones. |
 | `top`, `right`, `bottom`, `left` | número | — | Desplazamientos para `position="absolute"`. |
+| `scroll` | `"x"`, `"y"`, `"both"` | — | Convierte la caja en contenedor desplazable. Usa la primitiva `scroll()`, que añade buenos valores por defecto. |
 
 > **Truco: columnas de igual ancho.** `grow=1, width=0` en cada hijo de una `row` reparte el
 > espacio a partes iguales, sin importar su contenido.
@@ -195,6 +224,7 @@ contenedores (como en CSS).
 | `shadow` | `(dx, dy, blur, color)` | Sombra difuminada desplazada. |
 | `opacity` | `0.0` – `1.0` | Opacidad del elemento y todos sus hijos. |
 | `press_scale` | número | Escala al pulsar (p. ej. `0.96`). Animada. |
+| `scrollbar_color` | color | Color del pulgar de la barra de un `scroll` (se pinta translúcido). `scroll()` usa `$muted`. |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
 | `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |
 

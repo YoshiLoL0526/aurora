@@ -46,6 +46,12 @@ class Pilot:
         """Clic en el centro del nodo `key`. `LookupError` si no se pintó."""
     def rect(self, key: str) -> tuple[float, float, float, float] | None:
         """`(x, y, ancho, alto)` del nodo en el último frame."""
+    def wheel(self, dy: float = 0.0, dx: float = 0.0, lines: bool = False) -> None:
+        """Rueda bajo el puntero. Positivo = hacia el final. `lines=True`: pasos de rueda animados."""
+    def scroll(self, key: str, dy: float = 0.0, dx: float = 0.0) -> None:
+        """Mueve el puntero al centro de `key` y desplaza esos píxeles."""
+    def scroll_offset(self, key: str) -> tuple[float, float] | None:
+        """`(x, y)` desplazados del contenedor `scroll` con esa key."""
     @property
     def hovered(self) -> str | None:
         """Key del nodo interactivo bajo el puntero."""

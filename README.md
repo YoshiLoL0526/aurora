@@ -175,7 +175,6 @@ solución web encaja mejor. Aurora no busca reemplazarlas: busca que construir u
 
 Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap](ROADMAP.md)):
 
-- **Sin scroll**: el contenido que no cabe en la ventana se corta.
 - **Sin input de texto**: aún no hay campos editables.
 - **Render por CPU**: suficiente para interfaces normales; el backend GPU está planificado.
 - **Reconstrucción completa**: cada evento reconstruye la vista entera. Es barato en apps

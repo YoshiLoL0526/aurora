@@ -221,6 +221,25 @@ App(view, title="Monitor", size=(900, 600)).run()
 > por ejemplo) entre actualizaciones. En listas que cambian de orden o de tamaño, `key` le dice
 > qué elemento es cuál.
 
+Si la lista puede crecer más que la ventana, envuélvela en `scroll`. Recorta lo que no cabe y se
+desplaza con la rueda, el trackpad o arrastrando su barra, que aparece al desplazarse o al acercar
+el puntero al borde:
+
+```python
+from aurora import scroll
+
+
+def view():
+    return column(padding=32, gap=10)[
+        text("Haz clic en un servicio para cambiar su estado", color="$muted"),
+        scroll(key="services", gap=10)[[service_row(s) for s in services()]],
+    ]
+```
+
+Un `scroll` vertical sin `height` ocupa el espacio libre de su contenedor, y sus hijos mantienen
+su tamaño en lugar de encogerse para caber. Con una `key`, la posición se conserva aunque la vista
+se reconstruya.
+
 ## 7. Filtros y valores derivados
 
 Los valores derivados (totales, porcentajes, listas filtradas) **no se guardan**: se calculan

@@ -32,6 +32,7 @@ from aurora import (
     card,
     column,
     row,
+    scroll,
     spacer,
     stat,
     text,
@@ -706,8 +707,8 @@ def view() -> Element:
     title, subtitle, render = PAGES[page()]
     return row()[
         sidebar(),
-        column(grow=1, width=0, padding=(26, 30), gap=22)[
-            row(gap=10, align="center")[
+        column(grow=1, width=0, padding=(26, 0, 0, 0), gap=22)[
+            row(gap=10, align="center", padding=(0, 30))[
                 column(gap=3)[
                     text(title, size=26, weight=750, letter_spacing=-0.5),
                     text(subtitle, size=13, color="$muted"),
@@ -717,7 +718,10 @@ def view() -> Element:
                 button("Acerca de", lambda: modal.set(("about",)), variant="ghost", key="about"),
                 button("+ Nueva tarea", add_task, key="add"),
             ],
-            render(),
+            # Cada página conserva su propia posición de desplazamiento.
+            # El relleno va dentro para que el contenido llegue al borde de la ventana
+            # y las sombras de las tarjetas no se recorten.
+            scroll(key=f"page-{page()}", padding=(0, 30, 26, 30))[render()],
         ],
         modal_layer(),
         toast_layer(),

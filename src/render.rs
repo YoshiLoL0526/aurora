@@ -2,11 +2,11 @@
 //!
 //! Todo lo que ocurre por frame vive aquí, fuera del intérprete de Python.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use skia_safe::{
-    BlurStyle, Canvas, Color, Color4f, EncodedImageFormat, FontMgr, FontStyle, MaskFilter, Paint,
-    PaintStyle, Point, RRect, Rect, Surface, TileMode,
+    BlurStyle, Canvas, ClipOp, Color, Color4f, EncodedImageFormat, FontMgr, FontStyle, MaskFilter,
+    Paint, PaintStyle, Point, RRect, Rect, Surface, TileMode,
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
@@ -16,11 +16,13 @@ use skia_safe::{
 };
 use taffy::{
     AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, JustifyContent,
-    LengthPercentage, LengthPercentageAuto, NodeId, Position, Size, TaffyTree, compute_leaf_layout,
+    LengthPercentage, LengthPercentageAuto, NodeId, Overflow, Position, Size, TaffyTree,
+    compute_leaf_layout,
 };
 
 use crate::color::lerp;
-use crate::spec::{Kind, Len, Node, Style, TextProps};
+use crate::scroll::{BAR_WIDTH, ScrollState};
+use crate::spec::{Axis, Kind, Len, Node, Style, TextProps};
 
 /// Contexto de los nodos hoja de texto: el párrafo ya "shapeado" se reutiliza
 /// para medir (durante el layout) y para pintar.
@@ -38,17 +40,36 @@ pub struct LayoutNode {
 pub struct HitRegion {
     pub key: String,
     pub rect: Rect,
+    /// Zona visible: la intersección de los contenedores `scroll` que lo recortan.
+    pub clip: Rect,
     pub interactive: bool,
     pub capture: bool,
+    pub scroll: Option<Axis>,
     /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
     pub parent: Option<usize>,
+}
+
+impl HitRegion {
+    fn contains(&self, x: f32, y: f32) -> bool {
+        let inside = |r: &Rect| x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+        inside(&self.rect) && inside(&self.clip)
+    }
+}
+
+/// Índice de la región pintada más arriba que contiene el punto (respetando recortes).
+pub fn topmost(regions: &[HitRegion], x: f32, y: f32) -> Option<usize> {
+    regions.iter().rposition(|r| r.contains(x, y))
+}
+
+/// Recorre la región y sus ancestros, de dentro hacia fuera.
+pub fn ancestors(regions: &[HitRegion], idx: Option<usize>) -> impl Iterator<Item = &HitRegion> {
+    std::iter::successors(idx.map(|i| &regions[i]), |r| r.parent.map(|p| &regions[p]))
 }
 
 /// Hit-testing: el nodo pintado más arriba bajo el cursor decide; el clic
 /// burbujea hasta el ancestro interactivo más cercano o se detiene en una barrera.
 pub fn hit_test(regions: &[HitRegion], x: f32, y: f32) -> Option<String> {
-    let contains = |r: &Rect| x >= r.left && x < r.right && y >= r.top && y < r.bottom;
-    let mut idx = regions.iter().rposition(|r| contains(&r.rect))?;
+    let mut idx = topmost(regions, x, y)?;
     loop {
         let r = &regions[idx];
         if r.interactive {
@@ -70,6 +91,8 @@ pub struct AnimState {
 pub struct Engine {
     fonts: FontCollection,
     anim: HashMap<String, AnimState>,
+    /// Estado de cada contenedor `scroll`, por key.
+    pub scroll: HashMap<String, ScrollState>,
     pub hovered: Option<String>,
     pub pressed: Option<String>,
 }
@@ -84,6 +107,7 @@ impl Engine {
         Self {
             fonts,
             anim: HashMap::new(),
+            scroll: HashMap::new(),
             hovered: None,
             pressed: None,
         }
@@ -123,8 +147,19 @@ impl Engine {
 
     // ----------------------------------------------------------------- layout
 
-    fn build_layout(&self, tree: &mut TaffyTree<TextCtx>, node: &Node) -> LayoutNode {
-        let style = taffy_style(&node.style);
+    /// `in_scroll`: el padre se desplaza a lo largo de su eje principal.
+    fn build_layout(
+        &self,
+        tree: &mut TaffyTree<TextCtx>,
+        node: &Node,
+        in_scroll: bool,
+    ) -> LayoutNode {
+        let mut style = taffy_style(&node.style);
+        // Dentro de un scroll los hijos no se encogen por defecto: el contenido que
+        // no cabe se desplaza en vez de aplastarse.
+        if in_scroll && node.style.shrink.is_none() {
+            style.flex_shrink = 0.0;
+        }
         if node.kind == Kind::Text {
             let paragraph = self.paragraph(
                 node.text.as_deref().unwrap_or(""),
@@ -139,10 +174,14 @@ impl Engine {
                 children: Vec::new(),
             };
         }
+        let scrolls_main = node
+            .style
+            .scroll
+            .is_some_and(|a| if node.style.row { a.x() } else { a.y() });
         let children: Vec<LayoutNode> = node
             .children
             .iter()
-            .map(|c| self.build_layout(tree, c))
+            .map(|c| self.build_layout(tree, c, scrolls_main))
             .collect();
         let ids: Vec<NodeId> = children.iter().map(|c| c.id).collect();
         let id = tree.new_with_children(style, &ids).expect("taffy node");
@@ -151,7 +190,7 @@ impl Engine {
 
     pub fn layout(&self, root: &Node, width: f32, height: f32) -> (TaffyTree<TextCtx>, LayoutNode) {
         let mut tree: TaffyTree<TextCtx> = TaffyTree::new();
-        let lroot = self.build_layout(&mut tree, root);
+        let lroot = self.build_layout(&mut tree, root, false);
 
         // La raíz siempre ocupa la ventana completa.
         let mut root_style = tree.style(lroot.id).expect("root").clone();
@@ -229,6 +268,9 @@ impl Engine {
             }
             s.hover > 0.0 || s.press > 0.0 || th > 0.0 || tp > 0.0
         });
+        for s in self.scroll.values_mut() {
+            animating |= s.tick(dt);
+        }
         animating
     }
 
@@ -236,7 +278,7 @@ impl Engine {
 
     /// Dibuja el árbol completo. `width`/`height` en píxeles lógicos.
     pub fn draw(
-        &self,
+        &mut self,
         canvas: &Canvas,
         root: &Node,
         width: f32,
@@ -251,20 +293,61 @@ impl Engine {
             engine: self,
             canvas,
             tree: &tree,
+            scale,
             regions: Vec::new(),
             overlays: Vec::new(),
+            scrolls: Vec::new(),
         };
-        painter.paint(root, &lroot, Point::new(0.0, 0.0), None);
+        painter.paint(root, &lroot, Point::new(0.0, 0.0), None, no_clip());
         // Las capas superiores se pintan al final, en orden de aparición. Una capa
         // anidada dentro de otra se encola al pintar la primera y queda por encima.
+        // Escapan del recorte de los `scroll` que las contienen.
         let mut i = 0;
         while let Some(&(node, lnode, origin, parent)) = painter.overlays.get(i) {
-            painter.paint_node(node, lnode, origin, parent);
+            painter.paint_node(node, lnode, origin, parent, no_clip());
             i += 1;
         }
         canvas.restore();
-        painter.regions
+        let Painter {
+            regions, scrolls, ..
+        } = painter;
+        self.sync_scroll(scrolls);
+        regions
     }
+
+    /// Guarda los límites medidos en este frame y olvida los `scroll` que ya no existen.
+    fn sync_scroll(&mut self, seen: Vec<ScrollMetrics>) {
+        let mut alive = HashSet::new();
+        for m in seen {
+            self.scroll
+                .entry(m.key.clone())
+                .or_default()
+                .set_limits(m.axis, m.max, m.viewport);
+            alive.insert(m.key);
+        }
+        self.scroll.retain(|k, _| alive.contains(k));
+    }
+}
+
+/// Límites de un contenedor `scroll` medidos durante la pintura.
+struct ScrollMetrics {
+    key: String,
+    axis: Axis,
+    max: Point,
+    viewport: Rect,
+}
+
+fn no_clip() -> Rect {
+    Rect::new(-1.0e9, -1.0e9, 1.0e9, 1.0e9)
+}
+
+fn intersect(a: Rect, b: Rect) -> Rect {
+    Rect::new(
+        a.left.max(b.left),
+        a.top.max(b.top),
+        a.right.min(b.right),
+        a.bottom.min(b.bottom),
+    )
 }
 
 /// Nodo de la capa superior pendiente de pintar: nodo, layout, origen absoluto y región padre.
@@ -275,9 +358,12 @@ struct Painter<'a> {
     engine: &'a Engine,
     canvas: &'a Canvas,
     tree: &'a TaffyTree<TextCtx>,
+    /// Densidad de píxeles, para alinear el desplazamiento a píxeles físicos.
+    scale: f32,
     regions: Vec<HitRegion>,
     /// Nodos con `layer="overlay"` aplazados hasta el final del frame.
     overlays: Vec<Deferred<'a>>,
+    scrolls: Vec<ScrollMetrics>,
 }
 
 impl<'a> Painter<'a> {
@@ -287,12 +373,13 @@ impl<'a> Painter<'a> {
         lnode: &'a LayoutNode,
         origin: Point,
         parent: Option<usize>,
+        clip: Rect,
     ) {
         if node.style.overlay {
             self.overlays.push((node, lnode, origin, parent));
             return;
         }
-        self.paint_node(node, lnode, origin, parent);
+        self.paint_node(node, lnode, origin, parent, clip);
     }
 
     /// Pinta el nodo y sus hijos. Una capa aplazada se pinta en coordenadas
@@ -303,6 +390,7 @@ impl<'a> Painter<'a> {
         lnode: &'a LayoutNode,
         origin: Point,
         parent: Option<usize>,
+        clip: Rect,
     ) {
         let canvas = self.canvas;
         let layout = self.tree.layout(lnode.id).expect("layout");
@@ -316,8 +404,10 @@ impl<'a> Painter<'a> {
         self.regions.push(HitRegion {
             key: node.key.clone(),
             rect,
+            clip,
             interactive: node.is_interactive(),
             capture: node.style.capture,
+            scroll: node.style.scroll,
             parent,
         });
 
@@ -374,11 +464,62 @@ impl<'a> Painter<'a> {
                 .paint(canvas, (rect.left + pad.left, rect.top + pad.top));
         }
 
-        let child_origin = Point::new(rect.left, rect.top);
+        let mut child_origin = Point::new(rect.left, rect.top);
+        let mut child_clip = clip;
+        let mut bars = None;
+        if let Some(axis) = s.scroll {
+            // Se recorta a la caja de relleno (dentro del borde) y los hijos se
+            // desplazan; la barra se pinta encima, sin ocupar espacio en el layout.
+            let bw = s.border_width;
+            let viewport = rect.with_inset((bw, bw));
+            let max = Point::new(layout.scroll_width(), layout.scroll_height());
+            let mut state = self
+                .engine
+                .scroll
+                .get(&node.key)
+                .cloned()
+                .unwrap_or_default();
+            state.set_limits(axis, max, viewport);
+            let snap = |v: f32| (v * self.scale).round() / self.scale;
+            let offset = Point::new(snap(state.offset.x), snap(state.offset.y));
+            canvas.save();
+            let r = (s.radius - bw).max(0.0);
+            canvas.clip_rrect(RRect::new_rect_xy(viewport, r, r), ClipOp::Intersect, true);
+            child_origin -= offset;
+            child_clip = intersect(clip, viewport);
+            self.scrolls.push(ScrollMetrics {
+                key: node.key.clone(),
+                axis,
+                max,
+                viewport,
+            });
+            bars = Some(state);
+        }
         for (child, lchild) in node.children.iter().zip(&lnode.children) {
-            self.paint(child, lchild, child_origin, Some(my_index));
+            self.paint(child, lchild, child_origin, Some(my_index), child_clip);
+        }
+        if let Some(state) = bars {
+            canvas.restore();
+            paint_scrollbars(canvas, &state, s.scrollbar_color);
         }
         canvas.restore_to_count(save_count);
+    }
+}
+
+fn paint_scrollbars(canvas: &Canvas, state: &ScrollState, color: Option<Color>) {
+    if state.bar <= 0.0 {
+        return;
+    }
+    let color = color.unwrap_or(Color::from_rgb(0x80, 0x88, 0xA0));
+    let strength = if state.dragging { 0.85 } else { 0.55 };
+    let alpha = (color.a() as f32 * state.bar * strength).round() as u8;
+    let mut p = Paint::default();
+    p.set_anti_alias(true).set_color(color.with_a(alpha));
+    for vertical in [true, false] {
+        if let Some(thumb) = state.thumb(vertical) {
+            let r = BAR_WIDTH / 2.0;
+            canvas.draw_rrect(RRect::new_rect_xy(thumb, r, r), &p);
+        }
     }
 }
 
@@ -453,6 +594,14 @@ fn finalize_text(tree: &mut TaffyTree<TextCtx>, lnode: &LayoutNode) {
     }
     for child in &lnode.children {
         finalize_text(tree, child);
+    }
+}
+
+fn overflow(scrolls: bool) -> Overflow {
+    if scrolls {
+        Overflow::Hidden
+    } else {
+        Overflow::Visible
     }
 }
 
@@ -531,11 +680,16 @@ fn taffy_style(s: &Style) -> taffy::Style {
         },
         min_size: Size {
             width: lpa(s.min_width),
-            height: LengthPercentageAuto::auto(),
+            height: lpa(s.min_height),
         },
         max_size: Size {
             width: lpa(s.max_width),
-            height: LengthPercentageAuto::auto(),
+            height: lpa(s.max_height),
+        },
+        // `Hidden` (sin reservar hueco para la barra): la barra se superpone al contenido.
+        overflow: taffy::Point {
+            x: overflow(s.scroll.is_some_and(Axis::x)),
+            y: overflow(s.scroll.is_some_and(Axis::y)),
         },
         flex_grow: s.grow,
         flex_shrink: s.shrink.unwrap_or(1.0),
@@ -551,7 +705,7 @@ pub fn render_png(
     scale: f32,
     path: &str,
 ) -> Result<(), String> {
-    let engine = Engine::new();
+    let mut engine = Engine::new();
     let mut surface = raster_surface(width, height, scale)?;
     engine.draw(surface.canvas(), root, width, height, scale);
     write_png(&mut surface, path)

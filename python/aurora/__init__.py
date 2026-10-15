@@ -11,7 +11,7 @@ from typing import Any, TypeVar
 from . import _core
 from ._core import Pilot
 from .components import badge, button, card, stat
-from .elements import Element, box, column, row, spacer, text
+from .elements import Element, box, column, row, scroll, spacer, text
 from .signal import Signal
 from .theme import DAYLIGHT, MIDNIGHT, Theme
 
@@ -29,6 +29,7 @@ __all__ = [
     "card",
     "column",
     "row",
+    "scroll",
     "spacer",
     "stat",
     "text",

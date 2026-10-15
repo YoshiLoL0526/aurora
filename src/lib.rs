@@ -4,6 +4,7 @@ mod color;
 mod pilot;
 mod render;
 mod runtime;
+mod scroll;
 mod spec;
 mod window;
 

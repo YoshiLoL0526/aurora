@@ -9,14 +9,15 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use pyo3::prelude::*;
-use skia_safe::{ImageInfo, surfaces};
+use skia_safe::{ImageInfo, Point, surfaces};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{CursorIcon, Window, WindowId};
 
 use crate::runtime::Runtime;
+use crate::scroll::LINE;
 
 type SoftSurface = softbuffer::Surface<Rc<Window>, Rc<Window>>;
 
@@ -169,6 +170,20 @@ impl ApplicationHandler<Wake> for App {
                 let p = position.to_logical::<f32>(window.scale_factor());
                 if self.rt.pointer_move(p.x, p.y) {
                     self.update_cursor();
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                // winit: positivo = el contenido baja (se ve lo de arriba). Aurora usa
+                // positivo = avanzar hacia el final, así que se invierte.
+                let (delta, smooth) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (Point::new(-x * LINE, -y * LINE), true),
+                    MouseScrollDelta::PixelDelta(p) => {
+                        let p = p.to_logical::<f32>(window.scale_factor());
+                        (Point::new(-p.x, -p.y), false)
+                    }
+                };
+                if self.rt.wheel(delta, smooth) {
                     window.request_redraw();
                 }
             }

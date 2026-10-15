@@ -12,7 +12,7 @@ añaden con corchetes, lo que deja leer la jerarquía como si fuera markup:
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any, Union
+from typing import Any, Literal, Union
 
 from .theme import Theme
 
@@ -109,3 +109,19 @@ def text(content: TextLike, **style: Any) -> Element:
 
 def spacer() -> Element:
     return Element("box", grow=1)
+
+
+def scroll(*, axis: Literal["x", "y", "both"] = "y", **style: Any) -> Element:
+    """Contenedor desplazable: recorta su contenido y se desplaza con rueda, trackpad o barra.
+
+    Apila sus hijos en el eje que se desplaza. Uno vertical sin `height` ni
+    `max_height` ocupa el espacio libre (`grow=1`). Dale una `key` para conservar
+    la posición aunque cambie de sitio en el árbol.
+    """
+    defaults: dict[str, Any] = {
+        "direction": "row" if axis == "x" else "column",
+        "scrollbar_color": "$muted",
+    }
+    if axis != "x" and "height" not in style and "max_height" not in style:
+        defaults["grow"] = 1
+    return Element("box", scroll=axis, **{**defaults, **style})

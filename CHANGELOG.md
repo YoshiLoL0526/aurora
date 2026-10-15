@@ -10,6 +10,11 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- Contenedor `scroll(axis="y" | "x" | "both")`: recorte, rueda con desplazamiento suave, trackpad,
+  encadenado al `scroll` exterior en el límite y barra superpuesta que se oculta sola y se puede
+  arrastrar. La posición se conserva entre reconstrucciones.
+- Propiedades `min_height`, `max_height` y `scrollbar_color`.
+- `Pilot.wheel()`, `Pilot.scroll()` y `Pilot.scroll_offset()`.
 - `app.pilot()`: piloto headless para tests de interacción (`click`, `move_to`, `hovered`, `rect`,
   `settle`, `png`…) que usa el mismo runtime que la ventana.
 - `Signal.set` es seguro desde cualquier hilo y despierta el bucle de eventos: la ventana se
@@ -23,6 +28,8 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 - `Element.to_spec()` serializa los manejadores en `"handlers": {"click": fn}` en lugar de
   `"on_click"`. `Element.on_click` sigue disponible como propiedad de solo lectura.
 - El núcleo separa el estado de la app (`Runtime`) del bucle de ventana.
+- El hit-testing respeta el recorte de los contenedores `scroll`.
+- La demo `studio.py` desplaza el contenido de cada página.
 
 ## [0.1.0] — 2026-10-15
 

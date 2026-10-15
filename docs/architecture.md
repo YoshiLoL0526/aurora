@@ -29,7 +29,8 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── spec.rs          Árbol de Python (dicts) → Node tipado; herencia de estilos de texto
 ├── color.rs         Parseo de colores e interpolación
 ├── render.rs        Engine: layout (Taffy) + pintura (Skia) + capas + animación + hit-testing
-├── runtime.rs       Estado de la app en marcha: árbol, puntero, despacho de eventos, wake
+├── runtime.rs       Estado de la app en marcha: árbol, puntero, rueda, despacho de eventos, wake
+├── scroll.rs        Estado de los contenedores scroll: desplazamiento, suavizado, barra
 ├── window.rs        Bucle de ventana (winit) sobre Runtime, framebuffer (softbuffer)
 └── pilot.rs         Piloto headless sobre Runtime para tests de interacción
 ```
@@ -149,6 +150,22 @@ vive en `Runtime` (`src/runtime.rs`), que no sabe nada de ventanas. Hay dos "con
 
 Los manejadores se guardan por nombre (`handlers: {"click": fn}`) y se despachan con
 `Runtime::dispatch(key, evento, arg)`: añadir un evento nuevo no requiere tocar el bucle.
+
+## Scroll
+
+Un nodo con `scroll` se maqueta con `overflow: hidden` en Taffy (tamaño mínimo automático 0, sin
+reservar hueco para la barra) y sus hijos no se encogen en el eje desplazado. Taffy calcula
+`scroll_width()`/`scroll_height()`, el desplazamiento máximo.
+
+El estado (`ScrollState` en `src/scroll.rs`: desplazamiento, destino del suavizado, visibilidad de
+la barra, arrastre) vive en el `Engine` por key, como las animaciones de hover. Al pintar, el
+`Painter` recorta a la caja de relleno, traslada a los hijos y registra los límites medidos; tras el
+frame, el `Engine` los guarda, ajusta el desplazamiento si el contenido encogió y olvida los
+`scroll` que ya no existen. Cada `HitRegion` lleva su `clip` (la intersección de los `scroll` que la
+contienen), así que lo que está fuera de la zona visible no recibe eventos.
+
+La rueda se resuelve con las regiones del último frame: desde la región bajo el puntero se sube
+por los ancestros hasta el primer `scroll` que todavía pueda moverse en esa dirección.
 
 ## Capas
 
