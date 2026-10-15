@@ -35,7 +35,8 @@ pub struct Gradient {
     pub angle: f32,
 }
 
-/// Propiedades de texto heredables (como en CSS): un `text` hereda del contenedor.
+/// Propiedades heredables (como en CSS): un nodo las hereda de su contenedor.
+/// Casi todas son de texto; `focus_color` es como `accent-color` en CSS.
 #[derive(Clone, Debug)]
 pub struct TextProps {
     pub size: f32,
@@ -44,6 +45,8 @@ pub struct TextProps {
     pub family: String,
     pub line_height: Option<f32>,
     pub letter_spacing: f32,
+    /// Color del anillo de foco.
+    pub focus_color: Color,
 }
 
 impl Default for TextProps {
@@ -55,6 +58,7 @@ impl Default for TextProps {
             family: "Inter".into(),
             line_height: None,
             letter_spacing: 0.0,
+            focus_color: Color::from_rgb(0x7C, 0x5C, 0xFF),
         }
     }
 }
@@ -123,6 +127,10 @@ pub struct Style {
     /// Capa superior: se maqueta en su sitio pero se pinta (y recibe eventos)
     /// después de todo el árbol (desplegables, tooltips, modales).
     pub overlay: bool,
+    /// Recibe el foco con Tab y con clic. Por defecto, los nodos con `on_click`.
+    pub focusable: Option<bool>,
+    /// Toma el foco al aparecer en la vista.
+    pub autofocus: bool,
     // Texto (nivel párrafo, no heredable)
     pub max_lines: Option<usize>,
     pub text_align: Option<String>,
@@ -151,6 +159,12 @@ pub struct Node {
 impl Node {
     pub fn is_interactive(&self) -> bool {
         self.handlers.contains_key("click")
+    }
+
+    pub fn is_focusable(&self) -> bool {
+        self.style
+            .focusable
+            .unwrap_or_else(|| self.is_interactive())
     }
 
     pub fn handler(&self, event: &str) -> Option<&Py<PyAny>> {
@@ -302,6 +316,8 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         press_scale: f32_of(d, "press_scale")?.unwrap_or(1.0),
         scrollbar_color: color_of(d, "scrollbar_color")?,
         capture: bool_of(d, "capture")?,
+        focusable: get(d, "focusable")?.map(|v| v.is_truthy()).transpose()?,
+        autofocus: bool_of(d, "autofocus")?,
         overlay: match str_of(d, "layer")?.as_deref() {
             None | Some("base") => false,
             Some("overlay") => true,
@@ -326,6 +342,7 @@ fn inherit_text(d: &Bound<'_, PyDict>, parent: &TextProps) -> PyResult<TextProps
         family: str_of(d, "font_family")?.unwrap_or_else(|| parent.family.clone()),
         line_height: f32_of(d, "line_height")?.or(parent.line_height),
         letter_spacing: f32_of(d, "letter_spacing")?.unwrap_or(parent.letter_spacing),
+        focus_color: color_of(d, "focus_color")?.unwrap_or(parent.focus_color),
     })
 }
 

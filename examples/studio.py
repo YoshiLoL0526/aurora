@@ -25,6 +25,7 @@ from aurora import (
     MIDNIGHT,
     App,
     Element,
+    KeyEvent,
     Signal,
     badge,
     box,
@@ -612,7 +613,8 @@ def modal_layer() -> Element | None:
                 text(t.title, size=13, weight=600, max_lines=2, grow=1, shrink=1, width=0),
             ],
             row(gap=10, justify="end")[
-                button("Cancelar", lambda: modal.set(None), variant="soft", key="m-cancel"),
+                # En un borrado, el foco empieza en la opción segura.
+                button("Cancelar", lambda: modal.set(None), variant="soft", key="m-cancel", autofocus=True),
                 button(
                     "Eliminar",
                     confirm_delete,
@@ -703,9 +705,20 @@ PAGES = {
 }
 
 
+def on_key(e: KeyEvent) -> bool | None:
+    """Atajos globales: Esc cierra el modal y Ctrl/Cmd+N crea una tarea."""
+    if e.matches("escape") and modal() is not None:
+        modal.set(None)
+        return True
+    if e.matches("mod+n"):
+        add_task()
+        return True
+    return None
+
+
 def view() -> Element:
     title, subtitle, render = PAGES[page()]
-    return row()[
+    return row(on_key=on_key)[
         sidebar(),
         column(grow=1, width=0, padding=(26, 0, 0, 0), gap=22)[
             row(gap=10, align="center", padding=(0, 30))[

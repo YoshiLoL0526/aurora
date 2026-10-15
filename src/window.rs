@@ -12,10 +12,12 @@ use pyo3::prelude::*;
 use skia_safe::{ImageInfo, Point, surfaces};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
+use winit::keyboard::Key;
 use winit::window::{CursorIcon, Window, WindowId};
 
+use crate::keys::{KeyInput, Mods};
 use crate::runtime::Runtime;
 use crate::scroll::LINE;
 
@@ -50,6 +52,7 @@ struct App {
     size: (f64, f64),
     window: Option<Rc<Window>>,
     surface: Option<SoftSurface>,
+    mods: Mods,
     last_frame: Instant,
     /// Si el frame anterior dejó transiciones en curso.
     animating: bool,
@@ -119,6 +122,27 @@ impl App {
             });
         }
     }
+}
+
+/// Traduce una tecla de winit. Las teclas sin nombre ni carácter (muertas,
+/// no identificadas) se ignoran.
+fn key_input(event: &KeyEvent, mods: Mods) -> Option<KeyInput> {
+    let key = match &event.logical_key {
+        Key::Named(named) => format!("{named:?}"),
+        Key::Character(c) => c.to_string(),
+        _ => return None,
+    };
+    let text = event
+        .text
+        .as_ref()
+        .map(|t| t.to_string())
+        .filter(|t| !t.chars().all(char::is_control));
+    Some(KeyInput {
+        key,
+        text,
+        mods,
+        repeat: event.repeat,
+    })
 }
 
 /// Un error en un manejador del usuario se muestra y la app sigue viva.
@@ -197,10 +221,39 @@ impl ApplicationHandler<Wake> for App {
                 ..
             } => {
                 match state {
-                    ElementState::Pressed => self.rt.pointer_down(),
+                    ElementState::Pressed => report(self.rt.pointer_down()),
                     ElementState::Released => report(self.rt.pointer_up()),
                 }
                 window.request_redraw();
+            }
+            WindowEvent::ModifiersChanged(m) => {
+                let s = m.state();
+                self.mods = Mods {
+                    ctrl: s.control_key(),
+                    shift: s.shift_key(),
+                    alt: s.alt_key(),
+                    meta: s.super_key(),
+                };
+            }
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic: false,
+                ..
+            } => {
+                let Some(input) = key_input(&event, self.mods) else {
+                    return;
+                };
+                let pressed = event.state == ElementState::Pressed;
+                let needs_frame = match self.rt.key_event(&input, pressed) {
+                    Ok(changed) => changed,
+                    Err(err) => {
+                        report(Err(err));
+                        true
+                    }
+                };
+                if needs_frame || self.rt.is_dirty() {
+                    window.request_redraw();
+                }
             }
             WindowEvent::RedrawRequested => {
                 self.redraw();
@@ -238,6 +291,7 @@ pub fn run(
             size: (width, height),
             window: None,
             surface: None,
+            mods: Mods::default(),
             last_frame: Instant::now(),
             animating: false,
             fatal: None,

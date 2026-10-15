@@ -343,6 +343,27 @@ def view():
 cerraría el modal. Un toast es lo mismo sin fondo: un `row` con `position="absolute"`,
 `right=24` y `bottom=24`.
 
+### Teclado y atajos
+
+Todo lo que tiene `on_click` ya se puede usar con el teclado: Tab mueve el foco (con un anillo
+visible), Enter o Espacio lo activan. Para atajos, pon `on_key` en la raíz y devuelve `True` cuando
+atiendas una tecla:
+
+```python
+def on_key(e):
+    if e.matches("escape") and selected() is not None:
+        selected.set(None)  # Esc cierra el modal
+        return True
+    return None
+
+
+def view():
+    return box(on_key=on_key)[...]
+```
+
+Dale `autofocus=True` al botón principal del modal para que el foco salte a él al abrirlo; mientras
+esté abierto, Tab no sale de la tarjeta con `capture=True`.
+
 ## 9. Tema claro y oscuro
 
 Pasa un `Signal[Theme]` a `App` y cámbialo cuando quieras. Como todo usa tokens, la interfaz

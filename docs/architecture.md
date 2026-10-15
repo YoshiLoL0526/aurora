@@ -31,6 +31,7 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── render.rs        Engine: layout (Taffy) + pintura (Skia) + capas + animación + hit-testing
 ├── runtime.rs       Estado de la app en marcha: árbol, puntero, rueda, despacho de eventos, wake
 ├── scroll.rs        Estado de los contenedores scroll: desplazamiento, suavizado, barra
+├── keys.rs          KeyEvent y parseo de combinaciones ("ctrl+s", "mod+k")
 ├── window.rs        Bucle de ventana (winit) sobre Runtime, framebuffer (softbuffer)
 └── pilot.rs         Piloto headless sobre Runtime para tests de interacción
 ```
@@ -166,6 +167,15 @@ contienen), así que lo que está fuera de la zona visible no recibe eventos.
 
 La rueda se resuelve con las regiones del último frame: desde la región bajo el puntero se sube
 por los ancestros hasta el primer `scroll` que todavía pueda moverse en esa dirección.
+
+## Teclado y foco
+
+El foco es estado del `Engine` (`focused` y `focus_visible`), igual que el hover. El orden de Tab
+es el de las `HitRegion` enfocables del último frame; si hay una región `capture`, solo cuentan sus
+descendientes. Una tecla se entrega como `KeyEvent` (`src/keys.rs`) a los `on_key` subiendo desde
+la región enfocada por sus padres; si ninguno devuelve un valor verdadero, el `Runtime` aplica el
+comportamiento por defecto (foco, activación, desplazamiento). El anillo se anima con el mismo
+suavizado que hover y pressed y se pinta después de los hijos.
 
 ## Capas
 

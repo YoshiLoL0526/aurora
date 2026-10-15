@@ -44,6 +44,7 @@ pub struct HitRegion {
     pub clip: Rect,
     pub interactive: bool,
     pub capture: bool,
+    pub focusable: bool,
     pub scroll: Option<Axis>,
     /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
     pub parent: Option<usize>,
@@ -86,6 +87,8 @@ pub fn hit_test(regions: &[HitRegion], x: f32, y: f32) -> Option<String> {
 pub struct AnimState {
     pub hover: f32,
     pub press: f32,
+    /// Visibilidad del anillo de foco.
+    pub focus: f32,
 }
 
 pub struct Engine {
@@ -95,6 +98,10 @@ pub struct Engine {
     pub scroll: HashMap<String, ScrollState>,
     pub hovered: Option<String>,
     pub pressed: Option<String>,
+    pub focused: Option<String>,
+    /// El anillo de foco se muestra solo si se llegó con el teclado (como
+    /// `:focus-visible` en CSS): un clic enfoca sin dibujar el anillo.
+    pub focus_visible: bool,
 }
 
 /// Constante de tiempo de las transiciones de estado (segundos).
@@ -110,6 +117,8 @@ impl Engine {
             scroll: HashMap::new(),
             hovered: None,
             pressed: None,
+            focused: None,
+            focus_visible: false,
         }
     }
 
@@ -237,7 +246,8 @@ impl Engine {
 
     /// Avanza las transiciones `dt` segundos. Devuelve `true` si alguna sigue en curso.
     pub fn tick(&mut self, dt: f32) -> bool {
-        for key in [self.hovered.clone(), self.pressed.clone()]
+        let ring = self.focused.clone().filter(|_| self.focus_visible);
+        for key in [self.hovered.clone(), self.pressed.clone(), ring.clone()]
             .into_iter()
             .flatten()
         {
@@ -245,28 +255,23 @@ impl Engine {
         }
         let k = 1.0 - (-dt / TRANSITION_TAU).exp();
         let mut animating = false;
-        let (hovered, pressed) = (self.hovered.as_deref(), self.pressed.as_deref());
+        let (hovered, pressed, ring) = (
+            self.hovered.as_deref(),
+            self.pressed.as_deref(),
+            ring.as_deref(),
+        );
         self.anim.retain(|key, s| {
-            let th = if hovered == Some(key.as_str()) {
-                1.0
-            } else {
-                0.0
-            };
-            let tp = if pressed == Some(key.as_str()) {
-                1.0
-            } else {
-                0.0
-            };
-            s.hover += (th - s.hover) * k;
-            s.press += (tp - s.press) * k;
-            for (v, t) in [(&mut s.hover, th), (&mut s.press, tp)] {
+            let on = |k: Option<&str>| if k == Some(key.as_str()) { 1.0 } else { 0.0 };
+            let (th, tp, tf) = (on(hovered), on(pressed), on(ring));
+            for (v, t) in [(&mut s.hover, th), (&mut s.press, tp), (&mut s.focus, tf)] {
+                *v += (t - *v) * k;
                 if (*v - t).abs() < 0.004 {
                     *v = t;
                 } else {
                     animating = true;
                 }
             }
-            s.hover > 0.0 || s.press > 0.0 || th > 0.0 || tp > 0.0
+            s.hover > 0.0 || s.press > 0.0 || s.focus > 0.0 || th + tp + tf > 0.0
         });
         for s in self.scroll.values_mut() {
             animating |= s.tick(dt);
@@ -407,6 +412,7 @@ impl<'a> Painter<'a> {
             clip,
             interactive: node.is_interactive(),
             capture: node.style.capture,
+            focusable: node.is_focusable(),
             scroll: node.style.scroll,
             parent,
         });
@@ -502,8 +508,32 @@ impl<'a> Painter<'a> {
             canvas.restore();
             paint_scrollbars(canvas, &state, s.scrollbar_color);
         }
+        if st.focus > 0.0 {
+            paint_focus_ring(
+                canvas,
+                rect,
+                s.radius,
+                node.text_props.focus_color,
+                st.focus,
+            );
+        }
         canvas.restore_to_count(save_count);
     }
+}
+
+/// Anillo de foco: trazo de 2 px separado 2 px del borde, que sigue las esquinas.
+fn paint_focus_ring(canvas: &Canvas, rect: Rect, radius: f32, color: Color, t: f32) {
+    const GAP: f32 = 2.0;
+    const WIDTH: f32 = 2.0;
+    let out = GAP + WIDTH / 2.0;
+    let r = if radius > 0.0 { radius + out } else { 0.0 };
+    let ring = RRect::new_rect_xy(rect.with_outset((out, out)), r, r);
+    let mut p = Paint::default();
+    p.set_anti_alias(true)
+        .set_style(PaintStyle::Stroke)
+        .set_stroke_width(WIDTH)
+        .set_color(color.with_a((color.a() as f32 * t).round() as u8));
+    canvas.draw_rrect(ring, &p);
 }
 
 fn paint_scrollbars(canvas: &Canvas, state: &ScrollState, color: Option<Color>) {

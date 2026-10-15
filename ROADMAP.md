@@ -28,7 +28,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 - ✅ **Scroll**: contenedor `scroll` con clipping, rueda suave, trackpad, encadenado y barra arrastrable
 - ⏳ **Input de texto**: cursor, selección, copiar/pegar, IME, deshacer; `text_input` y `textarea`
-- ⏳ **Teclado y foco**: navegación con Tab, atajos (`on_key`), anillo de foco visible
+- ✅ **Teclado y foco**: navegación con Tab, atajos (`on_key`), anillo de foco visible
 - ⏳ **Imágenes**: PNG/JPEG/SVG con `fit` (cover, contain) y caché
 - ⏳ Más componentes: `checkbox`, `switch`, `select`, `tabs`, `tooltip`, `divider`, `avatar`
 - ✅ Despertar el bucle cuando un `Signal` cambia desde otro hilo o una corrutina `asyncio` (`app.spawn`)

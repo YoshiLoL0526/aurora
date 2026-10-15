@@ -7,6 +7,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Signal](#signal)
 - [Pilot (tests de interacción)](#pilot-tests-de-interacción)
 - [Primitivas](#primitivas)
+- [Teclado y foco](#teclado-y-foco)
 - [Componentes](#componentes)
 - [Propiedades de estilo](#propiedades-de-estilo)
 - [Temas y tokens](#temas-y-tokens)
@@ -91,6 +92,10 @@ def test_counter():
 | `wheel(dy=0, dx=0, *, lines=False)` | Rueda bajo el puntero; positivo = hacia el final del contenido. En píxeles (trackpad, inmediato) o, con `lines=True`, en pasos de rueda (animado). |
 | `scroll(key, dy=0, dx=0)` | Mueve el puntero al centro de `key` y desplaza esos píxeles. |
 | `scroll_offset(key)` | `(x, y)` desplazados del `scroll` con esa key, o `None`. |
+| `press(combo)` | Pulsa y suelta una tecla o combinación: `"tab"`, `"shift+tab"`, `"enter"`, `"ctrl+s"`, `"a"`. |
+| `key_down(combo)` / `key_up(combo)` | Pulsa / suelta por separado (p. ej. mantener Espacio). |
+| `focus(key)` | Enfoca `key` como si se llegara con el teclado. `LookupError` si no se pintó o no es enfocable. |
+| `focused` | Key del nodo enfocado, o `None`. |
 | `hovered` | Key del nodo interactivo bajo el puntero, o `None`. |
 | `rect(key)` | `(x, y, ancho, alto)` del nodo en el último frame, o `None`. |
 | `frame(dt=1/60)` | Avanza un frame. Devuelve `True` si quedan transiciones en curso. |
@@ -149,8 +154,62 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | Argumento | Descripción |
 |---|---|
 | `on_click` | Callable sin argumentos. Hace al elemento interactivo: cursor de mano, estados hover/pressed y clics. |
-| `on_<evento>` | Manejador de evento. Todo argumento que empiece por `on_` se trata como manejador, no como estilo. Por ahora el núcleo solo emite `click`; el resto llegará con teclado, foco e input de texto. |
+| `on_key` | Callable que recibe un [`KeyEvent`](#keyevent). Recibe las teclas cuando el foco está en el elemento o en uno de sus descendientes (la raíz las recibe siempre). Devuelve `True` para darla por atendida. |
+| `on_focus` / `on_blur` | Callables sin argumentos: el elemento gana / pierde el foco. |
+| `on_<evento>` | Todo argumento que empiece por `on_` se trata como manejador, no como estilo. |
+| `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`. |
+| `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
 | `key` | Identidad estable. Conserva el estado de animación aunque el elemento cambie de posición en el árbol. Recomendado en listas dinámicas. |
+
+## Teclado y foco
+
+Un elemento enfocado recibe el teclado. Se enfoca **con Tab / Shift+Tab** (en orden de pintura,
+volviendo al principio al final) o **con un clic**; un clic en una zona sin elementos enfocables
+quita el foco. Al llegar con el teclado se dibuja un **anillo de foco** animado, del color
+heredable `focus_color` (`$primary` por defecto); con un clic no, como `:focus-visible` en CSS.
+Si el elemento está dentro de un `scroll`, este se desplaza para mostrarlo.
+
+Cada tecla pasa primero por los `on_key`, desde el elemento enfocado hacia la raíz (sin foco, solo
+la raíz). El primero que devuelva un valor verdadero la da por atendida. Si nadie la atiende, se
+aplica el comportamiento por defecto:
+
+| Tecla | Por defecto |
+|---|---|
+| Tab / Shift+Tab | Foco al siguiente / anterior. Dentro de una barrera `capture=True` (un modal), el foco no sale de ella. |
+| Enter | Activa (`on_click`) el elemento enfocado. |
+| Espacio | Activa el elemento enfocado al soltarla, con la animación de pulsado. Sin elemento activable, avanza una página. |
+| ↑ ↓ ← → | Desplazan el `scroll` que contiene al foco o, sin foco, el que está bajo el puntero. |
+| RePág / AvPág, Inicio / Fin | Desplazan una página / hasta el principio o el final. |
+
+Para atajos globales, pon `on_key` en la raíz de la vista:
+
+```python
+def on_key(e: KeyEvent):
+    if e.matches("mod+n"):  # Ctrl+N (Cmd+N en macOS)
+        add_task()
+        return True
+    if e.matches("escape"):
+        modal.set(None)
+        return True
+    return None  # el resto, comportamiento normal
+
+
+def view():
+    return column(on_key=on_key)[...]
+```
+
+### `KeyEvent`
+
+| Atributo | Descripción |
+|---|---|
+| `key` | Nombre de la tecla: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"`, `"Delete"`, `"ArrowUp"`, `"Home"`, `"PageDown"`, `"F1"`… o el carácter (`"a"`, `"A"`, `"?"`). |
+| `text` | Texto que produce la tecla (`"a"`, `" "`), o `None` (teclas de control, atajos con Ctrl/Alt/Cmd). |
+| `ctrl`, `shift`, `alt`, `meta` | Modificadores pulsados. `meta` es Cmd en macOS y la tecla Windows en Windows. |
+| `repeat` | `True` si es una repetición por mantener la tecla. |
+| `matches(combo)` | `True` si la pulsación es exactamente esa combinación: `"ctrl+s"`, `"shift+tab"`, `"escape"`, `"mod+k"` (`mod` = Cmd en macOS, Ctrl en el resto). Las letras no distinguen mayúsculas, y en los símbolos que requieren Shift (`"?"`) no hace falta escribirlo. Una combinación mal escrita lanza `ValueError`. |
+
+Alias aceptados en las combinaciones: `esc`, `return`, `del`, `up`/`down`/`left`/`right`, `pgup`/`pgdn`,
+`plus`; y como modificadores `control`, `option`, `cmd`, `super` y `win`.
 
 ## Componentes
 
@@ -238,6 +297,7 @@ contenedores (como en CSS).
 | `font_family` | `family` | nombre de fuente | fuente del tema (`Inter`) | *H* |
 | `line_height` | — | múltiplo del tamaño (`1.4`) | el de la fuente | *H* |
 | `letter_spacing` | — | número (px, admite negativos) | `0` | *H* |
+| `focus_color` | — | color del anillo de foco | `$primary` | *H* |
 | `max_lines` | — | entero | sin límite | Corta con `…` al superar ese número de líneas. |
 | `text_align` | — | `"left"`, `"center"`, `"right"` | `"left"` | Alineación dentro del ancho del texto. |
 

@@ -10,6 +10,13 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- Teclado y foco: Tab / Shift+Tab en orden de pintura (atrapado dentro de barreras `capture`),
+  activación con Enter y Espacio, anillo de foco animado solo al navegar con teclado
+  (`focus_color`, heredable) y desplazamiento automático del `scroll` para mostrar el foco.
+- `on_key` con `KeyEvent` (`key`, `text`, modificadores, `matches("mod+s")`), que burbujea desde el
+  foco hasta la raíz; `on_focus`, `on_blur`, `focusable` y `autofocus`.
+- Desplazamiento con flechas, RePág/AvPág, Inicio/Fin y Espacio.
+- `Pilot.press()`, `key_down()`, `key_up()`, `focus()` y `focused`.
 - Contenedor `scroll(axis="y" | "x" | "both")`: recorte, rueda con desplazamiento suave, trackpad,
   encadenado al `scroll` exterior en el límite y barra superpuesta que se oculta sola y se puede
   arrastrar. La posición se conserva entre reconstrucciones.

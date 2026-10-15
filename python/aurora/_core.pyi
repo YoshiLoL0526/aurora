@@ -18,6 +18,19 @@ def run(
 def wake() -> None:
     """Pide reconstruir la vista y despierta el bucle de eventos. Seguro desde cualquier hilo."""
 
+class KeyEvent:
+    """Evento de teclado que reciben los manejadores `on_key`."""
+
+    key: str
+    text: str | None
+    ctrl: bool
+    shift: bool
+    alt: bool
+    meta: bool
+    repeat: bool
+    def matches(self, combo: str) -> bool:
+        """`True` si la pulsación es exactamente `combo` (`"ctrl+s"`, `"mod+k"`, `"shift+tab"`)."""
+
 class Pilot:
     """Ejecuta una app sin ventana y simula el puntero frame a frame (para tests).
 
@@ -52,6 +65,15 @@ class Pilot:
         """Mueve el puntero al centro de `key` y desplaza esos píxeles."""
     def scroll_offset(self, key: str) -> tuple[float, float] | None:
         """`(x, y)` desplazados del contenedor `scroll` con esa key."""
+    def press(self, combo: str) -> None:
+        """Pulsa y suelta una tecla o combinación (`"tab"`, `"shift+tab"`, `"ctrl+s"`)."""
+    def key_down(self, combo: str) -> None: ...
+    def key_up(self, combo: str) -> None: ...
+    def focus(self, key: str) -> None:
+        """Enfoca `key` como con el teclado. `LookupError` si no es enfocable."""
+    @property
+    def focused(self) -> str | None:
+        """Key del nodo enfocado."""
     @property
     def hovered(self) -> str | None:
         """Key del nodo interactivo bajo el puntero."""

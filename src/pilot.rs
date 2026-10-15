@@ -6,6 +6,7 @@ use pyo3::exceptions::{PyLookupError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use skia_safe::{Point, Surface};
 
+use crate::keys::KeyInput;
 use crate::render::{raster_surface, write_png};
 use crate::runtime::Runtime;
 use crate::scroll::LINE;
@@ -94,8 +95,48 @@ impl Pilot {
     }
 
     fn mouse_down(&mut self) -> PyResult<()> {
-        self.rt.pointer_down();
-        self.step(FRAME).map(|_| ())
+        let result = self.rt.pointer_down();
+        self.step(FRAME)?;
+        result
+    }
+
+    /// Pulsa y suelta una tecla o combinación: `"tab"`, `"shift+tab"`,
+    /// `"enter"`, `"ctrl+s"`, `"a"`…
+    fn press(&mut self, combo: &str) -> PyResult<()> {
+        self.key_down(combo)?;
+        self.key_up(combo)
+    }
+
+    /// Mantiene pulsada una tecla (sin soltarla).
+    fn key_down(&mut self, combo: &str) -> PyResult<()> {
+        let input = KeyInput::from_combo(combo).map_err(PyValueError::new_err)?;
+        let result = self.rt.key_event(&input, true);
+        self.step(FRAME)?;
+        result.map(drop)
+    }
+
+    fn key_up(&mut self, combo: &str) -> PyResult<()> {
+        let input = KeyInput::from_combo(combo).map_err(PyValueError::new_err)?;
+        let result = self.rt.key_event(&input, false);
+        self.step(FRAME)?;
+        result.map(drop)
+    }
+
+    /// Enfoca `key` como si se llegara con el teclado. `LookupError` si no se
+    /// pintó o no es enfocable.
+    fn focus(&mut self, key: &str) -> PyResult<()> {
+        if !self.rt.focus_key(key)? {
+            return Err(PyLookupError::new_err(format!(
+                "no hay ningún nodo enfocable pintado con key {key:?}"
+            )));
+        }
+        self.step(FRAME).map(drop)
+    }
+
+    /// Key del nodo enfocado, o `None`.
+    #[getter]
+    fn focused(&self) -> Option<String> {
+        self.rt.focused().map(str::to_owned)
     }
 
     fn mouse_up(&mut self) -> PyResult<()> {

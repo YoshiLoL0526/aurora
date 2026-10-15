@@ -96,6 +96,34 @@ impl ScrollState {
         true
     }
 
+    /// Desplaza (con suavizado) lo justo para que `rect`, en coordenadas del
+    /// último frame, quede dentro de la zona visible con `margin` de holgura.
+    /// Si no cabe, se alinea su inicio. Devuelve el desplazamiento aplicado.
+    pub fn reveal(&mut self, rect: Rect, margin: f32) -> Point {
+        let v = self.viewport;
+        let fit = |start: f32, end: f32, vstart: f32, vend: f32| {
+            if start - margin < vstart {
+                start - margin - vstart
+            } else if end + margin > vend {
+                (end + margin - vend).min(start - margin - vstart)
+            } else {
+                0.0
+            }
+        };
+        let wanted = Point::new(
+            fit(rect.left, rect.right, v.left, v.right),
+            fit(rect.top, rect.bottom, v.top, v.bottom),
+        );
+        // `rect` se pintó con `offset`: el nuevo destino se calcula desde ahí.
+        let target = self.clamp(self.offset + wanted);
+        let applied = target - self.offset;
+        if target != self.target {
+            self.target = target;
+            self.poke();
+        }
+        applied
+    }
+
     /// Marca actividad: la barra se muestra un rato.
     pub fn poke(&mut self) {
         self.idle = 0.0;

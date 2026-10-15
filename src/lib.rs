@@ -1,6 +1,7 @@
 //! aurora._core — núcleo nativo: layout, render, eventos y animaciones.
 
 mod color;
+mod keys;
 mod pilot;
 mod render;
 mod runtime;
@@ -46,6 +47,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(run, m)?)?;
     m.add_function(wrap_pyfunction!(wake, m)?)?;
     m.add_class::<pilot::Pilot>()?;
+    m.add_class::<keys::KeyEvent>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

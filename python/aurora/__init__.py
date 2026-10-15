@@ -9,7 +9,7 @@ from concurrent.futures import Future
 from typing import Any, TypeVar
 
 from . import _core
-from ._core import Pilot
+from ._core import KeyEvent, Pilot
 from .components import badge, button, card, stat
 from .elements import Element, box, column, row, scroll, spacer, text
 from .signal import Signal
@@ -20,6 +20,7 @@ __all__ = [
     "MIDNIGHT",
     "App",
     "Element",
+    "KeyEvent",
     "Pilot",
     "Signal",
     "Theme",
@@ -68,6 +69,7 @@ class App:
         root.style.setdefault("bg", "$background")
         root.style.setdefault("font_family", theme.font_family)
         root.style.setdefault("color", "$text")
+        root.style.setdefault("focus_color", "$primary")
         return root.to_spec(theme)
 
     def run(self) -> None:
