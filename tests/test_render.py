@@ -89,3 +89,27 @@ def test_full_app_renders(tmp_path):
 def test_invalid_color_raises(tmp_path, bad):
     with pytest.raises(ValueError, match="color"):
         _core.render_png(box(bg=bad).to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+
+
+@pytest.mark.parametrize("bad", ["#é1", "#ñññ", "#€€"])
+def test_non_ascii_color_raises_value_error_not_panic(tmp_path, bad):
+    with pytest.raises(ValueError, match="color"):
+        _core.render_png(box(bg=bad).to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+
+
+def test_duplicate_keys_are_rejected(tmp_path):
+    tree = row()[box(key="ok", on_click=lambda: None), box(key="ok", on_click=lambda: None)]
+    with pytest.raises(ValueError, match="key duplicada"):
+        _core.render_png(tree.to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+
+
+def test_explicit_key_colliding_with_positional_key_is_rejected(tmp_path):
+    # Los nodos sin key reciben su ruta en el árbol ("0/1", ...) como identidad.
+    tree = row()[box(key="0/1"), box()]
+    with pytest.raises(ValueError, match="key duplicada"):
+        _core.render_png(tree.to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+
+
+def test_unique_keys_render(tmp_path):
+    tree = row()[box(key="a"), box(key="b"), box()]
+    _core.render_png(tree.to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)

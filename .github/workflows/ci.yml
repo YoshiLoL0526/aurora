@@ -56,6 +56,11 @@ jobs:
         run: uv sync
       - name: Tests
         run: uv run pytest -v
+      # Con `extension-module` el binario de tests de Rust no enlaza contra libpython en
+      # Linux/macOS; en Windows sí (python3.lib), así que los tests unitarios corren ahí.
+      - name: Tests de Rust (Windows)
+        if: runner.os == 'Windows'
+        run: uv run cargo test --release
       - name: Renderizar los ejemplos (smoke test visual)
         run: |
           uv run examples/hello.py --png hello.png

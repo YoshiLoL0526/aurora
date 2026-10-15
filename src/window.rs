@@ -30,6 +30,8 @@ struct App {
     regions: Vec<HitRegion>,
     dirty: bool,
     last_frame: Instant,
+    /// Si el frame anterior dejó transiciones en curso.
+    animating: bool,
     fatal: Option<String>,
 }
 
@@ -80,9 +82,13 @@ impl App {
         };
 
         let now = Instant::now();
-        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        let dt = frame_dt(
+            now.duration_since(self.last_frame).as_secs_f32(),
+            self.animating,
+        );
         self.last_frame = now;
         let animating = self.engine.tick(dt);
+        self.animating = animating;
 
         let size = window.inner_size();
         let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
@@ -112,6 +118,20 @@ impl App {
         if animating {
             window.request_redraw();
         }
+    }
+}
+
+/// Paso de tiempo para avanzar las transiciones.
+///
+/// Si no había ninguna transición en curso, el tiempo transcurrido es tiempo
+/// ocioso: usarlo haría que una transición recién iniciada saltara casi al
+/// final en su primer frame. En ese caso se avanza un frame nominal.
+fn frame_dt(elapsed: f32, was_animating: bool) -> f32 {
+    const NOMINAL: f32 = 1.0 / 60.0;
+    if was_animating {
+        elapsed.clamp(0.0, 0.1)
+    } else {
+        NOMINAL
     }
 }
 
@@ -212,6 +232,7 @@ pub fn run(
             regions: Vec::new(),
             dirty: true,
             last_frame: Instant::now(),
+            animating: false,
             fatal: None,
         };
         event_loop.run_app(&mut app).map_err(|e| e.to_string())?;
@@ -220,5 +241,21 @@ pub fn run(
     match fatal {
         Ok(None) => Ok(()),
         Ok(Some(msg)) | Err(msg) => Err(pyo3::exceptions::PyRuntimeError::new_err(msg)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::frame_dt;
+
+    #[test]
+    fn idle_time_does_not_skip_the_start_of_a_transition() {
+        assert_eq!(frame_dt(5.0, false), 1.0 / 60.0);
+    }
+
+    #[test]
+    fn running_transitions_use_elapsed_time_capped() {
+        assert_eq!(frame_dt(0.02, true), 0.02);
+        assert_eq!(frame_dt(3.0, true), 0.1);
     }
 }

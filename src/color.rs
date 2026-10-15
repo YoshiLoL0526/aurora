@@ -6,6 +6,11 @@ use skia_safe::Color;
 pub fn parse_color(s: &str) -> PyResult<Color> {
     let hex = s.trim().trim_start_matches('#');
     let err = || PyValueError::new_err(format!("color inválido: {s:?}"));
+    // Los índices de abajo son de bytes: con caracteres multibyte podrían
+    // caer dentro de un carácter y provocar un panic.
+    if !hex.is_ascii() {
+        return Err(err());
+    }
     let byte =
         |i: usize| u8::from_str_radix(hex.get(i..i + 2).ok_or_else(err)?, 16).map_err(|_| err());
     match hex.len() {

@@ -2,6 +2,9 @@
 //! a estructuras Rust tipadas. Es el único punto donde se cruza la frontera
 //! Python → Rust por frame: un solo recorrido, sin llamadas de ida y vuelta.
 
+use std::collections::HashSet;
+
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use skia_safe::Color;
@@ -151,7 +154,7 @@ fn len_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Len>> {
     s.strip_suffix('%')
         .and_then(|n| n.trim().parse::<f32>().ok())
         .map(|p| Some(Len::Pct(p / 100.0)))
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("longitud inválida: {s:?}")))
+        .ok_or_else(|| PyValueError::new_err(format!("longitud inválida: {s:?}")))
 }
 
 fn bool_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<bool> {
@@ -192,7 +195,7 @@ fn edges_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Edges> {
             left: *l,
         },
         _ => {
-            return Err(pyo3::exceptions::PyValueError::new_err(
+            return Err(PyValueError::new_err(
                 "padding debe ser un número, (vertical, horizontal) o (top, right, bottom, left)",
             ));
         }
@@ -273,11 +276,20 @@ fn inherit_text(d: &Bound<'_, PyDict>, parent: &TextProps) -> PyResult<TextProps
 }
 
 /// Punto de entrada: convierte el árbol de Python en un `Node`.
+///
+/// Las keys deben ser únicas en todo el árbol: identifican al nodo para
+/// despachar clics y conservar el estado de animación. Una key repetida
+/// haría que el clic llegara al callback de otro nodo, así que se rechaza.
 pub fn parse(obj: &Bound<'_, PyAny>) -> PyResult<Node> {
-    parse_node(obj, "0", &TextProps::default())
+    parse_node(obj, "0", &TextProps::default(), &mut HashSet::new())
 }
 
-fn parse_node(obj: &Bound<'_, PyAny>, path: &str, inherited: &TextProps) -> PyResult<Node> {
+fn parse_node(
+    obj: &Bound<'_, PyAny>,
+    path: &str,
+    inherited: &TextProps,
+    seen: &mut HashSet<String>,
+) -> PyResult<Node> {
     let d = obj.cast::<PyDict>()?;
     let kind = match str_of(d, "kind")?.as_deref() {
         Some("text") => Kind::Text,
@@ -290,13 +302,18 @@ fn parse_node(obj: &Bound<'_, PyAny>, path: &str, inherited: &TextProps) -> PyRe
     let style = parse_style(&style_dict)?;
     let text_props = inherit_text(&style_dict, inherited)?;
     let key = str_of(d, "key")?.unwrap_or_else(|| path.to_owned());
+    if !seen.insert(key.clone()) {
+        return Err(PyValueError::new_err(format!(
+            "key duplicada en el árbol de la vista: {key:?}"
+        )));
+    }
 
     let children = match get(d, "children")? {
         Some(list) => list
             .cast::<PyList>()?
             .iter()
             .enumerate()
-            .map(|(i, child)| parse_node(&child, &format!("{path}/{i}"), &text_props))
+            .map(|(i, child)| parse_node(&child, &format!("{path}/{i}"), &text_props, seen))
             .collect::<PyResult<Vec<_>>>()?,
         None => Vec::new(),
     };
