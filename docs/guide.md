@@ -369,14 +369,19 @@ chart(cierres(), height=180)  # una línea
 chart(df, names=["p50", "p95"], kind="area")  # varias series de un DataFrame
 chart(visitas, labels=DIAS, kind="bar", height=140)  # barras por categoría
 chart(ys, x=xs, kind="scatter", point_size=3)  # dispersión
+chart(muestras, zoom=True)  # un millón de puntos, con rueda y arrastre
 ```
 
 Con `kind` eliges la forma (`"line"`, `"area"`, `"bar"` o `"scatter"`); con una lista de series o
 un DataFrame, varias series y su leyenda. Los datos **no se copian**: el gráfico lee la memoria
 del array, así que si lo mutas en sitio basta con reconstruir la vista (por ejemplo, al cambiar
-un `Signal`) para que se actualice.
+un `Signal`) para que se actualice. Las series largas se reducen con LTTB al dibujarlas, así que
+un gráfico de millones de puntos se mueve sin problema; con `zoom=True` la rueda acerca (sobre el
+puntero), el arrastre desplaza, la rueda horizontal también y el doble clic vuelve a la vista
+completa, ajustando el eje y a lo que se ve.
 
-Mira [`examples/charts.py`](../examples/charts.py) para un panel con las cuatro formas.
+Mira [`examples/charts.py`](../examples/charts.py) para un panel con las cuatro formas y la señal
+con zoom.
 
 ### Más componentes
 

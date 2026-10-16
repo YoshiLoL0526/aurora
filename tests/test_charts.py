@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 from test_render import _png_pixel, _png_rows
 
-from aurora import MIDNIGHT, App, Signal, box, chart, column, component, text
+from aurora import MIDNIGHT, App, Signal, box, chart, column, component, scroll, text
 
 # Márgenes del área de dibujo dentro de la caja del gráfico (los mismos que
 # `chart.rs`): 8 px arriba y a la derecha, y la franja del eje x abajo.
@@ -298,6 +298,303 @@ def test_grid_can_be_turned_off(tmp_path):
     assert _pixels(_single(tmp_path, np.array([0.0, 1.0]), y_min=0, y_max=1), border, tol=6)
     out = _single(tmp_path, np.array([0.0, 1.0]), y_min=0, y_max=1, grid=False, name="no.png")
     assert not _pixels(out, border, tol=6)
+
+
+# --- millones de puntos (reducción con LTTB) ----------------------------------
+
+
+def test_a_million_points_keep_the_spike(tmp_path):
+    """Un pico único en un millón de puntos sobrevive a la reducción."""
+    n = 1_000_000
+    y = np.zeros(n)
+    y[500_000] = 1.0
+    pilot = App(
+        lambda: box(bg="#000000")[chart(y, color="#FF0000", key="c", grow=1)],
+        size=(SIZE, SIZE),
+    ).pilot()
+    out = tmp_path / "million.png"
+    pilot.png(str(out))
+    pixels = _pixels(out, RED)
+    top = [p for p in pixels if p[1] <= TOP + 4]
+    assert top, "el pico no sobrevivió a la reducción"
+    # En el centro del área de dibujo (500 000 de 999 999) y sin engordar la línea.
+    xs = [p[0] for p in pixels]
+    mid = (min(xs) + max(xs)) / 2
+    assert all(abs(p[0] - mid) <= 4 for p in top)
+    # Reducir un millón de puntos cuesta milisegundos, no segundos.
+    assert pilot.stats["draw"] < 2000
+
+
+def test_downsampling_keeps_the_shape(tmp_path):
+    """La misma señal a 1 000 000 y a 10 000 puntos se ve igual."""
+    big = np.sin(np.linspace(0.0, 40 * np.pi, 1_000_000))
+    small = np.sin(np.linspace(0.0, 40 * np.pi, 10_000))
+    a = _bounds(_pixels(_single(tmp_path, big, name="big.png"), RED))
+    b = _bounds(_pixels(_single(tmp_path, small, name="small.png"), RED))
+    assert abs(a[0] - b[0]) <= 3  # izquierda
+    assert abs(a[1] - b[1]) <= 5  # arriba (los picos)
+    assert abs(a[2] - b[2]) <= 3  # derecha
+    assert abs(a[3] - b[3]) <= 5  # abajo (los valles)
+
+
+def test_downsampling_keeps_the_gaps(tmp_path):
+    """Un hueco de `NaN` en el centro de 100 000 puntos sigue cortando la línea."""
+    n = 100_000
+    y = np.full(n, 0.5)
+    y[40_000:60_000] = np.nan
+    pixels = _pixels(_single(tmp_path, y), RED)
+    assert [p for p in pixels if p[0] < 60]
+    assert [p for p in pixels if p[0] > 140]
+    # El hueco ocupa del 40 % al 60 % del ancho del área de dibujo (~30..192).
+    assert not [x for x, _ in pixels if 100 < x < 122]
+
+
+# --- zoom y pan ---------------------------------------------------------------
+
+
+def _zoomable(data=None, **chart_kwargs):
+    """Un gráfico rojo con zoom que ocupa 200×200, y su piloto."""
+    values = np.linspace(0.0, 1.0, 501) if data is None else data
+    chart_kwargs.setdefault("zoom", True)
+    chart_kwargs.setdefault("color", "#FF0000")
+    return (
+        App(
+            lambda: box(bg="#000000")[chart(values, key="c", grow=1, **chart_kwargs)],
+            size=(SIZE, SIZE),
+        ).pilot(),
+        values,
+    )
+
+
+def _center(pilot, key="c"):
+    """Centro del nodo `key` en el último frame."""
+    x, y, w, h = pilot.rect(key)
+    return x + w / 2, y + h / 2
+
+
+def test_zoom_uses_the_pointer_as_the_anchor():
+    pilot, _ = _zoomable()
+    assert pilot.chart_view("c") == (0.0, 500.0)  # sin zoom, el dominio completo
+    x, y, w, h = pilot.rect("c")
+    pilot.move_to(x + w * 0.25, y + h / 2)
+    pilot.wheel(-1, lines=True)  # rueda arriba: acerca
+    left = pilot.chart_view("c")
+    assert left is not None
+    assert left[1] - left[0] == pytest.approx(400.0, rel=1e-6)  # un paso de 1,25×
+    # Anclado a la izquierda: el borde izquierdo apenas se mueve y el derecho se acerca.
+    assert left[0] < 500.0 - left[1]
+
+    other, _ = _zoomable()
+    x, y, w, h = other.rect("c")
+    other.move_to(x + w * 0.75, y + h / 2)
+    other.wheel(-1, lines=True)
+    right = other.chart_view("c")
+    assert right is not None
+    assert right[1] - right[0] == pytest.approx(400.0, rel=1e-6)
+    # Anclado a la derecha: es el borde derecho el que apenas se mueve.
+    assert 500.0 - right[1] < right[0]
+
+    # Y la rueda hacia el otro lado vuelve al dominio completo.
+    other.wheel(1, lines=True)
+    assert other.chart_view("c") == (0.0, 500.0)
+
+
+def test_zoom_uses_the_x_values_when_the_series_has_them():
+    n = 100_000
+    x = np.linspace(1000.0, 2000.0, n)
+    pilot, _ = _zoomable(np.sin(x), x=x)
+    assert pilot.chart_view("c") == (1000.0, 2000.0)
+    pilot.move_to(*_center(pilot))
+    pilot.wheel(-1, lines=True)
+    view = pilot.chart_view("c")
+    assert view is not None
+    span = view[1] - view[0]
+    assert span == pytest.approx(800.0, abs=1.0)
+    assert 1000.0 < view[0] < 1200.0  # el ancla está en el centro, no en un borde
+    assert 1800.0 < view[1] < 2000.0
+
+
+def test_zoom_and_pan_stay_inside_the_data():
+    pilot, _ = _zoomable()
+    x, y, w, h = pilot.rect("c")
+    # Encadenar 200 pasos no puede salirse del dominio ni degenerar la ventana.
+    pilot.move_to(x + w / 2, y + h / 2)
+    for _ in range(200):
+        pilot.wheel(-1, lines=True)
+    view = pilot.chart_view("c")
+    assert view is not None
+    assert 0.0 <= view[0] < view[1] <= 500.0
+    assert view[1] - view[0] > 0.0
+
+
+def test_drag_pans_the_window():
+    pilot, _ = _zoomable()
+    cx, cy = _center(pilot)
+    pilot.move_to(cx, cy)
+    pilot.wheel(-1, lines=True)
+    before = pilot.chart_view("c")
+    assert before is not None
+    pilot.mouse_down()
+    pilot.move_to(cx + 40, cy)
+    after = pilot.chart_view("c")
+    pilot.mouse_up()
+    assert after is not None
+    assert after[1] < before[1]  # el contenido sigue al puntero: la ventana se va
+    assert after[0] < before[0]
+    assert after[1] - after[0] == pytest.approx(before[1] - before[0])  # mismo ancho
+    assert pilot.chart_view("c") == after  # soltar no mueve nada más
+
+
+def test_a_drag_does_not_complete_the_click():
+    clicks: list[int] = []
+    pilot, _ = _zoomable(on_click=lambda: clicks.append(1))
+    cx, cy = _center(pilot)
+    pilot.move_to(cx, cy)
+    pilot.mouse_down()
+    pilot.move_to(cx + 30, cy)
+    pilot.mouse_up()
+    assert clicks == []
+    pilot.click("c")  # un clic sin arrastre sí llega
+    assert clicks == [1]
+
+
+def test_double_click_returns_to_the_full_view():
+    pilot, _ = _zoomable()
+    cx, cy = _center(pilot)
+    pilot.move_to(cx, cy)
+    pilot.wheel(-1, lines=True)
+    assert pilot.chart_view("c") != (0.0, 500.0)
+    pilot.click_at(cx, cy)
+    pilot.click_at(cx, cy)  # dos clics seguidos: doble clic
+    assert pilot.chart_view("c") == (0.0, 500.0)
+
+
+def test_zoom_adjusts_the_y_axis_to_what_is_visible(tmp_path):
+    """Sin `y_min`/`y_max`, el eje y se ajusta a la ventana visible."""
+    y = np.zeros(1000)
+    y[800:] = 1.0
+    pilot, _ = _zoomable(y)
+    before = tmp_path / "before.png"
+    pilot.png(str(before))
+    # Con el dominio completo (0..1), el cero está abajo del todo.
+    assert max(p[1] for p in _pixels(before, RED)) > 160
+
+    # Acercar sobre la zona plana (la izquierda): solo se ve el cero.
+    x, top, w, h = pilot.rect("c")
+    pilot.move_to(x + w * 0.2, top + h / 2)
+    for _ in range(3):
+        pilot.wheel(-1, lines=True)
+    after = tmp_path / "after.png"
+    pilot.png(str(after))
+    rows = [p[1] for p in _pixels(after, RED)]
+    assert min(rows) > 60 and max(rows) < 130  # la línea queda a media altura
+
+
+def test_without_zoom_the_chart_does_not_capture_the_wheel():
+    pilot, _ = _zoomable(zoom=False)
+    cx, cy = _center(pilot)
+    pilot.move_to(cx, cy)
+    pilot.wheel(-1, lines=True)
+    pilot.mouse_down()
+    pilot.move_to(cx + 40, cy)
+    pilot.mouse_up()
+    assert pilot.chart_view("c") == (0.0, 500.0)  # ni rueda ni arrastre lo mueven
+
+
+def test_zoom_works_on_every_kind(tmp_path):
+    """Línea, área, barras y dispersión comparten la ventana del zoom."""
+    for kind in ("line", "area", "bar", "scatter"):
+        pilot, _ = _zoomable(kind=kind)
+        pilot.move_to(*_center(pilot))
+        pilot.wheel(-1, lines=True)
+        view = pilot.chart_view("c")
+        assert view is not None and view[1] - view[0] < 500.0, kind
+        out = tmp_path / f"{kind}.png"
+        pilot.png(str(out))
+        assert _pixels(out, RED), f"nada dibujado en {kind}"
+
+
+def test_zoom_with_several_series(tmp_path):
+    a = np.linspace(0.0, 1.0, 1000)
+    pilot, _ = _zoomable(np.column_stack([a, 1.0 - a]), color=["#FF0000", "#00FF00"])
+    pilot.move_to(*_center(pilot))
+    pilot.wheel(-1, lines=True)
+    out = tmp_path / "series.png"
+    pilot.png(str(out))
+    assert _pixels(out, RED)
+    assert _pixels(out, (0, 255, 0))
+
+
+def test_zoom_with_a_descending_x(tmp_path):
+    """x en orden descendente: la ventana se acota igual (búsqueda al revés)."""
+    n = 10_000
+    x = np.linspace(1000.0, 0.0, n)
+    pilot, _ = _zoomable(np.sin(x / 100), x=x)
+    assert pilot.chart_view("c") == (0.0, 1000.0)
+    pilot.move_to(*_center(pilot))
+    pilot.wheel(-1, lines=True)
+    view = pilot.chart_view("c")
+    assert view is not None
+    assert 400.0 < view[1] - view[0] < 900.0  # se acercó…
+    assert 0.0 <= view[0] < view[1] <= 1000.0
+    out = tmp_path / "descendente.png"
+    pilot.png(str(out))
+    assert _pixels(out, RED)  # y la línea se sigue dibujando
+
+
+def test_zoom_with_an_unsorted_x(tmp_path):
+    """Con x desordenada no hay búsqueda binaria: se filtra punto a punto."""
+    rng = np.random.default_rng(3)
+    n = 5_000
+    x = rng.uniform(0.0, 100.0, n)
+    pilot, _ = _zoomable(np.sin(x), x=x)
+    pilot.move_to(*_center(pilot))
+    pilot.wheel(-1, lines=True)
+    view = pilot.chart_view("c")
+    assert view is not None and view[1] - view[0] < 100.0
+    out = tmp_path / "desordenada.png"
+    pilot.png(str(out))
+    assert _pixels(out, RED)
+
+
+def test_the_zoom_window_survives_a_rebuild():
+    """La ventana es estado por key: unos datos nuevos no la resetean."""
+    version = Signal(0)
+    data = np.linspace(0.0, 1.0, 1001)
+    pilot = App(
+        lambda: box(bg="#000000")[chart(data * (version() + 1), color="#FF0000", key="c", grow=1, zoom=True)],
+        size=(SIZE, SIZE),
+    ).pilot()
+    pilot.move_to(*_center(pilot))
+    pilot.wheel(-1, lines=True)
+    before = pilot.chart_view("c")
+    assert before is not None
+    version.set(1)  # datos nuevos, misma x: la ventana se conserva
+    pilot.frame()
+    assert pilot.chart_view("c") == before
+
+
+def test_chart_view_is_none_for_other_nodes():
+    pilot, _ = _zoomable()
+    assert pilot.chart_view("no-existe") is None
+
+
+def test_the_wheel_falls_through_to_the_scroll_at_the_limit():
+    """Al llegar al tope, la rueda sigue con el `scroll` de fuera."""
+    pilot = App(
+        lambda: scroll(key="s", height=100)[
+            chart(np.linspace(0.0, 1.0, 50), key="c", height=400, zoom=True, color="#FF0000")
+        ],
+        size=(200, 200),
+    ).pilot()
+    cx, cy = _center(pilot)
+    pilot.move_to(cx, min(cy, 90))
+    pilot.wheel(1)  # hacia fuera sin zoom: no hay tope que pasar…
+    assert pilot.chart_view("c") == (0.0, 49.0)  # …y el scroll se mueve
+    assert pilot.scroll_offset("s") == (0.0, 1.0)
+    pilot.wheel(-1)  # hacia dentro: se acerca y el scroll no se toca
+    assert pilot.chart_view("c") != (0.0, 49.0)
+    assert pilot.scroll_offset("s") == (0.0, 1.0)
 
 
 # --- interacción y errores ----------------------------------------------------

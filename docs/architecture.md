@@ -377,6 +377,32 @@ la llama tras el layout y antes de pintar, como `on_scroll`, a través de `canva
   zona. El dibujo no afecta a la geometría (`same_geometry` trata el canvas como una caja), así
   que nunca obliga a rehacer el layout.
 
+## Gráficos
+
+Un nodo `chart` (`Kind::Chart`, `src/chart.rs`) guarda sus series como vistas sin copia de los
+búferes de Python (`chart::Column`): el núcleo lee su memoria con el GIL tomado, en el momento de
+grabar. El dibujo completo (ejes, rejilla, leyenda y series) se graba en un `Picture` que se
+repinta sin volver a Python, como el de un `canvas`; `Charts` decide cuándo volver a grabar: si el
+`Chart` es otro objeto (la vista se reconstruyó con datos u opciones nuevas), si cambió la caja o
+si cambió su ventana visible.
+
+- **Reducción (LTTB):** cada serie se reduce a ~2 puntos por píxel (*Largest-Triangle-Three-Buckets*
+  en Rust), tramo a tramo: los `NaN` cortan la línea y cada tramo recibe el presupuesto que le toca
+  por su ancho en pantalla, así un pico vertical no se come los puntos de un tramo ancho. Con x
+  ordenada, la ventana se acota con búsqueda binaria y solo se recorren los índices visibles (más
+  un punto de margen a cada lado, para que el segmento que cruza el borde se dibuje); con x
+  desordenada se filtra punto a punto. Un millón de puntos se graba en milisegundos.
+- **Zoom y pan:** con `zoom=True`, `Charts` guarda por key el eje x que grabó (el rectángulo del
+  área de dibujo), el dominio de los datos y la ventana visible. La rueda acerca con el puntero
+  como ancla, el arrastre y la rueda horizontal desplazan la ventana y el doble clic la devuelve al
+  dominio completo; los tres son eventos que mutan la ventana y marcan el gráfico como *sucio*
+  (`dirty`), así que el siguiente frame lo vuelve a grabar y repinta solo su zona. La ventana vive
+  fuera del `Chart` (que es inmutable y puede compartirse entre frames) y sobrevive a las
+  reconstrucciones; se recorta al dominio al grabar, así que unos datos nuevos no la dejan fuera.
+- Sin zoom, el eje y sale del dominio completo; con zoom, de los puntos visibles (`y_min`/`y_max`
+  lo fijan). El gráfico no toca Python para nada de esto: la interacción entera vive en `Runtime`
+  y `Charts`.
+
 ## Campos de texto
 
 Un `text_input` es un nodo `input` (`Kind::Input`): una hoja con párrafo, como `text`, cuyo valor

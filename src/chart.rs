@@ -232,6 +232,9 @@ pub struct Chart {
     label_color: Color,
     grid_color: Color,
     family: String,
+    /// Zoom (rueda) y pan (arrastre) sobre el eje x; el doble clic vuelve a la
+    /// vista completa. Ver `Charts`.
+    pub zoom: bool,
 }
 /// Convierte el dict que envía `aurora/charts.py` en un `Chart`.
 pub fn parse(d: &Bound<'_, PyDict>) -> PyResult<Chart> {
@@ -336,6 +339,10 @@ pub fn parse(d: &Bound<'_, PyDict>) -> PyResult<Chart> {
         label_color: parse_color(&str_of(d, "label_color")?.unwrap_or_else(|| "#8A91A8".into()))?,
         grid_color: parse_color(&str_of(d, "grid_color")?.unwrap_or_else(|| "#252B3B".into()))?,
         family: str_of(d, "family")?.unwrap_or_else(|| "Inter".into()),
+        zoom: get(d, "zoom")?
+            .map(|v| v.is_truthy())
+            .transpose()?
+            .unwrap_or(false),
     })
 }
 
@@ -356,31 +363,328 @@ fn f32_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f32>> {
 }
 
 // ---------------------------------------------------------------------------
+// Reducción (downsampling) y ventana visible (zoom y pan)
+// ---------------------------------------------------------------------------
+
+/// Puntos por píxel que se conservan al reducir una serie: dos bastan para que
+/// el trazo no pierda picos ni escalones.
+const POINTS_PER_PX: f64 = 2.0;
+
+/// Ventana visible del eje x, en unidades de datos.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Window {
+    pub x0: f64,
+    pub x1: f64,
+}
+
+/// Lo que guarda `Charts` de la última grabación de un `chart` para hacer zoom
+/// y pan sin volver a leer los datos.
+#[derive(Clone, Copy, Debug)]
+pub struct RecordedView {
+    /// Área de dibujo (dentro de los márgenes de los ejes), en coordenadas
+    /// locales de la caja de contenido: es la que recibe el puntero.
+    pub plot: Rect,
+    /// Dominio completo de los datos.
+    pub domain: (f64, f64),
+    /// Ventana visible (ya recortada al dominio) con la que se grabó.
+    pub window: (f64, f64),
+}
+
+/// Una grabación de `chart`: el `Picture` y, si se pudo grabar, con qué eje x,
+/// dominio y ventana se hizo (lo usan el zoom, el pan y las pruebas).
+pub struct Recording {
+    pub picture: Option<Picture>,
+    pub view: Option<RecordedView>,
+}
+
+/// Recorta una ventana al dominio sin cambiar su ancho (una ventana más ancha
+/// que el dominio pasa a ser el dominio).
+fn clamp_window(w: Window, (d0, d1): (f64, f64)) -> Window {
+    if at_most(d1, d0) || at_most(w.x1, w.x0) {
+        return Window {
+            x0: d0,
+            x1: d1.max(d0),
+        };
+    }
+    let span = (w.x1 - w.x0).min(d1 - d0);
+    let x0 = w.x0.clamp(d0, d1 - span);
+    Window { x0, x1: x0 + span }
+}
+
+/// Orden de las x de una serie (calculado al vuelo en la pasada del dominio):
+/// con x ordenada, la ventana se acota con búsqueda binaria; si no, filtrando.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Order {
+    Asc,
+    Desc,
+    Mixed,
+}
+
+/// Cómo recorrer los puntos de una serie en esta grabación.
+#[derive(Clone, Copy, Debug)]
+enum Span {
+    /// Toda la serie (vista completa).
+    All,
+    /// Índices `[start, end)` visibles (x ordenada). Las barras caen en la
+    /// mitad de un hueco, por eso pueden entrar las de los bordes.
+    Indices(usize, usize),
+    /// Toda la serie, con los puntos visibles filtrados por su x (x desordenada).
+    Filtered(f64, f64),
+}
+
+impl Span {
+    /// Índices del núcleo visible (sin márgenes), para barras, dispersión y
+    /// etiquetas.
+    fn bounds(self, len: usize) -> (usize, usize) {
+        match self {
+            Span::All => (0, len),
+            Span::Indices(a, b) => (a.min(len), b.min(len)),
+            Span::Filtered(..) => (0, len),
+        }
+    }
+
+    /// Si un punto con x `x` cae dentro del tramo (solo filtra `Filtered`).
+    fn visible(self, x: f64) -> bool {
+        match self {
+            Span::Filtered(a, b) => x >= a && x <= b,
+            _ => true,
+        }
+    }
+}
+
+/// Los índices de `span`, en orden. Con `margins` se añade un punto a cada lado
+/// (solo con `Indices`): el segmento que cruza el borde de la ventana se sigue
+/// dibujando.
+fn each(span: Span, len: usize, margins: bool) -> std::ops::Range<usize> {
+    match span {
+        Span::All => 0..len,
+        Span::Indices(a, b) => {
+            if margins {
+                a.saturating_sub(1)..(b + 1).min(len)
+            } else {
+                a..b
+            }
+        }
+        Span::Filtered(..) => 0..len,
+    }
+}
+
+/// Primer índice cuyo x ya no queda "antes" de `v` (menor, o mayor si la serie
+/// desciende), por búsqueda binaria: la cota inferior de un tramo ordenado.
+fn first_at(series: &Series, v: f64, desc: bool, strict: bool) -> usize {
+    let (mut lo, mut hi) = (0, series.len());
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        let x = series.x_at(mid);
+        let before = match (desc, strict) {
+            (false, true) => x < v,
+            (false, false) => x <= v,
+            (true, true) => x > v,
+            (true, false) => x >= v,
+        };
+        if before {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+/// El tramo de una serie que se ve en la ventana.
+fn span_of(series: &Series, window: Option<Window>, order: Order) -> Span {
+    let Some(w) = window else {
+        return Span::All;
+    };
+    match &series.x {
+        None => {
+            // Posiciones 0, 1, 2…: la ventana son índices (± 0.5 para que las
+            // barras de los bordes entren partidas).
+            let n = series.len() as f64;
+            let a = (w.x0 - 0.5).ceil().clamp(0.0, n) as usize;
+            let b = ((w.x1 + 0.5).floor() + 1.0).clamp(0.0, n) as usize;
+            Span::Indices(a, b.max(a))
+        }
+        Some(_) => match order {
+            Order::Asc => Span::Indices(
+                first_at(series, w.x0, false, true),
+                first_at(series, w.x1, false, false),
+            ),
+            Order::Desc => Span::Indices(
+                first_at(series, w.x1, true, true),
+                first_at(series, w.x0, true, false),
+            ),
+            Order::Mixed => Span::Filtered(w.x0, w.x1),
+        },
+    }
+}
+
+/// Rango de y de los puntos que caen en la ventana visible (todas las series).
+fn visible_y(chart: &Chart, spans: &[Span], x0: f64, x1: f64) -> (f64, f64) {
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for (s, span) in chart.series.iter().zip(spans) {
+        for i in each(*span, s.len(), false) {
+            let (x, y) = (s.x_at(i), s.y_at(i));
+            if x.is_finite() && y.is_finite() && x >= x0 && x <= x1 {
+                lo = lo.min(y);
+                hi = hi.max(y);
+            }
+        }
+    }
+    (lo, hi)
+}
+
+/// Los puntos de una serie listos para dibujar, en coordenadas de datos: `pts`
+/// y, en `ends`, el final (exclusivo) de cada tramo continuo.
+struct Curves {
+    pts: Vec<(f64, f64)>,
+    ends: Vec<usize>,
+}
+
+/// Reduce una serie a lo que hay que dibujar: recorta a la ventana, corta la
+/// línea en los valores que faltan (los `NaN`) y, cuando un tramo tiene más
+/// puntos que `budget` (su ancho en pantalla), lo reduce con LTTB.
+fn curves(series: &Series, span: Span, budget: impl Fn(f64, f64) -> usize) -> Curves {
+    let len = series.len();
+    let visible = |i: usize| {
+        let (x, y) = (series.x_at(i), series.y_at(i));
+        x.is_finite() && y.is_finite() && span.visible(x)
+    };
+    // Tramos continuos: un `NaN` en x o en y corta la línea.
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    let mut start: Option<usize> = None;
+    let indices = each(span, len, true);
+    let end = indices.end;
+    for i in indices {
+        match (visible(i), start) {
+            (true, None) => start = Some(i),
+            (false, Some(s)) => {
+                runs.push((s, i));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(s) = start {
+        runs.push((s, end));
+    }
+    let mut pts = Vec::new();
+    let mut ends = Vec::with_capacity(runs.len());
+    for (a, b) in runs {
+        let n = b - a;
+        let target = budget(series.x_at(a), series.x_at(b - 1)).max(3);
+        if n > target {
+            lttb(
+                n,
+                target,
+                |i| (series.x_at(a + i), series.y_at(a + i)),
+                &mut pts,
+            );
+        } else {
+            for i in a..b {
+                pts.push((series.x_at(i), series.y_at(i)));
+            }
+        }
+        ends.push(pts.len());
+    }
+    Curves { pts, ends }
+}
+
+/// Reduce `n` puntos a `target` con LTTB (*Largest-Triangle-Three-Buckets*):
+/// conserva el primero, el último y, de cada bucket, el punto que forma el
+/// triángulo de área mayor con el punto anterior y la media del siguiente. Es
+/// el estándar para dibujar millones de muestras sin perder el perfil.
+fn lttb(n: usize, target: usize, point: impl Fn(usize) -> (f64, f64), out: &mut Vec<(f64, f64)>) {
+    if target >= n || target < 3 {
+        for i in 0..n {
+            out.push(point(i));
+        }
+        return;
+    }
+    out.push(point(0));
+    let every = (n - 2) as f64 / (target - 2) as f64;
+    let mut a = 0usize;
+    for i in 0..target - 2 {
+        // Media del bucket siguiente (para el último, el punto final).
+        let from = (((i + 1) as f64 * every).floor() as usize + 1).min(n - 1);
+        let to = (((i + 2) as f64 * every).floor() as usize + 1).clamp(from + 1, n);
+        let count = (to - from) as f64;
+        let (mut ax, mut ay) = (0.0, 0.0);
+        for j in from..to {
+            let (x, y) = point(j);
+            ax += x;
+            ay += y;
+        }
+        let (ax, ay) = (ax / count, ay / count);
+        // El punto del bucket actual con el triángulo de área mayor.
+        let first = ((i as f64 * every).floor() as usize + 1).min(n - 2);
+        let (px, py) = point(a);
+        let (mut best, mut area) = (first, -1.0f64);
+        for j in first..from {
+            let (x, y) = point(j);
+            let a = ((px - ax) * (y - py) - (px - x) * (ay - py)).abs();
+            if a > area {
+                area = a;
+                best = j;
+            }
+        }
+        out.push(point(best));
+        a = best;
+    }
+    out.push(point(n - 1));
+}
+
+// ---------------------------------------------------------------------------
 // Grabado: de los datos a un `Picture` de Skia
 // ---------------------------------------------------------------------------
 
-/// Graba el gráfico con el tamaño de su caja. `None` si la caja es demasiado
-/// pequeña para dibujar nada (el nodo se queda con su fondo y su borde).
-pub fn record(chart: &Chart, width: f32, height: f32, fonts: &FontCollection) -> Option<Picture> {
+/// Graba el gráfico con el tamaño de su caja, en la ventana visible `window`
+/// (`None`: el dominio completo). Una caja demasiado pequeña no se graba (el
+/// nodo se queda con su fondo y su borde).
+pub fn record(
+    chart: &Chart,
+    window: Option<Window>,
+    width: f32,
+    height: f32,
+    fonts: &FontCollection,
+) -> Recording {
     if width < 2.0 || height < 2.0 {
-        return None;
+        return Recording {
+            picture: None,
+            view: None,
+        };
     }
     let bounds = Rect::from_wh(width, height);
     let mut recorder = PictureRecorder::new();
     let canvas = recorder.begin_recording(bounds, false);
-    paint(canvas, chart, width, height, fonts);
-    recorder.finish_recording_as_picture(Some(&bounds))
+    let view = paint(canvas, chart, window, width, height, fonts);
+    Recording {
+        picture: recorder.finish_recording_as_picture(Some(&bounds)),
+        view: Some(view),
+    }
 }
 
-fn paint(canvas: &SkCanvas, chart: &Chart, width: f32, height: f32, fonts: &FontCollection) {
+/// Pinta el gráfico entero (ejes, rejilla, etiquetas, leyenda y series) y
+/// devuelve su eje x, su dominio y su ventana para el zoom y el pan.
+fn paint(
+    canvas: &SkCanvas,
+    chart: &Chart,
+    window: Option<Window>,
+    width: f32,
+    height: f32,
+    fonts: &FontCollection,
+) -> RecordedView {
     let (size, family) = (chart.label_size, chart.family.as_str());
 
-    // --- dominio de los datos ----------------------------------------------
+    // --- dominio de los datos (y orden de las x de cada serie) --------------
     let mut max_len = 0usize;
     let (mut y_lo, mut y_hi) = (f64::INFINITY, f64::NEG_INFINITY);
     let (mut x_lo, mut x_hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    let mut orders: Vec<Order> = Vec::with_capacity(chart.series.len());
     for s in &chart.series {
         max_len = max_len.max(s.len());
+        let explicit = s.x.is_some();
+        let (mut asc, mut desc, mut prev) = (true, true, None::<f64>);
         for i in 0..s.len() {
             let (x, v) = (s.x_at(i), s.y_at(i));
             if x.is_finite() && v.is_finite() {
@@ -389,7 +693,20 @@ fn paint(canvas: &SkCanvas, chart: &Chart, width: f32, height: f32, fonts: &Font
                 x_lo = x_lo.min(x);
                 x_hi = x_hi.max(x);
             }
+            if explicit && x.is_finite() {
+                match prev {
+                    Some(p) if x < p => asc = false,
+                    Some(p) if x > p => desc = false,
+                    _ => {}
+                }
+                prev = Some(x);
+            }
         }
+        orders.push(match (explicit, asc, desc) {
+            (false, ..) | (true, true, _) => Order::Asc,
+            (true, false, true) => Order::Desc,
+            _ => Order::Mixed,
+        });
     }
     let implicit_x = chart.series.iter().all(|s| s.x.is_none());
     if implicit_x {
@@ -402,6 +719,29 @@ fn paint(canvas: &SkCanvas, chart: &Chart, width: f32, height: f32, fonts: &Font
     }
     if at_most(x_hi, x_lo) {
         (x_lo, x_hi) = (x_lo - 0.5, x_hi + 0.5);
+    }
+
+    // --- ventana visible (zoom y pan) --------------------------------------
+    let domain = (x_lo, x_hi);
+    // Una ventana que abarca todo el dominio no es un zoom: se graba igual.
+    let window = window
+        .map(|w| clamp_window(w, domain))
+        .filter(|w| w.x1 > w.x0 && (w.x0 > domain.0 || w.x1 < domain.1));
+    let (x_lo, x_hi) = window.map_or(domain, |w| (w.x0, w.x1));
+    let spans: Vec<Span> = chart
+        .series
+        .iter()
+        .zip(&orders)
+        .map(|(s, o)| span_of(s, window, *o))
+        .collect();
+
+    // --- escala de y: límites fijos, el dominio o lo visible ----------------
+    if window.is_some() && chart.y_min.is_none() && chart.y_max.is_none() {
+        // Con zoom, el eje y se ajusta a lo que se ve (si hay algo visible).
+        let (lo, hi) = visible_y(chart, &spans, x_lo, x_hi);
+        if lo.is_finite() {
+            (y_lo, y_hi) = (lo, hi);
+        }
     }
     if !y_lo.is_finite() {
         (y_lo, y_hi) = (0.0, 1.0);
@@ -479,15 +819,28 @@ fn paint(canvas: &SkCanvas, chart: &Chart, width: f32, height: f32, fonts: &Font
             fonts,
         );
     }
-    draw_x_labels(canvas, chart, fonts, plot, x_lo, x_hi, &xpix);
+    draw_x_labels(canvas, chart, fonts, plot, x_lo, x_hi, &spans, &xpix);
 
     // --- series --------------------------------------------------------------
     canvas.save();
     canvas.clip_rect(plot, None, true);
-    let slot = bar_slot(chart, plot, x_lo, x_hi, max_len, implicit_x);
+    // Puntos visibles (el mayor de las series): el paso de las barras.
+    let points = chart
+        .series
+        .iter()
+        .zip(&spans)
+        .map(|(s, span)| {
+            let (a, b) = span.bounds(s.len());
+            b.saturating_sub(a)
+        })
+        .max()
+        .unwrap_or(0);
+    let slot = bar_slot(chart, plot, x_lo, x_hi, points, implicit_x);
     let total = chart.series.len();
-    for (index, s) in chart.series.iter().enumerate() {
-        draw_series(canvas, chart, s, plot, &xpix, &ypix, slot, index, total);
+    for (index, (s, span)) in chart.series.iter().zip(&spans).enumerate() {
+        draw_series(
+            canvas, chart, s, *span, plot, &xpix, &ypix, slot, index, total,
+        );
     }
     canvas.restore();
 
@@ -495,11 +848,19 @@ fn paint(canvas: &SkCanvas, chart: &Chart, width: f32, height: f32, fonts: &Font
     if !chart.names.is_empty() {
         draw_legend(canvas, chart, fonts);
     }
+
+    RecordedView {
+        plot,
+        domain,
+        window: (x_lo, x_hi),
+    }
 }
 
-/// Etiquetas del eje x: las de `labels`, o ticks numéricos del dominio. Se
-/// saltan las que no caben (con al menos `X_LABEL_GAP` px entre ellas) y las de
-/// los extremos se separan del borde lo justo para verse enteras.
+/// Etiquetas del eje x: las de `labels` (las que caen en la ventana), o ticks
+/// numéricos del dominio visible. Se saltan las que no caben (con al menos
+/// `X_LABEL_GAP` px entre ellas) y las de los extremos se separan del borde lo
+/// justo para verse enteras.
+#[allow(clippy::too_many_arguments)]
 fn draw_x_labels(
     canvas: &SkCanvas,
     chart: &Chart,
@@ -507,6 +868,7 @@ fn draw_x_labels(
     plot: Rect,
     x_lo: f64,
     x_hi: f64,
+    spans: &[Span],
     xpix: &impl Fn(f64) -> f32,
 ) {
     let (size, family) = (chart.label_size, chart.family.as_str());
@@ -533,8 +895,11 @@ fn draw_x_labels(
         }
     };
     if !chart.labels.is_empty() {
-        for (i, l) in chart.labels.iter().enumerate() {
-            place(xpix(i as f64), l);
+        let (a, b) = spans
+            .first()
+            .map_or((0, chart.labels.len()), |s| s.bounds(chart.labels.len()));
+        for i in a..b.min(chart.labels.len()) {
+            place(xpix(i as f64), &chart.labels[i]);
         }
     } else {
         // Un tick cada ~70 px: el algoritmo encaja el paso con el ancho.
@@ -547,7 +912,8 @@ fn draw_x_labels(
     }
 }
 
-/// Dibuja una serie: la línea (o el área), las barras o los puntos.
+/// Dibuja una serie: la línea (o el área), las barras o los puntos. Las series
+/// largas se reducen con LTTB a lo que cabe en el ancho del dibujo.
 /// `slot`: ancho del hueco de cada punto en las barras; `index`/`total`: qué
 /// serie es y cuántas hay (las barras de varias series van agrupadas).
 #[allow(clippy::too_many_arguments)]
@@ -555,6 +921,7 @@ fn draw_series(
     canvas: &SkCanvas,
     chart: &Chart,
     series: &Series,
+    span: Span,
     plot: Rect,
     xpix: &impl Fn(f64) -> f32,
     ypix: &impl Fn(f64) -> f32,
@@ -563,43 +930,30 @@ fn draw_series(
     total: usize,
 ) {
     let len = series.len();
-    // Tramos de valores finitos: un `move_to` cada vez que un valor que falta
-    // interrumpe la serie (la línea no une puntos a través de un hueco).
-    let mut runs: Vec<(usize, usize)> = Vec::new();
-    let mut start: Option<usize> = None;
-    for i in 0..len {
-        let ok = series.x_at(i).is_finite() && series.y_at(i).is_finite();
-        match (ok, start) {
-            (true, None) => start = Some(i),
-            (false, Some(s)) => {
-                runs.push((s, i));
-                start = None;
-            }
-            _ => {}
-        }
-    }
-    if let Some(s) = start {
-        runs.push((s, len));
-    }
-    let px_of = |i: usize| xpix(series.x_at(i));
-    let py_of = |i: usize| ypix(series.y_at(i));
+    // Un punto se dibuja si es finito y cae en el tramo visible (con x
+    // desordenada, `span` filtra por x).
+    let visible = |i: usize| {
+        let (x, y) = (series.x_at(i), series.y_at(i));
+        x.is_finite() && y.is_finite() && span.visible(x)
+    };
 
     match chart.kind {
         ChartKind::Scatter => {
             let mut path = PathBuilder::new();
-            for &(s0, s1) in &runs {
-                for i in s0..s1 {
-                    let (x, y) = (px_of(i), py_of(i));
-                    // Un punto fuera del rango fijo se omite (no se pega al borde).
-                    if x < plot.left - 1.0
-                        || x > plot.right + 1.0
-                        || y < plot.top - 1.0
-                        || y > plot.bottom + 1.0
-                    {
-                        continue;
-                    }
-                    path.add_circle((x, y), chart.point_size, None);
+            for i in each(span, len, true) {
+                if !visible(i) {
+                    continue;
                 }
+                let (x, y) = (xpix(series.x_at(i)), ypix(series.y_at(i)));
+                // Un punto fuera del rango fijo se omite (no se pega al borde).
+                if x < plot.left - 1.0
+                    || x > plot.right + 1.0
+                    || y < plot.top - 1.0
+                    || y > plot.bottom + 1.0
+                {
+                    continue;
+                }
+                path.add_circle((x, y), chart.point_size, None);
             }
             let mut p = Paint::default();
             p.set_anti_alias(true).set_color(series.color);
@@ -613,14 +967,15 @@ fn draw_series(
             let offset = (index as f32 - (total - 1) as f32 / 2.0) * width;
             let mut path = PathBuilder::new();
             let radius = (half * 0.4).min(3.0);
-            for &(s0, s1) in &runs {
-                for i in s0..s1 {
-                    let x = (px_of(i) + offset).clamp(plot.left, plot.right);
-                    let y = py_of(i).clamp(plot.top, plot.bottom);
-                    let (t, h) = (base.min(y), (base - y).abs().max(1.0));
-                    let r = Rect::from_xywh(x - half, t, half * 2.0, h);
-                    path.add_rrect(RRect::new_rect_xy(r, radius, radius), None, None);
+            for i in each(span, len, true) {
+                if !visible(i) {
+                    continue;
                 }
+                let x = (xpix(series.x_at(i)) + offset).clamp(plot.left, plot.right);
+                let y = ypix(series.y_at(i)).clamp(plot.top, plot.bottom);
+                let (t, h) = (base.min(y), (base - y).abs().max(1.0));
+                let r = Rect::from_xywh(x - half, t, half * 2.0, h);
+                path.add_rrect(RRect::new_rect_xy(r, radius, radius), None, None);
             }
             let mut p = Paint::default();
             p.set_anti_alias(true).set_color(series.color);
@@ -629,17 +984,29 @@ fn draw_series(
         ChartKind::Line | ChartKind::Area => {
             let area = chart.kind == ChartKind::Area;
             let base = ypix(0.0).clamp(plot.top, plot.bottom);
+            // Puntos objetivo de cada tramo: los que caben en su ancho en
+            // pantalla, para que un pico vertical no se lleve el presupuesto.
+            let budget = |first: f64, last: f64| {
+                let width = plot.width().max(1.0);
+                let frac = (f64::from((xpix(last) - xpix(first)).abs()) / f64::from(width))
+                    .clamp(0.0, 1.0);
+                (f64::from(width) * POINTS_PER_PX * frac).round() as usize + 3
+            };
+            let reduced = curves(series, span, budget);
             let mut stroke = PathBuilder::new();
             let mut fill = PathBuilder::new();
             let mut dots: Vec<Point> = Vec::new();
-            for &(s0, s1) in &runs {
+            let mut from = 0usize;
+            for &end in &reduced.ends {
+                let run = &reduced.pts[from..end];
+                from = end;
                 let mut last = Point::default();
-                for i in s0..s1 {
+                for (k, &(x, y)) in run.iter().enumerate() {
                     let p = Point::new(
-                        px_of(i).clamp(plot.left, plot.right),
-                        py_of(i).clamp(plot.top, plot.bottom),
+                        xpix(x).clamp(plot.left, plot.right),
+                        ypix(y).clamp(plot.top, plot.bottom),
                     );
-                    if i == s0 {
+                    if k == 0 {
                         stroke.move_to(p);
                         if area {
                             fill.move_to((p.x, base));
@@ -657,7 +1024,8 @@ fn draw_series(
                     fill.line_to((last.x, base));
                     fill.close();
                 }
-                if s1 - s0 == 1 {
+                // Un tramo de un solo punto se ve como un punto.
+                if run.len() == 1 {
                     dots.push(last);
                 }
             }
@@ -676,7 +1044,6 @@ fn draw_series(
                     .set_color(series.color);
                 canvas.draw_path(&stroke.detach(), &p);
             }
-            // Una serie de un solo valor se ve como un punto.
             if !dots.is_empty() {
                 let mut p = Paint::default();
                 p.set_anti_alias(true).set_color(series.color);
@@ -735,8 +1102,10 @@ fn draw_legend(canvas: &SkCanvas, chart: &Chart, fonts: &FontCollection) {
     }
 }
 
-/// Ancho del hueco de cada punto de una serie de barras, en píxeles (en una
-/// barra, `bar_width` es la fracción del hueco que ocupan las barras juntas).
+/// Ancho del hueco de cada punto de una serie de barras, en píxeles. En una
+/// barra, `bar_width` es la fracción del hueco que ocupan las barras juntas.
+/// `points`: puntos visibles, para el paso medio de una serie con x explícita
+/// (con x implícita cada punto ocupa una unidad de la ventana).
 fn bar_slot(
     chart: &Chart,
     plot: Rect,
@@ -745,14 +1114,13 @@ fn bar_slot(
     points: usize,
     implicit_x: bool,
 ) -> f32 {
-    let step = if implicit_x {
-        // El dominio es justo `points` unidades de ancho.
-        plot.width() / points.max(1) as f32
+    let span = (x_hi - x_lo).max(f64::MIN_POSITIVE);
+    let unit = if implicit_x {
+        1.0
     } else {
-        let data_step = (x_hi - x_lo) / (points.max(2) - 1) as f64;
-        (data_step / (x_hi - x_lo)) as f32 * plot.width()
+        span / (points.max(2) - 1) as f64
     };
-    (step * chart.bar_width).max(1.5)
+    ((unit / span) as f32 * plot.width() * chart.bar_width).max(1.5)
 }
 
 /// Multiplica el alfa de un color (rellenos translúcidos del área y la leyenda).
@@ -875,18 +1243,27 @@ struct Drawn {
     /// memorizado por un `@component` reutiliza el mismo).
     data: Arc<Chart>,
     size: (f32, f32),
+    /// El eje x, el dominio y la ventana de esa grabación. `None`: la caja aún
+    /// era demasiado pequeña para grabar.
+    view: Option<RecordedView>,
 }
 
-/// Decide cuándo volver a grabar cada `chart`. Vive en el `Runtime` (y uno de
-/// usar y tirar en `render_png`).
+/// Decide cuándo volver a grabar cada `chart` y guarda su ventana visible
+/// (zoom y pan). Vive en el `Runtime` (y uno de usar y tirar en `render_png`).
 ///
 /// Se llama tras el layout, cuando ya se conoce el tamaño de cada gráfico. Solo
 /// se graba si el `Chart` es otro (la vista se reconstruyó con otros datos u
-/// opciones) o si cambió la caja: en hover, scroll y animaciones de otros nodos
-/// no se hace nada.
+/// opciones), si cambió la caja o si su ventana cambió (zoom o pan): en hover,
+/// scroll y animaciones de otros nodos no se hace nada.
 #[derive(Default)]
 pub struct Charts {
     drawn: HashMap<String, Drawn>,
+    /// Ventana visible de cada `chart` con zoom, por key. Es lo último que
+    /// pidió el usuario; se recorta al dominio al grabar.
+    windows: HashMap<String, Window>,
+    /// `chart`s cuya ventana cambió: hay que volver a grabarlos aunque los
+    /// datos y la caja sean los mismos.
+    dirty: HashSet<String>,
     rebuilt: bool,
 }
 
@@ -896,10 +1273,87 @@ impl Charts {
         self.rebuilt = true;
     }
 
-    /// Graba los gráficos que lo necesiten. `relayout`: el último `update`
-    /// rehízo el layout (puede haber cambiado algún tamaño).
+    /// Ventana visible del eje x de `key` (en unidades de datos), o `None` si
+    /// no hay un gráfico grabado con esa key.
+    pub fn view(&self, key: &str) -> Option<(f64, f64)> {
+        let view = self.drawn.get(key)?.view?;
+        let w = self.windows.get(key).map_or(
+            Window {
+                x0: view.window.0,
+                x1: view.window.1,
+            },
+            |w| clamp_window(*w, view.domain),
+        );
+        (w.x1 > w.x0).then_some((w.x0, w.x1))
+    }
+
+    /// Área de dibujo del eje x de `key`, en coordenadas locales de la caja de
+    /// contenido (la que recibe el puntero).
+    pub fn plot(&self, key: &str) -> Option<Rect> {
+        self.drawn.get(key)?.view.map(|v| v.plot)
+    }
+
+    /// Acerca (`factor` < 1) alrededor de la fracción `t` (0..1) del ancho del
+    /// eje x: el dato que hay bajo el puntero se queda donde está. Devuelve si
+    /// algo cambió (`false`: ya está en el tope, el scroll puede seguir).
+    pub fn zoom(&mut self, key: &str, t: f32, factor: f64) -> bool {
+        let Some((x0, x1)) = self.view(key) else {
+            return false;
+        };
+        let anchor = x0 + f64::from(t.clamp(0.0, 1.0)) * (x1 - x0);
+        let (a, b) = (
+            anchor + (x0 - anchor) * factor,
+            anchor + (x1 - anchor) * factor,
+        );
+        self.set_window(key, a, b)
+    }
+
+    /// Desplaza la ventana `dx` píxeles: el contenido sigue al puntero.
+    pub fn pan(&mut self, key: &str, dx: f32) -> bool {
+        let Some(view) = self.drawn.get(key).and_then(|d| d.view) else {
+            return false;
+        };
+        let Some((x0, x1)) = self.view(key) else {
+            return false;
+        };
+        let shift = -f64::from(dx) * (x1 - x0) / f64::from(view.plot.width().max(1.0));
+        self.set_window(key, x0 + shift, x1 + shift)
+    }
+
+    /// Vuelve a la vista completa (dominio entero).
+    pub fn reset(&mut self, key: &str) -> bool {
+        let changed = self.windows.remove(key).is_some();
+        if changed {
+            self.dirty.insert(key.to_owned());
+        }
+        changed
+    }
+
+    /// Guarda una ventana nueva, recortada al dominio de la última grabación.
+    fn set_window(&mut self, key: &str, a: f64, b: f64) -> bool {
+        if !(a.is_finite() && b.is_finite()) {
+            return false;
+        }
+        let Some(view) = self.drawn.get(key).and_then(|d| d.view) else {
+            return false;
+        };
+        let window = clamp_window(Window { x0: a, x1: b }, view.domain);
+        if at_most(window.x1, window.x0) {
+            return false;
+        }
+        let current = self.view(key).unwrap_or(view.window);
+        if window.x0 == current.0 && window.x1 == current.1 {
+            return false;
+        }
+        self.windows.insert(key.to_owned(), window);
+        self.dirty.insert(key.to_owned());
+        true
+    }
+
+    /// Graba los gráficos que lo necesiten, con su ventana visible (si la
+    /// tienen) y devuelve el `Picture` al `Engine`.
     pub fn draw(&mut self, root: &Node, engine: &mut Engine, relayout: bool) -> PyResult<()> {
-        if !std::mem::take(&mut self.rebuilt) && !relayout {
+        if !std::mem::take(&mut self.rebuilt) && !relayout && self.dirty.is_empty() {
             return Ok(());
         }
         let mut nodes = Vec::new();
@@ -925,20 +1379,27 @@ impl Charts {
                 let (Some(data), Some(&size)) = (&node.chart, sizes.get(node.key.as_str())) else {
                     continue;
                 };
-                let same = self
-                    .drawn
-                    .get(&node.key)
-                    .is_some_and(|d| Arc::ptr_eq(&d.data, data) && d.size == size);
-                if same {
+                let dirty = self.dirty.remove(&node.key);
+                let previous = self.drawn.get(&node.key);
+                let same = previous.is_some_and(|d| Arc::ptr_eq(&d.data, data) && d.size == size);
+                if same && !dirty {
                     continue;
                 }
-                let picture = record(data, size.0, size.1, engine.fonts());
-                engine.record_chart(&node.key, picture);
+                let recording = record(
+                    data,
+                    self.windows.get(&node.key).copied(),
+                    size.0,
+                    size.1,
+                    engine.fonts(),
+                );
+                engine.record_chart(&node.key, recording.picture);
+                let view = recording.view.or_else(|| previous.and_then(|d| d.view));
                 self.drawn.insert(
                     node.key.clone(),
                     Drawn {
                         data: data.clone(),
                         size,
+                        view,
                     },
                 );
             }
@@ -946,6 +1407,8 @@ impl Charts {
         });
         let alive: HashSet<&str> = nodes.iter().map(|n| n.key.as_str()).collect();
         self.drawn.retain(|k, _| alive.contains(k.as_str()));
+        self.windows.retain(|k, _| alive.contains(k.as_str()));
+        self.dirty.retain(|k| alive.contains(k.as_str()));
         engine.retain_charts(|k| alive.contains(k));
         result
     }
@@ -1009,5 +1472,68 @@ mod tests {
         assert_eq!(tick_unit(0.0, 12_000.0), 1e3);
         assert_eq!(tick_unit(-3e6, 2e6), 1e6);
         assert_eq!(tick_unit(-4e9, 1.0), 1e9);
+    }
+
+    #[test]
+    fn lttb_is_the_identity_without_reduction() {
+        let mut out = Vec::new();
+        lttb(5, 5, |i| (i as f64, i as f64 * 2.0), &mut out);
+        assert_eq!(
+            out,
+            vec![(0.0, 0.0), (1.0, 2.0), (2.0, 4.0), (3.0, 6.0), (4.0, 8.0)]
+        );
+        let mut more = Vec::new();
+        lttb(3, 100, |i| (i as f64, i as f64), &mut more);
+        assert_eq!(more, vec![(0.0, 0.0), (1.0, 1.0), (2.0, 2.0)]);
+    }
+
+    #[test]
+    fn lttb_keeps_the_ends_the_spikes_and_the_order() {
+        let n = 10_000;
+        let spikes = [1_234usize, 5_555, 9_000];
+        let y = |i: usize| if spikes.contains(&i) { 10.0 } else { 0.5 };
+        let mut out = Vec::new();
+        lttb(n, 64, |i| (i as f64, y(i)), &mut out);
+        assert_eq!(out.len(), 64);
+        assert_eq!(out.first(), Some(&(0.0, 0.5)));
+        assert_eq!(out.last(), Some(&((n - 1) as f64, 0.5)));
+        for s in spikes {
+            assert!(
+                out.iter().any(|&(x, _)| x == s as f64),
+                "el pico {s} no sobrevivió"
+            );
+        }
+        assert!(out.windows(2).all(|w| w[0].0 < w[1].0), "fuera de orden");
+    }
+
+    #[test]
+    fn lttb_covers_the_whole_series_with_its_buckets() {
+        // Con objetivo 4, los 4 tramos cubren la serie entera (no se deja cola).
+        let mut out = Vec::new();
+        lttb(10, 4, |i| (i as f64, i as f64), &mut out);
+        assert_eq!(out.len(), 4);
+        assert_eq!(out.first().unwrap().0, 0.0);
+        assert_eq!(out.last().unwrap().0, 9.0);
+        assert!(out.windows(2).all(|w| w[0].0 < w[1].0), "fuera de orden");
+    }
+
+    #[test]
+    fn the_window_keeps_its_width_inside_the_domain() {
+        let domain = (0.0, 100.0);
+        let same = |a: (f64, f64)| Window { x0: a.0, x1: a.1 };
+        assert_eq!(clamp_window(same((10.0, 30.0)), domain), same((10.0, 30.0)));
+        // Pegada al borde derecho: mantiene el ancho.
+        assert_eq!(
+            clamp_window(same((90.0, 110.0)), domain),
+            same((80.0, 100.0))
+        );
+        assert_eq!(clamp_window(same((-20.0, 5.0)), domain), same((0.0, 25.0)));
+        // Más ancha que el dominio: todo el dominio.
+        assert_eq!(
+            clamp_window(same((-50.0, 500.0)), domain),
+            same((0.0, 100.0))
+        );
+        // Un dominio degenerado no rompe nada.
+        assert_eq!(clamp_window(same((1.0, 2.0)), (3.0, 3.0)), same((3.0, 3.0)));
     }
 }

@@ -29,6 +29,9 @@ static WAKE_PENDING: AtomicBool = AtomicBool::new(false);
 /// Margen que se deja alrededor de un nodo al desplazar para mostrarlo.
 const REVEAL_MARGIN: f32 = 8.0;
 
+/// Factor de zoom por paso de rueda (`scroll::LINE` píxeles): 1,25×.
+const ZOOM_RATE: f64 = 1.25;
+
 /// Marca la vista como desactualizada y despierta el bucle de eventos si hay
 /// uno en marcha. Seguro desde cualquier hilo; sin bucle no hace nada más.
 pub fn wake() {
@@ -75,6 +78,8 @@ pub struct Runtime {
     pointer: Option<(f32, f32)>,
     /// Arrastre en curso del pulgar de una barra de desplazamiento.
     drag: Option<Drag>,
+    /// Arrastre en curso de la ventana de un `chart` (zoom y pan).
+    pan: Option<Pan>,
     /// Nodo pulsado con Espacio, que se activa al soltar la tecla.
     space_pressed: Option<String>,
     /// Nodos con `autofocus` de la vista anterior: solo toma el foco el que aparece.
@@ -87,6 +92,8 @@ pub struct Runtime {
     selecting: Option<String>,
     /// Último clic (momento, punto y número de clics seguidos) para dobles y triples clics.
     last_click: Option<(Instant, Point, u8)>,
+    /// El puntero está sobre un `chart` con zoom (para el cursor de agarrar).
+    zoom_hover: bool,
     clipboard: Clipboard,
     /// Último texto escrito con el teclado, para no duplicarlo si el IME lo confirma también.
     last_typed: Option<(String, Instant)>,
@@ -113,6 +120,10 @@ pub enum CursorKind {
     Default,
     Pointer,
     Text,
+    /// Sobre un `chart` que se puede arrastrar (zoom y pan).
+    Grab,
+    /// Arrastrando la ventana de un `chart`.
+    Grabbing,
 }
 
 /// Portapapeles del sistema (ventana) o en memoria (piloto, tests deterministas).
@@ -161,6 +172,15 @@ struct Drag {
     grab: f32,
 }
 
+/// Arrastre del eje x de un `chart`: la ventana sigue al puntero.
+struct Pan {
+    key: String,
+    /// Última posición del puntero.
+    last: (f32, f32),
+    /// Si llegó a moverse (un arrastre no completa el clic).
+    moved: bool,
+}
+
 impl Runtime {
     pub fn new(build: Py<PyAny>, clipboard: Clipboard) -> Self {
         Self {
@@ -170,12 +190,14 @@ impl Runtime {
             dirty: true,
             pointer: None,
             drag: None,
+            pan: None,
             space_pressed: None,
             autofocus_seen: HashSet::new(),
             reveal_focus: false,
             mods: Mods::default(),
             selecting: None,
             last_click: None,
+            zoom_hover: false,
             clipboard,
             last_typed: None,
             stats: FrameStats::default(),
@@ -374,12 +396,25 @@ impl Runtime {
             }
             return true;
         }
+        // Arrastre de la ventana de un `chart`: el eje x sigue al puntero.
+        if let Some(pan) = &mut self.pan {
+            let dx = x - pan.last.0;
+            pan.last = (x, y);
+            pan.moved |= dx != 0.0;
+            return dx != 0.0 && self.charts.pan(&pan.key, dx);
+        }
         let bar_changed = self.hover_scrollbar();
-        self.refresh_hover() || bar_changed
+        let hover_changed = self.refresh_hover();
+        // Entrar o salir de un `chart` con zoom también cambia el cursor.
+        let grab = self.zoom_at().is_some();
+        let grab_changed = self.zoom_hover != grab;
+        self.zoom_hover = grab;
+        hover_changed || bar_changed || grab_changed
     }
 
     pub fn pointer_leave(&mut self) {
         self.pointer = None;
+        self.zoom_hover = false;
         self.engine.hovered = None;
         self.engine.tip.set_key(None);
         self.hover_scrollbar();
@@ -395,6 +430,18 @@ impl Runtime {
         self.engine.pressed = self.engine.hovered.clone();
         self.engine.tip.suppressed = true;
         self.engine.focus_visible = false;
+        // Un `chart` con zoom bajo el puntero: el arrastre mueve su ventana y el
+        // doble clic vuelve a la vista completa.
+        if let (Some((key, _)), Some((x, y))) = (self.zoom_at(), self.pointer) {
+            if self.click_count(Point::new(x, y)) == 2 {
+                self.charts.reset(&key);
+            }
+            self.pan = Some(Pan {
+                key,
+                last: (x, y),
+                moved: false,
+            });
+        }
         let target = self.pointer.and_then(|(x, y)| {
             ancestors(&self.engine.regions, topmost(&self.engine.regions, x, y))
                 .find(|r| r.focusable)
@@ -408,9 +455,9 @@ impl Runtime {
         result
     }
 
-    /// Clic en un campo: coloca el cursor (Mayús amplía la selección); doble
-    /// clic selecciona la palabra y triple clic todo el texto.
-    fn place_cursor(&mut self, key: String, at: Point) {
+    /// Cuántos clics seguidos lleva el puntero (1, 2 o 3), para el doble y el
+    /// triple clic.
+    fn click_count(&mut self, at: Point) -> u8 {
         let now = Instant::now();
         let count = match self.last_click {
             Some((t, p, n))
@@ -422,6 +469,13 @@ impl Runtime {
             _ => 1,
         };
         self.last_click = Some((now, at, count));
+        count
+    }
+
+    /// Clic en un campo: coloca el cursor (Mayús amplía la selección); doble
+    /// clic selecciona la palabra y triple clic todo el texto.
+    fn place_cursor(&mut self, key: String, at: Point) {
+        let count = self.click_count(at);
         let Some(state) = self.engine.inputs.get_mut(&key) else {
             return;
         };
@@ -441,6 +495,12 @@ impl Runtime {
     pub fn cursor(&self) -> CursorKind {
         if self.selecting.is_some() {
             return CursorKind::Text;
+        }
+        if self.pan.as_ref().is_some_and(|p| p.moved) {
+            return CursorKind::Grabbing;
+        }
+        if self.zoom_at().is_some() {
+            return CursorKind::Grab;
         }
         match self.engine.hovered.as_ref() {
             Some(key)
@@ -466,6 +526,10 @@ impl Runtime {
                 state.poke();
             }
             return Ok(());
+        }
+        // Un arrastre movió la ventana del gráfico: el gesto no completa el clic.
+        if self.pan.take().is_some_and(|pan| pan.moved) {
+            self.engine.pressed = None;
         }
         if let Some(key) = self.engine.pressed.take()
             && self.engine.hovered.as_deref() == Some(key.as_str())
@@ -934,11 +998,24 @@ impl Runtime {
 
     // ----------------------------------------------------------------- scroll
 
-    /// Rueda o trackpad sobre el puntero: desplaza el `scroll` más interno que
-    /// aún pueda moverse en esa dirección (al llegar al límite, pasa al de fuera).
+    /// Rueda o trackpad sobre el puntero: sobre un `chart` con zoom, la rueda
+    /// vertical acerca (el puntero es el ancla) y la horizontal desplaza la
+    /// ventana; si ya está en el tope, la rueda pasa al `scroll` de fuera. Sin
+    /// un gráfico debajo, desplaza el `scroll` más interno que aún pueda moverse
+    /// en esa dirección (al llegar al límite, pasa al de fuera).
     /// `delta` en píxeles, positivo hacia el final del contenido. `smooth` anima
     /// el recorrido (rueda por pasos); sin él se aplica tal cual (trackpad).
     pub fn wheel(&mut self, delta: Point, smooth: bool) -> bool {
+        if (delta.y != 0.0 || delta.x != 0.0)
+            && let Some((key, t)) = self.zoom_at()
+        {
+            let factor = ZOOM_RATE.powf(f64::from(delta.y) / f64::from(LINE));
+            let zoomed = delta.y != 0.0 && self.charts.zoom(&key, t, factor);
+            let panned = delta.x != 0.0 && self.charts.pan(&key, -delta.x);
+            if zoomed || panned {
+                return true;
+            }
+        }
         let Some((x, y)) = self.pointer else {
             return false;
         };
@@ -953,6 +1030,38 @@ impl Runtime {
                 .get_mut(key)
                 .is_some_and(|state| state.scroll_by(delta, smooth))
         })
+    }
+
+    /// Ventana visible del eje x del `chart` con esa key (en unidades de datos).
+    /// La usan el piloto y las pruebas; sin zoom es el dominio completo.
+    pub fn chart_view(&self, key: &str) -> Option<(f64, f64)> {
+        self.charts.view(key)
+    }
+
+    /// Un `chart` con zoom bajo el puntero, con la fracción del eje x (0..1)
+    /// que hay en él. `None` si no hay ninguno.
+    fn zoom_at(&self) -> Option<(String, f32)> {
+        let (px, py) = self.pointer?;
+        let idx = topmost(&self.engine.regions, px, py)?;
+        let region = ancestors(&self.engine.regions, Some(idx)).find(|r| self.zoomable(&r.key))?;
+        let node = self.tree.as_ref()?.find(&region.key)?;
+        let plot = self.charts.plot(&region.key)?;
+        if plot.width() <= 0.0 {
+            return None;
+        }
+        let (padding, border) = (node.style.padding, node.style.border_width);
+        let left = region.rect.left + border + padding.left + plot.left;
+        let t = ((px - left) / plot.width()).clamp(0.0, 1.0);
+        Some((region.key.clone(), t))
+    }
+
+    /// Si el nodo `key` es un gráfico con zoom.
+    fn zoomable(&self, key: &str) -> bool {
+        self.tree
+            .as_ref()
+            .and_then(|tree| tree.find(key))
+            .and_then(|node| node.chart.as_ref())
+            .is_some_and(|chart| chart.zoom)
     }
 
     /// Desplazamiento actual del `scroll` con esa key.

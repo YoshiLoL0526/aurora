@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import polars as pl
 
-from aurora import App, Element, Signal, button, card, chart, column, component, row, spacer, text
+from aurora import App, Element, Signal, button, card, chart, column, component, row, scroll, spacer, text
 
 random.seed(7)
 rng = np.random.default_rng(7)
@@ -31,6 +31,11 @@ cierres = np.array([12.0, 18.0, 9.0, 24.0, 30.0, 7.0, 4.0])
 
 puntos_x = rng.normal(0, 1, 500)
 puntos_y = puntos_x * 1.8 + rng.normal(0, 0.9, 500)
+
+# Una señal de un millón de muestras: al dibujarla se reduce con LTTB (~2 puntos
+# por píxel), así que se mueve suave con la rueda y el arrastre.
+t = np.arange(1_000_000, dtype=np.float64)
+senal = np.sin(t / 9_000) + np.sin(t / 41) * 0.22
 
 # Las series "en vivo" se mutan en sitio: el gráfico relee la misma memoria.
 ventana = np.full(120, 0.5)
@@ -82,19 +87,31 @@ def dispersion() -> Element:
     ]
 
 
-def view():
-    return column(padding=28, gap=18)[
-        row(align="center")[
-            text("Charts", size=26, weight=700),
-            spacer(),
-            button("Nuevo dato", nuevo_dato, key="nuevo-dato"),
-        ],
-        row(gap=16, align="stretch")[latencias(), en_vivo(version())],
-        row(gap=16, align="stretch")[cierres_semana(version()), dispersion()],
+@component
+def senal_larga() -> Element:
+    """Un millón de puntos con zoom (rueda) y pan (arrastre)."""
+    return card(grow=1, width=0)[
+        text("Señal de 1 000 000 de puntos · rueda para acercar, arrastra para mover", weight=600),
+        chart(senal, zoom=True, key="senal", height=180, color="$success"),
     ]
 
 
-app = App(view, title="Aurora · Charts", size=(980, 620))
+def view():
+    return scroll(key="pagina")[
+        column(padding=28, gap=18)[
+            row(align="center")[
+                text("Charts", size=26, weight=700),
+                spacer(),
+                button("Nuevo dato", nuevo_dato, key="nuevo-dato"),
+            ],
+            row(gap=16, align="stretch")[latencias(), en_vivo(version())],
+            row(gap=16, align="stretch")[cierres_semana(version()), dispersion()],
+            row(align="stretch")[senal_larga()],
+        ]
+    ]
+
+
+app = App(view, title="Aurora · Charts", size=(980, 860))
 
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--png":

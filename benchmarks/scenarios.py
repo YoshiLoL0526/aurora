@@ -264,6 +264,50 @@ def typing(scale: float = 1.0) -> Bench:
 # ------------------------------------------------------- gráficos con muchos puntos
 
 
+def chart_millon(scale: float = 1.0) -> Bench:
+    """Un gráfico de 1 000 000 de puntos con zoom y pan.
+
+    Mide el camino completo del gráfico grande: releer los búferes con LTTB
+    (solo los puntos visibles) y volver a grabar al acercar, desplazar o traer
+    datos nuevos. Repintar sin tocar la ventana (`idle`) no relee nada.
+    """
+    n = max(100, int(1_000_000 * scale))
+    x = np.arange(n, dtype=np.float64)
+    base = np.sin(x / 9_000) + np.sin(x / 41) * 0.22
+    live = base.copy()
+    version = Signal(0)
+
+    @component
+    def grafico(_v: int) -> Element:
+        return column(padding=16)[chart(live, x=x, zoom=True, key="millon", height=400, color="$primary")]
+
+    def view():
+        return grafico(version())
+
+    def rebuild(pilot: Pilot) -> None:
+        live[:] = base + (version() % 5) * 0.05
+        version.set(version() + 1)
+        pilot.frame()
+
+    def place(pilot: Pilot) -> None:
+        rect = pilot.rect("millon")
+        assert rect is not None
+        x_, y_, w, h = rect
+        pilot.move_to(x_ + w / 2, y_ + h / 2)
+
+    return Bench(
+        App(view, size=(960, 640)),
+        {
+            "rebuild": rebuild,
+            "zoom": _alternate(lambda p: p.wheel(-1, lines=True), lambda p: p.wheel(1, lines=True)),
+            "pan": _alternate(lambda p: p.wheel(0, 200), lambda p: p.wheel(0, -200)),
+            "idle": _idle,
+        },
+        setup=place,
+        info={"points": n},
+    )
+
+
 def charts_points(scale: float = 1.0) -> Bench:
     """Cuatro gráficos de 20 000 puntos (80 000 en total) que se vuelven a grabar.
 
@@ -345,5 +389,10 @@ SCENARIOS = [
         "charts_points",
         "Cuatro gráficos de 20 000 puntos que se vuelven a grabar con datos nuevos",
         charts_points,
+    ),
+    Scenario(
+        "chart_millon",
+        "Un gráfico de 1 000 000 de puntos que se vuelve a grabar con LTTB, con zoom y pan",
+        chart_millon,
     ),
 ]

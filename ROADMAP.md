@@ -52,7 +52,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 - ✅ `canvas`: API de dibujo inmediato desde Python, enviada en lote a Rust
 - ✅ Charts nativos (líneas, barras, áreas, dispersión) alimentados con numpy/polars sin copias
-- ⏳ Downsampling (LTTB) en Rust para millones de puntos, zoom y pan
+- ✅ Downsampling (LTTB) en Rust para millones de puntos, zoom y pan
 - ⏳ `table` con ordenación, columnas redimensionables y virtualización
 
 ## v0.5 — Experiencia de desarrollo ⏳

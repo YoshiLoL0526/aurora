@@ -70,7 +70,7 @@ App(view, title="Contador").run()
 | **🔁 Reactiva** | El estado vive en `Signal`s y la interfaz se mantiene sincronizada sola. |
 | **🎨 Temas con tokens** | `bg="$primary"` en lugar de colores sueltos. Cambia de tema claro a oscuro en caliente con un `Signal[Theme]`. |
 | **⌨️ Apps de verdad** | Scroll con inercia, teclado y foco con Tab, campos de texto con selección, portapapeles, deshacer e IME, imágenes y SVG, y componentes como `select`, `tabs`, `switch` o `tooltip`. |
-| **📊 Gráficos con tus datos** | `chart()` dibuja líneas, áreas, barras y dispersión a partir de arrays de numpy o de polars **sin copiarlos**, con los ejes, la rejilla y la leyenda calculados solos. |
+| **📊 Gráficos con tus datos** | `chart()` dibuja líneas, áreas, barras y dispersión a partir de arrays de numpy o de polars **sin copiarlos**, con los ejes, la rejilla y la leyenda calculados solos. Millones de puntos (reducidos con LTTB en Rust), con zoom de rueda y pan arrastrando. |
 | **🧪 Testeable sin pantalla** | `app.render_png()` renderiza cualquier vista sin abrir ventana, y `app.pilot()` simula clics, teclas y rueda con el mismo motor que la ventana: tests de interacción, CI y documentación visual. |
 
 ## Inicio rápido
@@ -185,7 +185,7 @@ Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap]
 
 - **Vista completa por evento**: cada cambio vuelve a llamar a `view()`. Las ramas marcadas con
   `@component` que no cambiaron se reutilizan, pero el resto se reconstruye.
-- Todavía sin canvas de dibujo libre, accesibilidad ni multi-ventana.
+- Todavía sin accesibilidad, multi-ventana ni tablas (`table`).
 
 ## Documentación
 

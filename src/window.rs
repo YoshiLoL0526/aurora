@@ -153,6 +153,8 @@ impl App {
             window.set_cursor(match self.rt.cursor() {
                 CursorKind::Pointer => CursorIcon::Pointer,
                 CursorKind::Text => CursorIcon::Text,
+                CursorKind::Grab => CursorIcon::Grab,
+                CursorKind::Grabbing => CursorIcon::Grabbing,
                 CursorKind::Default => CursorIcon::Default,
             });
         }

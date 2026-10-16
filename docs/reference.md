@@ -121,6 +121,7 @@ def test_counter():
 | `wheel(dy=0, dx=0, *, lines=False)` | Rueda bajo el puntero; positivo = hacia el final del contenido. En píxeles (trackpad, inmediato) o, con `lines=True`, en pasos de rueda (animado). |
 | `scroll(key, dy=0, dx=0)` | Mueve el puntero al centro de `key` y desplaza esos píxeles. |
 | `scroll_offset(key)` | `(x, y)` desplazados del `scroll` con esa key, o `None`. |
+| `chart_view(key)` | Ventana visible del eje x del `chart` con esa key, en unidades de datos (sin zoom, su dominio completo). |
 | `press(combo)` | Pulsa y suelta una tecla o combinación: `"tab"`, `"shift+tab"`, `"enter"`, `"ctrl+s"`, `"a"`. |
 | `key_down(combo)` / `key_up(combo)` | Pulsa / suelta por separado (p. ej. mantener Espacio). |
 | `type(texto)` | Escribe en el campo enfocado, grafema a grafema, como desde el teclado (`"\n"` = Enter). |
@@ -269,6 +270,7 @@ chart(ventas(), height=160)  # una línea
 chart(df, names=["p50", "p95"], kind="area")  # varias series de un DataFrame
 chart(cierres, labels=DIAS, kind="bar", height=140)
 chart(ys, x=xs, kind="scatter", point_size=3)
+chart(muestras, zoom=True)  # millones de puntos: rueda para acercar, arrastra para mover
 ```
 
 - **Datos:** `y` puede ser un array de numpy, un `array.array`, un `memoryview` o una lista; una
@@ -278,6 +280,16 @@ chart(ys, x=xs, kind="scatter", point_size=3)
   del array, así que mutarlo en sitio y reconstruir la vista basta para actualizarlo (los de
   polars se convierten con `to_numpy()`, que comparte memoria cuando el tipo lo permite). Los
   valores que falten (`NaN`) se saltan y, en una línea o un área, la cortan.
+- **Millones de puntos:** al grabar, cada serie se reduce en Rust con **LTTB**
+  (*Largest-Triangle-Three-Buckets*) a ~2 puntos por píxel: el perfil y los picos se conservan y
+  solo se recorren los puntos visibles (con x ordenada, por búsqueda binaria). Un gráfico de un
+  millón de puntos se graba en milisegundos y se mueve a 60 fps.
+- **Zoom y pan:** con `zoom=True`, la rueda acerca y aleja sobre el puntero (el dato bajo el
+  cursor no se mueve), el arrastre desplaza la ventana, la rueda horizontal (trackpad) también
+  desplaza y el doble clic vuelve a la vista completa. El eje y se ajusta a lo visible salvo que
+  fijes `y_min`/`y_max`; al llegar a un tope, la rueda pasa al `scroll` de fuera. La ventana es
+  estado del gráfico (su `key`) y sobrevive a las reconstrucciones; `Pilot.chart_view(key)` la
+  lee en los tests.
 - **Series:** `color` admite un color o una lista (uno por serie; sin él, rota la paleta del
   tema) y `names` dibuja la leyenda de arriba.
 - **Ejes:** el de x son posiciones 0, 1, 2… salvo que des `x` (numérico) o `labels` (categorías:
@@ -290,9 +302,10 @@ chart(ys, x=xs, kind="scatter", point_size=3)
   `on_click` (que recibe el clic en el gráfico, no en cada barra).
 - **Tamaño:** sin `height`, `grow`, `min_height` ni `max_height` mide 200 px de alto; a lo ancho
   se estira como cualquier caja (en una `row`, dale `grow=1` o `width`).
-- **Cuándo se vuelve a grabar:** cuando la vista se reconstruye con otros datos u opciones, o
-  cuando cambia su caja. Hover, scroll y animaciones de otros nodos lo repintan sin releer los
-  datos. Dentro de un `@component`, solo si cambian sus argumentos o algún `Signal` que lea.
+- **Cuándo se vuelve a grabar:** cuando la vista se reconstruye con otros datos u opciones, cuando
+  cambia su caja o cuando la rueda o el arrastre mueven la ventana. Hover, scroll y animaciones de
+  otros nodos lo repintan sin releer los datos. Dentro de un `@component`, solo si cambian sus
+  argumentos o algún `Signal` que lea.
 - Un dato no numérico (texto, complejos…), unas `labels` que no encajen con los puntos o una
   `kind` desconocida lanzan `ValueError` (`TypeError` si los datos no son ni números ni arrays).
 

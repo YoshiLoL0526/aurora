@@ -10,6 +10,19 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **Downsampling (LTTB) en Rust:** los `chart` reducen cada serie a ~2 puntos por píxel al
+  grabarla (*Largest-Triangle-Three-Buckets*), tramo a tramo (los `NaN` cortan la línea) y con
+  presupuesto por ancho en pantalla, así que los picos se conservan. Un gráfico de **millones de
+  puntos** se graba en milisegundos: con x ordenada solo se recorren los índices visibles (más un
+  punto de margen a cada lado). Los datos se siguen leyendo sin copiarlos y solo se releen cuando
+  la ventana o los datos cambian.
+- **`chart(..., zoom=True)`**: zoom y pan sobre el eje x. La rueda acerca y aleja con el puntero
+  como ancla (el dato bajo el cursor no se mueve), el arrastre y la rueda horizontal desplazan la
+  ventana y el doble clic vuelve a la vista completa; el eje y se ajusta a lo visible salvo que
+  fijes `y_min`/`y_max`. Al llegar a un tope, la rueda pasa al `scroll` de fuera, y el cursor
+  cambia a "agarrar" sobre un gráfico con zoom. La ventana es estado por `key` que sobrevive a las
+  reconstrucciones y `Pilot.chart_view(key)` la lee en los tests. El ejemplo de
+  `examples/charts.py` incluye una señal de un millón de puntos con zoom.
 - `chart(y, *, kind="line", **estilo)`: gráficos nativos de **línea**, **área**, **barras** y
   **dispersión**, con los ejes (ticks redondos), la rejilla y la leyenda calculados solos. Los
   datos se leen **sin copiarlos**, con el protocolo de búfer: arrays de numpy (`f32`/`f64` y

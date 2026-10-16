@@ -42,6 +42,7 @@ de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
 | `lista_virtual_100k` | 100 000 filas en una `virtual_list` con filas `@component`: solo existen las visibles. | `cold`, `rebuild`, `hover`, `scroll` (cada paso cambia el rango visible), `idle` |
 | `dashboard_50` | 50 paneles con 24 barras cada uno y datos que cambian. | `cold`, `rebuild` (avanzan los datos), `hover`, `idle` |
 | `charts_points` | Cuatro gráficos (línea, área, dispersión y dos series) de 20 000 puntos cada uno. | `cold`, `rebuild` (datos nuevos: se vuelven a grabar), `hover`, `idle` |
+| `chart_millon` | Un gráfico de 1 000 000 de puntos con `zoom=True`: LTTB al grabar. | `cold`, `rebuild` (datos nuevos), `zoom` (un paso de rueda), `pan` (un paso horizontal), `idle` |
 | `typing` | Escribir en un campo que filtra un formulario de 500 filas. | `cold`, `type` (una tecla), `idle` |
 
 - `cold`: crear la app y pintar el primer frame (sin estado previo).

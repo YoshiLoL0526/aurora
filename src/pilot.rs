@@ -253,6 +253,12 @@ impl Pilot {
         self.rt.scroll_offset(key).map(|p| (p.x, p.y))
     }
 
+    /// Ventana visible del eje x del `chart` con esa key, en unidades de datos
+    /// (sin zoom, su dominio completo). `None` si no hay un gráfico con esa key.
+    fn chart_view(&self, key: &str) -> Option<(f64, f64)> {
+        self.rt.chart_view(key)
+    }
+
     /// `(x, y, ancho, alto)` del nodo en el último frame, o `None` si no se pintó.
     fn rect(&self, key: &str) -> Option<(f32, f32, f32, f32)> {
         self.rt

@@ -7,11 +7,14 @@ etiquetas) y los datos cruzan al núcleo **sin copiarse**:
     chart(peticiones())                        # una línea
     chart(df, names=["p50", "p95"], kind="area")   # varias series
     chart(visitas, labels=MESES, kind="bar")       # barras por categoría
+    chart(muestras, zoom=True)                 # millones de puntos, con rueda y arrastre
 
 Un array de numpy o un `array.array` se leen de su propia memoria; una serie o
 un DataFrame de polars se convierten con `to_numpy()`, que comparte memoria
-cuando el tipo lo permite. Dentro de un `@component`, el gráfico solo se vuelve
-a dibujar cuando cambian sus argumentos o algún `Signal` que lea el componente.
+cuando el tipo lo permite. Al dibujar, las series largas se reducen con LTTB
+(~2 puntos por píxel): un gráfico de millones de puntos se sigue moviendo a
+60 fps. Dentro de un `@component`, el gráfico solo se vuelve a dibujar cuando
+cambian sus argumentos o algún `Signal` que lea el componente.
 """
 
 from __future__ import annotations
@@ -135,6 +138,7 @@ def chart(
     y_min: float | None = None,
     y_max: float | None = None,
     grid: bool = True,
+    zoom: bool = False,
     stroke_width: float = 2,
     point_size: float = 3.5,
     bar_width: float = 0.7,
@@ -156,12 +160,20 @@ def chart(
     Los datos **no se copian**: el núcleo los lee de la memoria del array (los
     de polars, mediante `to_numpy()`, que comparte memoria cuando el tipo lo
     permite). Los valores que falten (`NaN`) se saltan y, en una línea o un
-    área, la cortan.
+    área, la cortan. Un gráfico de **millones de puntos** se reduce con LTTB al
+    dibujarse (~2 puntos por píxel), sin perder los picos ni el perfil, y solo
+    se leen los puntos visibles.
 
     Con varias series se dibuja una leyenda en la parte de arriba si hay
     `names`. El eje x son posiciones 0, 1, 2… salvo que des `x` (numérico) o
     `labels` (categorías: meses, días…), y el eje y se ajusta a los datos o a
     `y_min`/`y_max`. Las barras siempre nacen del cero.
+
+    Con `zoom=True`, la rueda acerca y aleja sobre el puntero (que queda fijo
+    en su dato), el arrastre desplaza la ventana y el doble clic vuelve a la
+    vista completa; el eje y se ajusta a lo visible salvo que fijes
+    `y_min`/`y_max`. Al llegar a un tope, la rueda sigue con el `scroll` de
+    fuera.
 
     Admite el estilo de una caja (`bg`, `radius`, `padding`, `border_*`,
     `shadow`…), manejadores como `on_click` y una `height` (por defecto, 200 px
@@ -191,6 +203,7 @@ def chart(
         "y_min": y_min,
         "y_max": y_max,
         "grid": bool(grid),
+        "zoom": bool(zoom),
         "stroke_width": stroke_width,
         "point_size": point_size,
         "bar_width": bar_width,

@@ -77,6 +77,8 @@ class Pilot:
         """Mueve el puntero al centro de `key` y desplaza esos píxeles."""
     def scroll_offset(self, key: str) -> tuple[float, float] | None:
         """`(x, y)` desplazados del contenedor `scroll` con esa key."""
+    def chart_view(self, key: str) -> tuple[float, float] | None:
+        """Ventana visible del eje x del `chart` con esa key (sin zoom, su dominio)."""
     def press(self, combo: str) -> None:
         """Pulsa y suelta una tecla o combinación (`"tab"`, `"shift+tab"`, `"ctrl+s"`)."""
     def key_down(self, combo: str) -> None: ...
