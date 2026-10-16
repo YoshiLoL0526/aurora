@@ -205,6 +205,12 @@ Recorta su contenido a su caja (respetando `radius` y `border_width`) y lo despl
 - Los hijos que quedan fuera de la zona visible no reciben clics ni hover.
 - Dale una `key` para conservar la posición si el `scroll` cambia de sitio en el árbol. Si el
   contenido se encoge, la posición se ajusta sola.
+- `on_scroll` recibe un `ScrollEvent` (`x`, `y`: desplazamiento; `width`, `height`: tamaño de la
+  zona visible, en píxeles lógicos) en el primer frame y cada vez que alguno cambia. A diferencia
+  de los demás manejadores no reconstruye la vista por sí solo (se llama en cada frame de
+  desplazamiento): si cambias un `Signal` en él, la vista se reconstruye en ese mismo frame. Para
+  listas muy largas, [`virtual_list`](#virtual_listcount-item--item_height-key-gap0-overscan4-estilo)
+  ya lo usa por ti.
 
 ```python
 scroll(key="log", max_height=240, gap=6)[[text(line) for line in lines()]]
@@ -215,6 +221,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 
 | Argumento | Descripción |
 |---|---|
+| `on_scroll` | En un `scroll`: callable que recibe un `ScrollEvent` cuando cambian el desplazamiento o la zona visible. Ver [`scroll`](#scroll-axisy-estilo). |
 | `on_click` | Callable sin argumentos. Hace al elemento interactivo: cursor de mano, estados hover/pressed y clics. |
 | `on_key` | Callable que recibe un [`KeyEvent`](#keyevent). Recibe las teclas cuando el foco está en el elemento o en uno de sus descendientes (la raíz las recibe siempre). Devuelve `True` para darla por atendida. |
 | `on_focus` / `on_blur` | Callables sin argumentos: el elemento gana / pierde el foco. |
@@ -355,6 +362,33 @@ tienen la key `f"{key}-opt-{índice}"`.
 lang = Signal("es")
 select(lang, [("es", "Español"), ("en", "English")], key="lang", width=220)
 ```
+
+### `virtual_list(count, item, *, item_height, key, gap=0, overscan=4, **estilo)`
+
+Lista desplazable de `count` filas que **solo construye las visibles**: con 100 000 filas, cada
+reconstrucción crea unas pocas decenas y desplazarse cuesta lo mismo que con 20.
+
+```python
+@component
+def fila(i: int, seleccionada: bool):
+    return row(grow=1, padding=(0, 12), align="center", bg="$surface" if seleccionada else None)[
+        text(tareas()[i].titulo)
+    ]
+
+
+virtual_list(len(tareas()), lambda i: fila(i, i == elegida()), item_height=36, key="tareas")
+```
+
+- `item(i)` devuelve la fila `i`. Cada fila ocupa un hueco de todo el ancho y `item_height` de alto
+  (más `gap` entre filas): dale `grow=1` a su raíz para que lo rellene. Todas las filas miden lo
+  mismo; así la lista conoce su alto total sin construirlas.
+- Se comporta como un [`scroll`](#scroll-axisy-estilo) vertical (los `**estilo` van a él) y la
+  `key`, obligatoria, guarda su posición y su zona visible.
+- Al desplazarse solo se reconstruye cuando cambia el rango de filas visibles, en el mismo frame.
+  `overscan` filas de más por cada lado cubren el desplazamiento entre medias.
+- Con filas `@component`, las que siguen visibles no se reconstruyen.
+- Solo las filas construidas existen en el árbol: Tab recorre las visibles, y `Pilot.rect` de una
+  fila fuera de la zona visible devuelve `None`.
 
 ### `tooltip(child, tip)`
 

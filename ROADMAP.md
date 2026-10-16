@@ -43,7 +43,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Diff del árbol por `key`: el layout de las ramas que no cambian se reutiliza al reconstruir
 - ⏳ Invalidación por fases (estilo → layout → pintura → composición)
 - ⏳ **Backend GPU** de Skia (Metal, Direct3D, Vulkan) detrás de un trait `Surface`
-- ⏳ Listas virtualizadas
+- ✅ Listas virtualizadas (`virtual_list`, filas de alto fijo) y evento `on_scroll`
 - ✅ Suite de benchmarks reproducible en CI (lista de 10k ítems, dashboard de 50 paneles, escritura)
 
 ## v0.4 — Datos y gráficos ⏳

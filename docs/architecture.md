@@ -225,6 +225,24 @@ contienen), así que lo que está fuera de la zona visible no recibe eventos.
 La rueda se resuelve con las regiones del último frame: desde la región bajo el puntero se sube
 por los ancestros hasta el primer `scroll` que todavía pueda moverse en esa dirección.
 
+### `on_scroll` y listas virtuales
+
+Tras pintar, `Runtime::notify_scroll` compara el desplazamiento y la zona visible de cada `scroll`
+con `on_scroll` (las keys se recogen al reconstruir) con lo último que se le avisó, y solo llama si
+cambió. No marca la vista como sucia: se llama en cada frame de desplazamiento, y quien necesite
+reconstruir cambia un `Signal`. `Runtime::draw_frame` (lo usan la ventana y el piloto) aprovecha
+eso: si tras avisar la vista quedó invalidada, reconstruye y repinta en el mismo frame, una sola vez.
+
+`virtual_list` (Python) se apoya en ello: con filas de alto fijo, el contenido es una caja con el
+alto total y las filas visibles colocadas con `position="absolute"`. Su `on_scroll` guarda la zona
+visible en un `Signal` solo cuando cambia el rango de filas, así que desplazarse dentro del rango
+no toca Python. Con 100 000 filas, una reconstrucción cuesta menos de 1 ms.
+
+Taffy 0.15 maqueta un contenedor sin hijos como una hoja y entonces no vacía su lista de hijos
+`absolute` ("hoisted"). Si una lista virtual se queda sin filas, el siguiente layout recorrería
+nodos ya borrados. Por eso `Engine::reconcile` sustituye por un nodo nuevo cualquier nodo que pasa
+de tener hijos a no tenerlos.
+
 ## Imágenes
 
 Un nodo `image` (`Kind::Image`) es una hoja cuyo contexto de layout es su tamaño natural

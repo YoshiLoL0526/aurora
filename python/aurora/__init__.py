@@ -9,7 +9,7 @@ from concurrent.futures import Future
 from typing import Any, TypeVar
 
 from . import _core, reactive
-from ._core import KeyEvent, Pilot
+from ._core import KeyEvent, Pilot, ScrollEvent
 from .components import (
     avatar,
     badge,
@@ -24,6 +24,7 @@ from .components import (
     text_input,
     textarea,
     tooltip,
+    virtual_list,
 )
 from .elements import Element, box, column, image, row, scroll, spacer, text
 from .reactive import component
@@ -37,6 +38,7 @@ __all__ = [
     "Element",
     "KeyEvent",
     "Pilot",
+    "ScrollEvent",
     "Signal",
     "Theme",
     "avatar",
@@ -60,6 +62,7 @@ __all__ = [
     "text_input",
     "textarea",
     "tooltip",
+    "virtual_list",
 ]
 __version__ = _core.__version__
 

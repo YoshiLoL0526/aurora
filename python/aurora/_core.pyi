@@ -31,6 +31,14 @@ class KeyEvent:
     def matches(self, combo: str) -> bool:
         """`True` si la pulsación es exactamente `combo` (`"ctrl+s"`, `"mod+k"`, `"shift+tab"`)."""
 
+class ScrollEvent:
+    """Evento que reciben los manejadores `on_scroll`: desplazamiento y zona visible (px lógicos)."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+
 class Pilot:
     """Ejecuta una app sin ventana y simula el puntero frame a frame (para tests).
 

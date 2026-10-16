@@ -258,6 +258,20 @@ Un `scroll` vertical sin `height` ocupa el espacio libre de su contenedor, y sus
 su tamaño en lugar de encogerse para caber. Con una `key`, la posición se conserva aunque la vista
 se reconstruya.
 
+Con miles de filas, construirlas todas para ver veinte es un desperdicio. Si todas miden lo mismo,
+usa `virtual_list`: solo construye las que están a la vista y las va cambiando al desplazarse.
+
+```python
+from aurora import virtual_list
+
+
+def view():
+    rows = services()
+    return column(padding=32, gap=10)[
+        virtual_list(len(rows), lambda i: service_row(rows[i]), item_height=64, gap=10, key="services"),
+    ]
+```
+
 ## 7. Filtros y valores derivados
 
 Los valores derivados (totales, porcentajes, listas filtradas) **no se guardan**: se calculan

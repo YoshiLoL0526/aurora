@@ -50,6 +50,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(wake, m)?)?;
     m.add_class::<pilot::Pilot>()?;
     m.add_class::<keys::KeyEvent>()?;
+    m.add_class::<scroll::ScrollEvent>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

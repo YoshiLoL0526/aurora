@@ -36,8 +36,11 @@ impl Pilot {
         let animating = self.rt.tick(dt);
         self.rt.advance_clock(dt);
         let canvas = self.surface.canvas();
-        let hover_changed = self.rt.draw(canvas, self.width, self.height, self.scale);
-        Ok(animating || hover_changed)
+        let hover_changed = self
+            .rt
+            .draw_frame(canvas, self.width, self.height, self.scale)?;
+        // Un `on_scroll` puede haber vuelto a cambiar un `Signal`: queda otro frame.
+        Ok(animating || hover_changed || self.rt.needs_sync())
     }
 }
 

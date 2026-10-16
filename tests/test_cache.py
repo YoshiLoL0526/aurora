@@ -126,3 +126,26 @@ def test_reordered_texts_measure_like_new_ones():
     fresh = App(view, size=(400, 60)).pilot()
     for i in range(3):
         assert pilot.rect(f"w{i}") == fresh.rect(f"w{i}")
+
+
+def test_container_that_loses_absolute_children():
+    # Regresión: Taffy 0.15 no vaciaba la lista de hijos `absolute` de un contenedor que se
+    # queda sin hijos (o que pasa a ser texto) y el siguiente layout entraba en pánico.
+    state = Signal(0)
+    views = [
+        lambda: column()[
+            box(key="c", height=100)[
+                [box(key=f"a{i}", position="absolute", top=i * 10, width=10, height=10) for i in range(5)]
+            ]
+        ],
+        lambda: column()[box(key="c", height=100)],
+        lambda: column()[
+            box(key="c", height=100)[box(key="a0", position="absolute", top=0, width=10, height=10)]
+        ],
+        lambda: column()[text("ahora soy texto", key="c")],
+    ]
+    pilot = App(lambda: views[state()](), size=(200, 200)).pilot()
+    for i in (1, 0, 3, 2, 0):
+        state.set(i)
+        pilot.frame()
+        assert pilot.rect("c") == App(views[i], size=(200, 200)).pilot().rect("c")

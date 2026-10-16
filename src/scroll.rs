@@ -2,6 +2,7 @@
 //! y geometría de la barra. Vive en el `Engine` indexado por la key del nodo,
 //! así sobrevive a las reconstrucciones completas de la vista.
 
+use pyo3::prelude::*;
 use skia_safe::{Point, Rect};
 
 use crate::spec::Axis;
@@ -20,6 +21,38 @@ pub const BAR_INSET: f32 = 2.0;
 /// Ancho de la franja sensible junto al borde: al pasar por ella aparece la barra.
 const BAR_HIT: f32 = 12.0;
 const MIN_THUMB: f32 = 24.0;
+
+/// Lo que recibe un manejador `on_scroll`: desplazamiento actual y tamaño de
+/// la zona visible, en píxeles lógicos.
+#[pyclass(frozen, get_all, module = "aurora._core", name = "ScrollEvent")]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollEvent {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[pymethods]
+impl ScrollEvent {
+    fn __repr__(&self) -> String {
+        format!(
+            "ScrollEvent(x={}, y={}, width={}, height={})",
+            self.x, self.y, self.width, self.height
+        )
+    }
+}
+
+impl ScrollState {
+    pub fn event(&self) -> ScrollEvent {
+        ScrollEvent {
+            x: self.offset.x,
+            y: self.offset.y,
+            width: self.viewport.width(),
+            height: self.viewport.height(),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ScrollState {

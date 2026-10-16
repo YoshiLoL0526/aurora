@@ -102,12 +102,14 @@ impl App {
         let scale = window.scale_factor() as f32;
         let mut hover_changed = false;
         if let Some(mut sk) = surfaces::wrap_pixels(&info, bytes, w.get() as usize * 4, None) {
-            hover_changed = self.rt.draw(
+            let result = self.rt.draw_frame(
                 sk.canvas(),
                 w.get() as f32 / scale,
                 h.get() as f32 / scale,
                 scale,
             );
+            hover_changed = *result.as_ref().unwrap_or(&false);
+            report(result.map(drop));
         }
         buffer.present().expect("present");
 

@@ -5,7 +5,7 @@
 //! (`pilot.rs`), así que lo que se prueba sin pantalla es exactamente lo que
 //! ocurre con una ventana abierta.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -17,7 +17,7 @@ use skia_safe::{Canvas, Point, Rect};
 use crate::input::InputState;
 use crate::keys::{KeyEvent, KeyInput, Mods};
 use crate::render::{Engine, HitRegion, TIP_DELAY, ancestors, hit_test, topmost};
-use crate::scroll::LINE;
+use crate::scroll::{LINE, ScrollEvent};
 use crate::spec::{self, Node};
 
 /// Lo activa `wake()` desde cualquier hilo; el siguiente frame lo consume y
@@ -81,6 +81,10 @@ pub struct Runtime {
     pub stats: FrameStats,
     /// Recuerda los nodos de los `@component` entre reconstrucciones.
     parser: spec::Parser,
+    /// Contenedores `scroll` con `on_scroll` en el árbol actual.
+    scroll_listeners: Vec<String>,
+    /// Último evento entregado a cada uno: solo se avisa cuando cambia.
+    scroll_seen: HashMap<String, ScrollEvent>,
 }
 
 /// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
@@ -157,6 +161,8 @@ impl Runtime {
             last_typed: None,
             stats: FrameStats::default(),
             parser: spec::Parser::default(),
+            scroll_listeners: Vec::new(),
+            scroll_seen: HashMap::new(),
         }
     }
 
@@ -167,6 +173,32 @@ impl Runtime {
     /// Si la vista tiene que reconstruirse (un manejador cambió estado).
     pub fn is_dirty(&self) -> bool {
         self.dirty
+    }
+
+    /// Si el próximo `sync` reconstruirá la vista (un manejador o un `Signal` la invalidó).
+    pub fn needs_sync(&self) -> bool {
+        self.dirty || WAKE_PENDING.load(Ordering::Acquire)
+    }
+
+    /// Pinta el frame y avisa a los `on_scroll`. Si un aviso invalida la vista
+    /// (una lista virtual que cambia de rango visible), la reconstruye y repinta
+    /// en este mismo frame, una sola vez: las filas nuevas aparecen sin un frame
+    /// de retraso aunque el desplazamiento supere el margen de filas de más.
+    /// Devuelve `true` si cambió lo que hay bajo el puntero.
+    pub fn draw_frame(
+        &mut self,
+        canvas: &Canvas,
+        width: f32,
+        height: f32,
+        scale: f32,
+    ) -> PyResult<bool> {
+        let mut hover_changed = self.draw(canvas, width, height, scale);
+        if self.notify_scroll()? && self.needs_sync() {
+            self.sync()?;
+            hover_changed |= self.draw(canvas, width, height, scale);
+            self.notify_scroll()?;
+        }
+        Ok(hover_changed)
     }
 
     /// Reconstruye la vista si algo la invalidó. Si la vista falla, se
@@ -202,6 +234,8 @@ impl Runtime {
         }
         let mut autofocus = Vec::new();
         collect_autofocus(&tree, &mut autofocus);
+        self.scroll_listeners.clear();
+        collect_scroll_listeners(&tree, &mut self.scroll_listeners);
         let appeared = autofocus
             .iter()
             .rev()
@@ -959,6 +993,38 @@ impl Runtime {
         result.map(Some)
     }
 
+    /// Llama a los `on_scroll` cuyo desplazamiento o tamaño visible cambió en el
+    /// último frame. Se llama después de pintar, cuando ya se conocen los límites.
+    ///
+    /// A diferencia de los demás manejadores, no marca la vista como sucia: se
+    /// llama en cada frame de desplazamiento, y quien necesite reconstruir (una
+    /// lista virtual que cambia de rango visible) cambia un `Signal`, que ya
+    /// despierta el bucle. Devuelve `true` si llamó a alguno.
+    pub fn notify_scroll(&mut self) -> PyResult<bool> {
+        let Some(tree) = &self.tree else {
+            return Ok(false);
+        };
+        self.scroll_seen
+            .retain(|k, _| self.scroll_listeners.contains(k));
+        let mut pending = Vec::new();
+        for key in &self.scroll_listeners {
+            let Some(state) = self.engine.scroll.get(key) else {
+                continue;
+            };
+            let event = state.event();
+            if self.scroll_seen.get(key) != Some(&event) {
+                pending.push((key.clone(), event));
+            }
+        }
+        for (key, event) in &pending {
+            self.scroll_seen.insert(key.clone(), *event);
+            if let Some(cb) = find(tree, key).and_then(|n| n.handler("scroll")) {
+                Python::attach(|py| cb.call1(py, (Py::new(py, *event)?,)).map(drop))?;
+            }
+        }
+        Ok(!pending.is_empty())
+    }
+
     /// Rectángulo absoluto (píxeles lógicos) con el que se pintó `key` en el último frame.
     pub fn rect(&self, key: &str) -> Option<Rect> {
         self.regions
@@ -974,6 +1040,15 @@ fn find<'a>(node: &'a Node, key: &str) -> Option<&'a Node> {
         return Some(node);
     }
     node.children.iter().find_map(|c| find(c, key))
+}
+
+fn collect_scroll_listeners(node: &Node, out: &mut Vec<String>) {
+    if node.style.scroll.is_some() && node.handler("scroll").is_some() {
+        out.push(node.key.clone());
+    }
+    for child in &node.children {
+        collect_scroll_listeners(child, out);
+    }
 }
 
 fn collect_autofocus(node: &Node, out: &mut Vec<String>) {

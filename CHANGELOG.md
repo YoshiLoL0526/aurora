@@ -20,6 +20,11 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   son iguales y no cambió ningún `Signal` que leyera (al construirse o en sus textos con lambda).
   Reutiliza el mismo `Element`, su serialización y el nodo ya parseado en el núcleo. En la lista de
   10 000 filas con filas como componentes, cambiar la selección pasa de ~0,8 s a ~0,19 s.
+- `virtual_list(count, item, item_height=..., key=...)`: lista de filas de alto fijo que solo
+  construye las visibles. Con 100 000 filas, reconstruir cuesta menos de 1 ms y las filas nuevas
+  aparecen en el mismo frame del desplazamiento.
+- `on_scroll` en los contenedores `scroll`, con `ScrollEvent` (`x`, `y`, `width`, `height`): se
+  llama cuando cambian el desplazamiento o la zona visible, sin reconstruir la vista por sí solo.
 
 ### Cambiado
 

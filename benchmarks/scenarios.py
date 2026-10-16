@@ -28,6 +28,7 @@ from aurora import (
     spacer,
     text,
     text_input,
+    virtual_list,
 )
 
 Op = Callable[[Pilot], None]
@@ -111,6 +112,57 @@ def list_10k(scale: float = 1.0, *, memo: bool = False) -> Bench:
         {
             "rebuild": rebuild,
             "hover": _alternate(lambda p: p.move_to(300, 70), lambda p: p.move_to(300, 110)),
+            "scroll": _alternate(lambda p: p.wheel(400), lambda p: p.wheel(-400)),
+            "idle": _idle,
+        },
+        info={"items": n},
+    )
+
+
+# ------------------------------------------------------- lista virtual de 100k filas
+
+
+def virtual_100k(scale: float = 1.0) -> Bench:
+    """100 000 filas en una `virtual_list` con filas `@component`: solo existen las visibles."""
+    n = max(10, int(100_000 * scale))
+    selected = Signal(0)
+
+    @component
+    def item(i: int, on: bool):
+        return row(
+            key=f"fila-{i}",
+            grow=1,
+            gap=12,
+            align="center",
+            padding=(0, 14),
+            radius=8,
+            bg="$surface" if on else None,
+            bg_hover="$surface",
+            on_click=lambda: selected.set(i),
+        )[
+            box(width=8, height=8, radius=4, bg="$primary" if on else "$border"),
+            text(f"Tarea {i:06d} · revisión de {('diseño', 'código', 'datos', 'copy')[i % 4]}", size=14),
+            spacer(),
+            text(f"{(i * 37) % 100} %", size=13, color="$muted"),
+        ]
+
+    def view():
+        current = selected()
+        return column(padding=16, gap=12)[
+            text(f"{n} tareas", size=20, weight=700),
+            virtual_list(n, lambda i: item(i, i == current), item_height=36, gap=2, key="lista"),
+        ]
+
+    def rebuild(pilot: Pilot) -> None:
+        selected.update(lambda s: (s + 1) % 20)  # siempre dentro de la zona visible
+        pilot.frame()
+
+    return Bench(
+        App(view, size=(960, 640)),
+        {
+            "rebuild": rebuild,
+            "hover": _alternate(lambda p: p.move_to(300, 70), lambda p: p.move_to(300, 110)),
+            # Cada paso cambia el rango visible: el frame siguiente reconstruye la lista.
             "scroll": _alternate(lambda p: p.wheel(400), lambda p: p.wheel(-400)),
             "idle": _idle,
         },
@@ -212,6 +264,11 @@ SCENARIOS = [
         "lista_10k_memo",
         "La misma lista con cada fila como @component",
         lambda scale: list_10k(scale, memo=True),
+    ),
+    Scenario(
+        "lista_virtual_100k",
+        "100 000 filas en una virtual_list con filas @component",
+        virtual_100k,
     ),
     Scenario("dashboard_50", "50 paneles con 24 barras cada uno, datos que cambian", dashboard_50),
     Scenario("typing", "Escribir en un campo que filtra un formulario de 500 filas", typing),

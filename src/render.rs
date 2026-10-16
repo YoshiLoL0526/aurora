@@ -130,6 +130,14 @@ impl Default for LayoutCache {
     }
 }
 
+/// Nodos de Taffy del layout anterior, a la espera de reutilizarse por key.
+#[derive(Default)]
+struct Previous {
+    by_key: HashMap<String, NodeId>,
+    /// Sustituidos por uno nuevo: se eliminan al terminar.
+    retired: Vec<NodeId>,
+}
+
 /// Lo que debe llevar una hoja del árbol de Taffy, antes de crearlo: así se
 /// compara con lo que ya tiene sin repetir el shaping.
 enum LeafSpec {
@@ -522,7 +530,7 @@ impl Engine {
         node: &Node,
         in_scroll: bool,
         root_size: Option<(f32, f32)>,
-        old: &mut HashMap<String, NodeId>,
+        old: &mut Previous,
     ) -> LayoutNode {
         let mut style = taffy_style(&node.style);
         // Dentro de un scroll los hijos no se encogen por defecto: el contenido que
@@ -552,7 +560,17 @@ impl Engine {
         };
         let ids: Vec<NodeId> = children.iter().map(|c| c.id).collect();
 
-        let id = match old.remove(&node.key) {
+        let reused = match old.by_key.remove(&node.key) {
+            // Taffy 0.15 maqueta un contenedor sin hijos como una hoja y entonces no
+            // vacía su lista de hijos `absolute` ("hoisted"): si se queda sin hijos,
+            // apuntaría a nodos borrados. Se sustituye por un nodo nuevo.
+            Some(id) if ids.is_empty() && tree.child_count(id) > 0 => {
+                old.retired.push(id);
+                None
+            }
+            reused => reused,
+        };
+        let id = match reused {
             Some(id) => {
                 if *tree.style(id).expect("taffy style") != style {
                     tree.set_style(id, style).expect("taffy style");
@@ -600,17 +618,17 @@ impl Engine {
     /// Actualiza el layout persistente para el árbol `root` y lo calcula.
     fn update_layout(&self, cache: &mut LayoutCache, root: &Node, width: f32, height: f32) {
         let tree = &mut cache.tree;
-        let mut old = HashMap::new();
+        let mut old = Previous::default();
         if let Some(previous) = cache.root.take() {
             let mut stack = vec![previous];
             while let Some(lnode) = stack.pop() {
-                old.insert(lnode.key, lnode.id);
+                old.by_key.insert(lnode.key, lnode.id);
                 stack.extend(lnode.children);
             }
         }
         let lroot = self.reconcile(tree, root, false, Some((width, height)), &mut old);
-        // Los nodos que ya no existen salen del árbol.
-        for id in old.into_values() {
+        // Los nodos que ya no existen (o que se sustituyeron) salen del árbol.
+        for id in old.by_key.into_values().chain(old.retired) {
             tree.remove(id).expect("taffy remove");
         }
 
