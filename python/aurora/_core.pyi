@@ -12,8 +12,12 @@ def run(
     title: str = "Aurora",
     width: float = 960.0,
     height: float = 640.0,
+    backend: str = "auto",
 ) -> None:
-    """Abre una ventana y ejecuta el bucle de eventos hasta que se cierre."""
+    """Abre una ventana y ejecuta el bucle de eventos hasta que se cierre.
+
+    `backend`: `"auto"`, `"gpu"` o `"cpu"` (`ValueError` con otro valor).
+    """
 
 def wake() -> None:
     """Pide reconstruir la vista y despierta el bucle de eventos. Seguro desde cualquier hilo."""

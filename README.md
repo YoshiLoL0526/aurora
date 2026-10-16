@@ -164,7 +164,8 @@ con un árbol completo, en lugar de miles de llamadas pequeñas. Los detalles es
 
 **Stack:** [PyO3](https://pyo3.rs) + [maturin](https://www.maturin.rs) ·
 [Skia](https://skia.org) (vía `skia-safe`) · [Taffy](https://github.com/DioxusLabs/taffy) ·
-[winit](https://github.com/rust-windowing/winit) + [softbuffer](https://github.com/rust-windowing/softbuffer).
+[winit](https://github.com/rust-windowing/winit) · GPU con Vulkan/Metal ([vulkano](https://vulkano.rs)) y
+[softbuffer](https://github.com/rust-windowing/softbuffer) como respaldo por CPU.
 
 ## ¿Cuándo usar Aurora?
 
@@ -181,7 +182,6 @@ solución web encaja mejor. Aurora no busca reemplazarlas: busca que construir u
 
 Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap](ROADMAP.md)):
 
-- **Render por CPU**: suficiente para interfaces normales; el backend GPU está planificado.
 - **Vista completa por evento**: cada cambio vuelve a llamar a `view()`. Las ramas marcadas con
   `@component` que no cambiaron se reutilizan, pero el resto se reconstruye.
 - Todavía sin canvas de dibujo libre, accesibilidad ni multi-ventana.

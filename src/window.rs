@@ -1,15 +1,13 @@
-//! Bucle de ventana (winit) con rasterizado Skia directo en el framebuffer
-//! (softbuffer, sin copias). El bucle corre SIN el GIL: Python solo se toma
+//! Bucle de ventana (winit). El bucle corre SIN el GIL: Python solo se toma
 //! al reconstruir el árbol o al despachar un callback. El estado de la app vive
-//! en `Runtime`; aquí solo se traducen los eventos de winit y se presenta el frame.
+//! en `Runtime`; aquí solo se traducen los eventos de winit y se presenta el
+//! frame en la `Surface` (GPU o CPU, ver `surface.rs`).
 
-use std::num::NonZeroU32;
-use std::rc::Rc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use pyo3::prelude::*;
-use skia_safe::{ImageInfo, Point, surfaces};
+use skia_safe::Point;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event::{
@@ -22,8 +20,7 @@ use winit::window::{CursorIcon, Window, WindowId};
 use crate::keys::{KeyInput, Mods};
 use crate::runtime::{Clipboard, CursorKind, Runtime};
 use crate::scroll::LINE;
-
-type SoftSurface = softbuffer::Surface<Rc<Window>, Rc<Window>>;
+use crate::surface::{self, Backend, Surface};
 
 /// Evento propio del bucle: alguien llamó a `wake()`, quizá desde otro hilo.
 #[derive(Debug)]
@@ -52,8 +49,9 @@ struct App {
     rt: Runtime,
     title: String,
     size: (f64, f64),
-    window: Option<Rc<Window>>,
-    surface: Option<SoftSurface>,
+    backend: Backend,
+    window: Option<Arc<Window>>,
+    surface: Option<Box<dyn Surface>>,
     mods: Mods,
     /// Si el IME del sistema está activado (solo mientras hay un campo enfocado).
     ime_allowed: bool,
@@ -86,43 +84,30 @@ impl App {
         self.rt.advance_clock(elapsed.min(1.0));
         self.animating = animating;
 
-        let size = window.inner_size();
-        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else {
-            return;
-        };
-        surface.resize(w, h).expect("resize");
-        let mut buffer = surface.buffer_mut().expect("buffer");
-
-        // softbuffer usa píxeles 0x00RRGGBB (u32 nativo); en little-endian coincide
-        // byte a byte con el formato N32 (BGRA) de Skia, así que pintamos directo.
-        let bytes = unsafe {
-            std::slice::from_raw_parts_mut(buffer.as_mut_ptr() as *mut u8, buffer.len() * 4)
-        };
-        let info = ImageInfo::new_n32_premul((w.get() as i32, h.get() as i32), None);
         let scale = window.scale_factor() as f32;
-        // El buffer puede conservar un frame anterior (según la plataforma): solo
-        // se repinta y se presenta lo que cambió desde entonces.
-        let age = buffer.age();
         let mut hover_changed = false;
-        let mut damage = None;
-        if let Some(mut sk) = surfaces::wrap_pixels(&info, bytes, w.get() as usize * 4, None) {
-            let result = self.rt.draw_frame(
-                sk.canvas(),
-                w.get() as f32 / scale,
-                h.get() as f32 / scale,
-                scale,
-                age,
-            );
-            if let Ok((hover, painted)) = &result {
-                (hover_changed, damage) = (*hover, *painted);
-            }
+        let rt = &mut self.rt;
+        let presented = surface.present(window, &mut |canvas, age| {
+            let size = canvas.base_layer_size();
+            let (w, h) = (size.width as f32 / scale, size.height as f32 / scale);
+            let result = rt.draw_frame(canvas, w, h, scale, age);
+            let (hover, damage) = result.as_ref().map_or((false, None), |r| *r);
+            hover_changed = hover;
             report(result.map(drop));
-        }
-        // Sin daño se presenta igualmente (todo el buffer): el sistema pudo pedir
-        // el frame porque la ventana se descubrió.
-        match damage.and_then(|d| physical_rect(d, scale, w, h)) {
-            Some(rect) => buffer.present_with_damage(&[rect]).expect("present"),
-            None => buffer.present().expect("present"),
+            damage
+        });
+        if let Err(err) = presented {
+            // La GPU dejó de responder (dispositivo perdido, driver reiniciado):
+            // se sigue pintando por CPU.
+            let name = surface.name();
+            match surface::cpu(window) {
+                Ok(cpu) if name != "cpu" => {
+                    eprintln!("aurora: el backend {name} falló ({err}); se usa la CPU");
+                    self.surface = Some(cpu);
+                    window.request_redraw();
+                }
+                _ => self.fatal = Some(format!("no se pudo presentar el frame: {err}")),
+            }
         }
 
         if hover_changed {
@@ -195,26 +180,6 @@ fn key_input(event: &KeyEvent, mods: Mods) -> Option<KeyInput> {
     })
 }
 
-/// Zona pintada (píxeles lógicos) en píxeles físicos del buffer.
-fn physical_rect(
-    r: skia_safe::Rect,
-    scale: f32,
-    w: NonZeroU32,
-    h: NonZeroU32,
-) -> Option<softbuffer::Rect> {
-    let (bw, bh) = (w.get() as f32, h.get() as f32);
-    let left = (r.left * scale).floor().clamp(0.0, bw);
-    let top = (r.top * scale).floor().clamp(0.0, bh);
-    let right = (r.right * scale).ceil().clamp(0.0, bw);
-    let bottom = (r.bottom * scale).ceil().clamp(0.0, bh);
-    Some(softbuffer::Rect {
-        x: left as u32,
-        y: top as u32,
-        width: NonZeroU32::new((right - left) as u32)?,
-        height: NonZeroU32::new((bottom - top) as u32)?,
-    })
-}
-
 /// Un error en un manejador del usuario se muestra y la app sigue viva.
 fn report(result: PyResult<()>) {
     if let Err(err) = result {
@@ -244,9 +209,22 @@ impl ApplicationHandler<Wake> for App {
         let attrs = Window::default_attributes()
             .with_title(&self.title)
             .with_inner_size(LogicalSize::new(self.size.0, self.size.1));
-        let window = Rc::new(event_loop.create_window(attrs).expect("crear ventana"));
-        let context = softbuffer::Context::new(window.clone()).expect("contexto softbuffer");
-        self.surface = Some(SoftSurface::new(&context, window.clone()).expect("superficie"));
+        let window = match event_loop.create_window(attrs) {
+            Ok(window) => Arc::new(window),
+            Err(err) => {
+                self.fatal = Some(format!("no se pudo crear la ventana: {err}"));
+                event_loop.exit();
+                return;
+            }
+        };
+        match surface::create(event_loop, &window, self.backend) {
+            Ok(surface) => self.surface = Some(surface),
+            Err(err) => {
+                self.fatal = Some(err);
+                event_loop.exit();
+                return;
+            }
+        }
         window.request_redraw();
         self.window = Some(window);
     }
@@ -379,7 +357,9 @@ pub fn run(
     title: String,
     width: f64,
     height: f64,
+    backend: &str,
 ) -> PyResult<()> {
+    let backend = Backend::resolve(backend).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let fatal = py.detach(move || -> Result<Option<String>, String> {
         let event_loop = EventLoop::<Wake>::with_user_event()
             .build()
@@ -389,6 +369,7 @@ pub fn run(
             rt: Runtime::new(build, Clipboard::System(None)),
             title,
             size: (width, height),
+            backend,
             window: None,
             surface: None,
             mods: Mods::default(),

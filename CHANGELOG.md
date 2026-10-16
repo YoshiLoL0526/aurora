@@ -10,6 +10,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- Backend GPU: la ventana pinta con Skia sobre Vulkan (Windows y Linux) o Metal (macOS), y vuelve a
+  la CPU (softbuffer) si la GPU no arranca o se pierde el dispositivo. El repintado parcial se
+  conserva con un lienzo persistente en la GPU. `App.run(backend="auto" | "gpu" | "cpu")` y la
+  variable de entorno `AURORA_BACKEND` eligen el backend.
 - `Pilot.stats`: coste del último frame por fases (`build`, `parse`, `layout`, `paint`), número de
   nodos y si se reconstruyó la vista.
 - Suite de benchmarks reproducible (`benchmarks/run.py`): lista de 10 000 filas, dashboard de 50

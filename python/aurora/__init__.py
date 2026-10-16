@@ -6,7 +6,7 @@ import asyncio
 import threading
 from collections.abc import Callable, Coroutine
 from concurrent.futures import Future
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 from . import _core, reactive
 from ._core import KeyEvent, Pilot, ScrollEvent
@@ -108,8 +108,14 @@ class App:
         finally:
             reactive.end_build()
 
-    def run(self) -> None:
-        _core.run(self._build, self.title, *self.size)
+    def run(self, *, backend: Literal["auto", "gpu", "cpu"] = "auto") -> None:
+        """Abre la ventana y ejecuta la app hasta que se cierre.
+
+        `backend` elige dónde se pinta: `"gpu"` (Vulkan en Windows y Linux, Metal en macOS),
+        `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de
+        entorno `AURORA_BACKEND` puede forzar uno de los otros dos.
+        """
+        _core.run(self._build, self.title, *self.size, backend)
 
     def render_png(self, path: str, *, size: tuple[float, float] | None = None, scale: float = 2.0) -> None:
         """Renderiza la vista a PNG sin ventana (tests de snapshot, CI, previews)."""

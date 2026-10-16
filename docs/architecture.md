@@ -35,7 +35,11 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── edit.rs          Modelo de edición puro: texto, cursor, selección, deshacer, grafemas
 ├── input.rs         Estado de los campos de texto y geometría de cursor y selección
 ├── image.rs         Decodificación de imágenes (raster y SVG), caché y encaje (fit)
-├── window.rs        Bucle de ventana (winit) sobre Runtime, framebuffer (softbuffer)
+├── window.rs        Bucle de ventana (winit) sobre Runtime
+├── surface/         Trait Surface: dónde se pinta y presenta cada frame
+│   ├── cpu.rs       Skia raster en el framebuffer de softbuffer
+│   ├── vulkan.rs    Skia Ganesh sobre Vulkan (vulkano), Windows y Linux
+│   └── metal.rs     Skia Ganesh sobre Metal (CAMetalLayer), macOS
 └── pilot.rs         Piloto headless sobre Runtime para tests de interacción
 ```
 
@@ -52,7 +56,7 @@ src/                 (crate aurora_core → módulo aurora._core)
            │ Engine::tick    → avanza transiciones hover/pressed (dt real)           │
            │ Engine::update  → layout (Taffy + texto con Skia) y composición (capas) │
            │ Engine::paint   → Skia repinta solo la zona dañada del framebuffer      │
-           │ present         → softbuffer muestra la zona pintada                    │
+           │ present         → la Surface (GPU o CPU) muestra el frame               │
            └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -91,14 +95,28 @@ Implementa Flexbox y Grid fielmente a la especificación CSS, lo usan proyectos 
 Bevy, Dioxus) y expone una API de medición que encaja con el texto de Skia. Reimplementar
 flexbox no aporta nada diferencial.
 
-### Framebuffer por CPU (de momento)
+### Superficies: GPU con CPU de respaldo
 
-winit + softbuffer + Skia raster es la combinación más portable y simple por ahora: no hay
-contextos de GPU que crear ni drivers con los que pelear. El formato de píxel de softbuffer
-(`0x00RRGGBB`) coincide en little-endian con el N32 (BGRA) de Skia, así que Skia pinta
-directamente en el buffer de la ventana, **sin copias** cuando se repinta entero (un repintado
-parcial copia solo la zona dañada; ver [Invalidación por fases](#invalidación-por-fases)). El
-backend GPU (v0.3) entra detrás del mismo punto.
+La ventana pinta a través del trait `Surface` (`src/surface/`), que solo sabe hacer una cosa:
+darle a `Runtime::draw_frame` un lienzo con su edad y presentar el resultado. Hay dos familias:
+
+- **GPU** (por defecto): Skia Ganesh sobre **Vulkan** en Windows y Linux (con
+  [vulkano](https://vulkano.rs), que carga el driver en tiempo de ejecución) y sobre **Metal** en
+  macOS (una `CAMetalLayer` en la vista de la ventana). Direct3D no se usa porque no hay binarios
+  precompilados de Skia con `d3d` + `svg` + `webp`, y Vulkan cubre Windows igual de bien.
+- **CPU**: winit + softbuffer + Skia raster. El formato de píxel de softbuffer (`0x00RRGGBB`)
+  coincide en little-endian con el N32 (BGRA) de Skia, así que Skia pinta directamente en el
+  buffer de la ventana, **sin copias** cuando se repinta entero.
+
+Con `backend="auto"` se intenta la GPU y, si no arranca (sin driver de Vulkan, máquina virtual,
+solo un Vulkan por software como llvmpipe), se usa la CPU sin avisar. Si la GPU falla a mitad de
+ejecución (dispositivo perdido), la ventana cambia a la CPU y sigue.
+
+Las imágenes que presenta la GPU (swapchain, drawables de Metal) no conservan el frame anterior.
+Para no perder el repintado parcial, la GPU pinta en un **lienzo persistente** (`Backbuffer`, una
+textura del tamaño de la ventana, siempre con edad 1) y cada frame lo copia entero a la imagen que
+se presenta: una copia de textura es casi gratis en la GPU. El frame se presenta con vsync (FIFO
+en Vulkan).
 
 ### Árbol completo por actualización, con ramas memorizadas
 
@@ -229,9 +247,9 @@ no se repiten. Como en un navegador, lo caro es rehacer de más.
   físicos. `tests/test_phases.py` comprueba que cada frame incremental coincide con un repintado
   completo.
 - **Lienzo retenido.** Pintar solo una parte exige que el lienzo conserve el frame anterior. El
-  piloto reutiliza su superficie; la ventana usa la edad del buffer de softbuffer (`age`: hace
-  cuántos frames se pintó lo que contiene) y el `Runtime` recuerda la zona pintada de los últimos
-  frames para ponerlo al día. Con edad 0 (buffer nuevo, o macOS, que no conserva el buffer) se
+  piloto reutiliza su superficie; la GPU, su lienzo persistente; la CPU, la edad del buffer de
+  softbuffer (`age`: hace cuántos frames se pintó lo que contiene) y el `Runtime` recuerda la zona
+  pintada de los últimos frames para ponerlo al día. Con edad 0 (buffer nuevo, o macOS, que no conserva el buffer) se
   repinta entero. Al presentar, `present_with_damage` solo copia a la pantalla la zona pintada.
 - **Un solo pintado por frame.** `Runtime::draw_frame` hace layout y composición, avisa a los
   `on_scroll` (que ya conocen el desplazamiento y los límites) y, si alguno invalida la vista,

@@ -10,6 +10,7 @@ mod render;
 mod runtime;
 mod scroll;
 mod spec;
+mod surface;
 mod window;
 
 use pyo3::prelude::*;
@@ -30,10 +31,18 @@ fn render_png(
 
 /// Abre una ventana y ejecuta el bucle de eventos hasta que se cierre.
 /// `build` es un callable sin argumentos que devuelve el árbol de la vista.
+/// `backend`: `"auto"` (GPU si se puede, si no CPU), `"gpu"` o `"cpu"`.
 #[pyfunction]
-#[pyo3(signature = (build, title = "Aurora".to_string(), width = 960.0, height = 640.0))]
-fn run(py: Python<'_>, build: Py<PyAny>, title: String, width: f64, height: f64) -> PyResult<()> {
-    window::run(py, build, title, width, height)
+#[pyo3(signature = (build, title = "Aurora".to_string(), width = 960.0, height = 640.0, backend = "auto"))]
+fn run(
+    py: Python<'_>,
+    build: Py<PyAny>,
+    title: String,
+    width: f64,
+    height: f64,
+    backend: &str,
+) -> PyResult<()> {
+    window::run(py, build, title, width, height, backend)
 }
 
 /// Pide reconstruir la vista y despierta el bucle de eventos. Seguro desde

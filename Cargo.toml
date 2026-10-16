@@ -19,8 +19,20 @@ taffy = "0.15.0"
 unicode-segmentation = { version = "1.13.3", default-features = false }
 winit = "0.30.13"
 
+# Backend GPU: Vulkan fuera de macOS (Direct3D no tiene binarios con `svg` + `webp`) y
+# Metal en macOS. Vulkan se carga en tiempo de ejecución: sin driver, se usa la CPU.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
+ash = { version = "0.38", default-features = false, features = ["std"] }
 skia-safe = { version = "0.153.3", features = ["ganesh", "vulkan"] }
+vulkano = { version = "0.35", default-features = false, features = ["x11"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.3"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-quartz-core", "NSResponder", "NSView"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-metal = { version = "0.3.2", default-features = false, features = ["std", "MTLDevice", "MTLCommandBuffer", "MTLCommandQueue", "MTLDrawable", "MTLPixelFormat", "MTLTexture", "MTLResource"] }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "objc2-metal", "CALayer", "CAMetalLayer"] }
+skia-safe = { version = "0.153.3", features = ["ganesh", "metal"] }
 
 [lib]
 name = "_core"
