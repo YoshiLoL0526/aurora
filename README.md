@@ -18,7 +18,7 @@
 </p>
 
 > [!WARNING]
-> **Estado: pre-alfa (v0.2).** La API puede cambiar entre versiones menores.
+> **Estado: pre-alfa (v0.3).** La API puede cambiar entre versiones menores.
 > Ya sirve para herramientas internas y prototipos; todavía no para producción.
 > Consulta las [limitaciones conocidas](#limitaciones-conocidas).
 
