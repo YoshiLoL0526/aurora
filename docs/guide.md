@@ -585,6 +585,12 @@ def test_modal_opens_and_closes():
     assert selected() is None
 ```
 
+Mientras desarrollas, el **inspector** enseña qué está pintando Aurora y cuánto cuesta.
+Arranca la app con `AURORA_INSPECTOR=1` (o `App(view, inspector=True)`) y pulsa F12: verás el
+árbol de la vista, el estilo y la caja de cada nodo y el coste de cada frame por fases. Con
+Ctrl+Mayús+C eliges un nodo señalándolo en la interfaz. Los detalles están en la
+[referencia](reference.md#inspector-y-profiler-de-frames).
+
 ## 11. Distribuir la app
 
 Para que otros usen el monitor sin instalar Python, empaquétalo en un ejecutable. Primero instala

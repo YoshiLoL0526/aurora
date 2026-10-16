@@ -22,6 +22,7 @@ python/aurora/
 ├── canvas.py        canvas(), Canvas y Path: graba comandos de dibujo en un lote
 ├── charts.py        chart(): gráficos de línea, área, barras y dispersión
 ├── components.py    Componentes con estilo (button, card, badge, stat), solo con primitivas
+├── inspector.py     Panel del inspector y del profiler, acoplado a la vista con F12
 ├── signal.py        Estado reactivo
 ├── theme.py         Design tokens y temas MIDNIGHT / DAYLIGHT
 └── _core.pyi        Stubs del módulo nativo
@@ -33,6 +34,7 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── render.rs        Engine: layout (Taffy) + pintura (Skia) + capas + animación + hit-testing
 ├── runtime.rs       Estado de la app en marcha: árbol, puntero, rueda, despacho de eventos, wake
 ├── scroll.rs        Estado de los contenedores scroll: desplazamiento, suavizado, barra
+├── inspect.rs       Inspector y profiler: modo selección, historial de frames, estado prestado a Python
 ├── keys.rs          KeyEvent y parseo de combinaciones ("ctrl+s", "mod+k")
 ├── edit.rs          Modelo de edición puro: texto, cursor, selección, deshacer, grafemas
 ├── input.rs         Estado de los campos de texto y geometría de cursor y selección

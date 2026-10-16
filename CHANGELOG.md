@@ -10,6 +10,22 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **Inspector visual del árbol y profiler de frames.** Con `App(view, inspector=True)` o la
+  variable de entorno `AURORA_INSPECTOR=1`, F12 acopla un panel a la derecha de la ventana:
+  - **Árbol** navegable (virtual, con ramas plegables) con tipo, key y texto de cada nodo; al
+    elegir uno se ven su caja, su estilo resuelto, su texto y sus eventos, y se resalta sobre la
+    interfaz.
+  - **Modo selección** (Ctrl+Mayús+C o el botón ⌖): pasar el ratón resalta el nodo bajo el
+    puntero con su padding y su tamaño, sin llamar a Python; un clic lo elige sin llegar a la app.
+  - **Profiler de frames**: coste por fases de los últimos 240 frames en barras apiladas frente
+    al presupuesto de 60 fps, con último, media, p95, máximo y desglose por fase.
+
+  Desactivado no cuesta nada. El panel está hecho con las primitivas de Aurora; el núcleo pone el
+  modo selección, el resaltado y el historial (`_core.inspection()`). En tests,
+  `app.pilot(inspector=True)` y `Pilot.inspection`.
+- `Pilot.stats["total"]`: suma de las fases del frame.
+- Cursor `"crosshair"` en la propiedad de estilo `cursor`.
+
 - **`aurora build`**: empaqueta una app en un ejecutable distribuible con un comando (un solo
   archivo, una carpeta o una `.app` en macOS), sin consola, con icono y recursos incluidos.
   Se configura con opciones o en `[tool.aurora.build]` de `pyproject.toml` y valida la

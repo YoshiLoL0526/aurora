@@ -182,6 +182,8 @@ pub enum Cursor {
     ColResize,
     /// Redimensionar en vertical.
     RowResize,
+    /// Cruz de precisión (el modo selección del inspector).
+    Crosshair,
 }
 
 impl Cursor {
@@ -194,6 +196,7 @@ impl Cursor {
             "grabbing" => Cursor::Grabbing,
             "col-resize" => Cursor::ColResize,
             "row-resize" => Cursor::RowResize,
+            "crosshair" => Cursor::Crosshair,
             _ => return None,
         })
     }
@@ -211,6 +214,20 @@ pub enum Kind {
     Canvas,
     /// Gráfico nativo: series de datos y ejes (ver `chart.rs`).
     Chart,
+}
+
+impl Kind {
+    /// Nombre del tipo de nodo, como lo escribe Python (`"box"`, `"text"`…).
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Box => "box",
+            Kind::Text => "text",
+            Kind::Input => "input",
+            Kind::Image => "image",
+            Kind::Canvas => "canvas",
+            Kind::Chart => "chart",
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -157,6 +157,13 @@ impl ScrollState {
         applied
     }
 
+    /// Como `reveal`, para una franja vertical del contenido medida desde su inicio.
+    pub fn reveal_content(&mut self, top: f32, bottom: f32, margin: f32) -> Point {
+        let y = self.viewport.top - self.offset.y;
+        let rect = Rect::new(self.viewport.left, y + top, self.viewport.right, y + bottom);
+        self.reveal(rect, margin)
+    }
+
     /// Marca actividad: la barra se muestra un rato.
     pub fn poke(&mut self) {
         self.idle = 0.0;

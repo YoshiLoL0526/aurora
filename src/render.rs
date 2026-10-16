@@ -30,7 +30,7 @@ use crate::image::{Decoded, Fit, ImageCache, ImageError, Loaded};
 use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
 use crate::motion::{IDENTITY, Timing, Track, Vec4};
 use crate::scroll::{BAR_WIDTH, ScrollState};
-use crate::spec::{Axis, Cursor, Kind, Len, Node, Style, TextProps};
+use crate::spec::{Axis, Cursor, Edges, Kind, Len, Node, Style, TextProps};
 
 /// Contexto de las hojas del árbol de layout.
 pub enum Leaf {
@@ -236,6 +236,19 @@ struct TipPaint {
     colors: (Color, Color),
 }
 
+/// Nodo que el inspector resalta sobre la interfaz.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mark {
+    /// Rectángulo absoluto del nodo (píxeles lógicos).
+    pub rect: Rect,
+    /// Su padding: el modo selección lo tiñe aparte del contenido.
+    pub padding: Edges,
+    /// Etiqueta: tipo, key y tamaño.
+    pub label: String,
+    /// Bajo el puntero en modo selección (relleno); si no, el nodo elegido (contorno).
+    pub hovered: bool,
+}
+
 /// Rectángulo absoluto de cada nodo, en orden de pintura (para hit-testing).
 pub struct HitRegion {
     pub key: String,
@@ -417,6 +430,10 @@ pub struct Engine {
     /// Huella visual de cada campo de texto en el último frame (cursor, selección…).
     inputs_painted: HashMap<String, u64>,
     tip_painted: Option<TipPaint>,
+    /// Lo que resalta el inspector en el próximo frame (lo fija el runtime).
+    pub marks: Vec<Mark>,
+    /// Lo que resaltó en el último frame y la tinta de cada resaltado.
+    marks_painted: Vec<(Mark, Rect)>,
     /// Zona repintada en el último `paint` (`None`: nada).
     pub damage: Option<Rect>,
     /// Lo que `update` deja pendiente para el próximo `paint`: repintarlo
@@ -497,6 +514,8 @@ impl Engine {
             animated: Vec::new(),
             inputs_painted: HashMap::new(),
             tip_painted: None,
+            marks: Vec::new(),
+            marks_painted: Vec::new(),
             damage: None,
             full: true,
             pending: None,
@@ -1572,6 +1591,20 @@ impl Engine {
             }
             self.tip_painted = tip_paint;
         }
+        let marks = self.mark_labels(width, height);
+        if marks
+            .iter()
+            .map(|m| (&m.mark, m.ink))
+            .ne(self.marks_painted.iter().map(|(m, ink)| (m, *ink)))
+        {
+            for ink in self.marks_painted.iter().map(|(_, ink)| *ink) {
+                damage = union(damage, Some(ink));
+            }
+            for m in &marks {
+                damage = union(damage, Some(m.ink));
+            }
+            self.marks_painted = marks.iter().map(|m| (m.mark.clone(), m.ink)).collect();
+        }
         let mut damage = damage.map(|d| intersect(d, screen));
         // Si queda poco sin dañar, pintar directamente sale más barato que la
         // superficie aparte de `paint_partial` y la copia.
@@ -1591,6 +1624,7 @@ impl Engine {
             lroot: cache.root.as_ref().expect("layout calculado"),
             scale,
             tip: tip.as_ref(),
+            marks: &marks,
         };
         let inputs = if pixel_align(screen, scale) == Some(clip) {
             self.paint_area(canvas, &frame, clip, clip)
@@ -1706,6 +1740,10 @@ impl Engine {
         // El tooltip va por encima de todo, capas incluidas, y no recibe eventos.
         if let Some(tip) = frame.tip {
             paint_tooltip(canvas, tip);
+        }
+        // Y el resaltado del inspector por encima del tooltip.
+        for mark in frame.marks {
+            paint_mark(canvas, mark);
         }
         canvas.restore_to_count(base);
         painter.inputs
@@ -1982,6 +2020,7 @@ struct Frame<'a> {
     lroot: &'a LayoutNode,
     scale: f32,
     tip: Option<&'a Tooltip>,
+    marks: &'a [MarkLabel],
 }
 
 /// Fracción de la ventana a partir de la cual una zona dañada se repinta
@@ -2003,6 +2042,113 @@ struct Tooltip {
     text_at: Point,
     bubble: Rect,
     paint: TipPaint,
+}
+
+/// Colores del resaltado del inspector (como los de las devtools de los navegadores).
+const MARK_CONTENT: Color = Color::from_argb(0x55, 0x6F, 0xA8, 0xDC);
+const MARK_PADDING: Color = Color::from_argb(0x55, 0x93, 0xC4, 0x7D);
+const MARK_HOVER: Color = Color::from_rgb(0x3D, 0x8B, 0xFF);
+const MARK_SELECTED: Color = Color::from_rgb(0xFF, 0x5C, 0xA8);
+const MARK_LABEL_BG: Color = Color::from_rgb(0x1B, 0x1F, 0x2B);
+const MARK_LABEL_FG: Color = Color::from_rgb(0xF2, 0xF4, 0xF8);
+
+/// Resaltado del inspector listo para pintar: la marca y su etiqueta.
+struct MarkLabel {
+    mark: Mark,
+    paragraph: Paragraph,
+    /// Caja de la etiqueta.
+    chip: Rect,
+    /// Todo lo que pinta (contorno y etiqueta).
+    ink: Rect,
+}
+
+impl Engine {
+    /// Etiquetas de los resaltados del inspector: encima del nodo si caben y,
+    /// si no, debajo o dentro; siempre dentro de la ventana.
+    fn mark_labels(&self, width: f32, height: f32) -> Vec<MarkLabel> {
+        const PAD: (f32, f32) = (6.0, 3.0);
+        const GAP: f32 = 4.0;
+        self.marks
+            .iter()
+            .map(|mark| {
+                let props = TextProps {
+                    size: 11.0,
+                    weight: 500,
+                    color: MARK_LABEL_FG,
+                    ..TextProps::default()
+                };
+                let mut paragraph = self.paragraph(&mark.label, &props, &Style::default());
+                paragraph.layout(f32::INFINITY);
+                let (tw, th) = (
+                    paragraph.max_intrinsic_width().ceil(),
+                    paragraph.height().ceil(),
+                );
+                let (w, h) = (tw + 2.0 * PAD.0, th + 2.0 * PAD.1);
+                let r = mark.rect;
+                let x = r.left.clamp(0.0, (width - w).max(0.0));
+                let y = if r.top - GAP - h >= 0.0 {
+                    r.top - GAP - h
+                } else if r.bottom + GAP + h <= height {
+                    r.bottom + GAP
+                } else {
+                    r.top.max(0.0)
+                };
+                let chip = Rect::from_xywh(x, y, w, h);
+                MarkLabel {
+                    mark: mark.clone(),
+                    paragraph,
+                    chip,
+                    ink: join(r.with_outset((2.0, 2.0)), chip),
+                }
+            })
+            .collect()
+    }
+}
+
+fn paint_mark(canvas: &Canvas, m: &MarkLabel) {
+    let r = m.mark.rect;
+    let mut paint = Paint::default();
+    paint.set_anti_alias(true);
+    let accent = if m.mark.hovered {
+        let p = m.mark.padding;
+        let content = Rect::new(
+            r.left + p.left,
+            r.top + p.top,
+            r.right - p.right,
+            r.bottom - p.bottom,
+        );
+        // El padding: el marco entre la caja y el contenido.
+        canvas.save();
+        if content.width() > 0.0 && content.height() > 0.0 {
+            canvas.clip_rect(content, ClipOp::Difference, false);
+        }
+        paint.set_color(MARK_PADDING);
+        canvas.draw_rect(r, &paint);
+        canvas.restore();
+        if content.width() > 0.0 && content.height() > 0.0 {
+            paint.set_color(MARK_CONTENT);
+            canvas.draw_rect(content, &paint);
+        }
+        MARK_HOVER
+    } else {
+        MARK_SELECTED
+    };
+    paint
+        .set_style(PaintStyle::Stroke)
+        .set_stroke_width(1.5)
+        .set_color(accent);
+    canvas.draw_rect(r.with_inset((0.75, 0.75)), &paint);
+    let mut bg = Paint::default();
+    bg.set_anti_alias(true).set_color(MARK_LABEL_BG);
+    canvas.draw_rrect(RRect::new_rect_xy(m.chip, 4.0, 4.0), &bg);
+    let mut bar = Paint::default();
+    bar.set_anti_alias(true).set_color(accent);
+    canvas.draw_rect(
+        Rect::from_xywh(m.chip.left, m.chip.top, 2.0, m.chip.height()),
+        &bar,
+    );
+    m.paragraph
+        .paint(canvas, Point::new(m.chip.left + 6.0, m.chip.top + 3.0));
 }
 
 fn paint_tooltip(canvas: &Canvas, tip: &Tooltip) {

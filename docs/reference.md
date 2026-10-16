@@ -7,6 +7,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Signal](#signal)
 - [component](#component)
 - [Pilot (tests de interacción)](#pilot-tests-de-interacción)
+- [Inspector y profiler de frames](#inspector-y-profiler-de-frames)
 - [Primitivas](#primitivas)
 - [Teclado y foco](#teclado-y-foco)
 - [Componentes](#componentes)
@@ -21,7 +22,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 ## App
 
 ```python
-App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT)
+App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None)
 ```
 
 | Parámetro | Tipo | Descripción |
@@ -30,12 +31,13 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT)
 | `title` | `str` | Título de la ventana. |
 | `size` | `tuple[float, float]` | Tamaño inicial en píxeles lógicos (independientes del DPI). |
 | `theme` | `Theme \| Callable[[], Theme]` | Tema fijo, o un `Signal[Theme]` para cambiarlo en caliente. |
+| `inspector` | `bool \| None` | Permite abrir con F12 el [inspector y profiler de frames](#inspector-y-profiler-de-frames). Con `None` (por defecto) lo decide la variable de entorno `AURORA_INSPECTOR` (`1`, `true`, `yes` u `on` lo activan). |
 
 | Método | Descripción |
 |---|---|
 | `run(*, backend="auto")` | Abre la ventana y bloquea hasta que se cierra. `backend` elige dónde se pinta: `"gpu"` (Vulkan en Windows y Linux, Metal en macOS), `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de entorno `AURORA_BACKEND` (`gpu`/`cpu`) lo fuerza. `"gpu"` sin GPU disponible lanza `RuntimeError`; un valor desconocido, `ValueError`. |
 | `render_png(path, *, size=None, scale=2.0)` | Renderiza la vista a PNG sin abrir ventana. `scale` es la densidad de píxeles (2.0 ≈ pantalla Retina). |
-| `pilot(*, size=None, scale=1.0)` | Ejecuta la app sin ventana y devuelve un [`Pilot`](#pilot-tests-de-interacción) para simular interacción en tests. |
+| `pilot(*, size=None, scale=1.0, inspector=False)` | Ejecuta la app sin ventana y devuelve un [`Pilot`](#pilot-tests-de-interacción) para simular interacción en tests. Con `inspector=True`, el inspector se abre con `pilot.press("f12")` como en la ventana. |
 | `spawn(coro)` | Ejecuta una corrutina en un bucle `asyncio` en segundo plano (un hilo propio, creado la primera vez). Devuelve un `concurrent.futures.Future` con su resultado. |
 
 El elemento raíz siempre ocupa la ventana completa. Si no defines `bg`, `color` o `font_family`
@@ -119,7 +121,7 @@ def test_counter():
 | `click(key)` | Clic en el centro del nodo `key`, como una persona: si otro nodo lo tapa, el clic llega a ese otro. `LookupError` si el nodo no se pintó. |
 | `click_at(x, y)` | Mueve el puntero, pulsa y suelta. |
 | `drag(key, dx=0, dy=0, steps=4)` | Pulsa en el centro de `key`, mueve el puntero `(dx, dy)` en `steps` pasos y suelta. |
-| `cursor` | Cursor del ratón en el último frame: `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"` o `"row-resize"`. |
+| `cursor` | Cursor del ratón en el último frame: `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"` o `"crosshair"` (modo selección del inspector). |
 | `move_to(x, y)` / `leave()` | Mueve el puntero / lo saca de la ventana. |
 | `mouse_down()` / `mouse_up()` | Pulsa / suelta el botón izquierdo por separado. |
 | `wheel(dy=0, dx=0, *, lines=False)` | Rueda bajo el puntero; positivo = hacia el final del contenido. En píxeles (trackpad, inmediato) o, con `lines=True`, en pasos de rueda (animado). |
@@ -141,10 +143,49 @@ def test_counter():
 | `settle()` | Avanza frames hasta que terminen todas las transiciones. |
 | `resize(ancho, alto)` | Cambia el tamaño de la "ventana". |
 | `png(path)` | Guarda el último frame como PNG. |
-| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `style` (comparar el árbol nuevo con el anterior), `layout`, `draw` (las funciones `draw` de los `canvas` y la grabación de los `chart`) y `paint` (composición y pintura); además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build`, `parse` y `style` valen 0), `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si el frame no pintó nada. Lo usa la [suite de benchmarks](../benchmarks/README.md). |
+| `inspection` | Estado del inspector si el piloto se creó con `inspector=True` (si no, `None`): `open`, `pick` (modo selección), `selected` y `hovered` (keys), `rect` (caja del nodo elegido en el último frame) y `frames` (lista de `stats` de los últimos frames, solo con el panel abierto). |
+| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `style` (comparar el árbol nuevo con el anterior), `layout`, `draw` (las funciones `draw` de los `canvas` y la grabación de los `chart`), `paint` (composición y pintura) y `total` (la suma de todas); además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build`, `parse` y `style` valen 0), `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si el frame no pintó nada. Lo usa la [suite de benchmarks](../benchmarks/README.md). |
 
 Las excepciones de la vista y de los manejadores **se propagan** al test (con ventana, se
 imprimen y la app sigue viva).
+
+## Inspector y profiler de frames
+
+Con el inspector activado (`App(view, inspector=True)` o `AURORA_INSPECTOR=1`), **F12** acopla un
+panel a la derecha de la ventana; la app ocupa el resto, sin quedar tapada. Desactivado (lo
+habitual en una app distribuida), no cuesta nada y F12 no hace nada.
+
+```bash
+AURORA_INSPECTOR=1 uv run app.py
+```
+
+| Atajo | Acción |
+|---|---|
+| F12 | Abre y cierra el panel. |
+| Ctrl+Mayús+C (Cmd+Mayús+C en macOS) | Entra y sale del **modo selección** (lo abre si está cerrado). También con el botón ⌖ del panel. |
+| Escape | Sale del modo selección. |
+
+- **Árbol**: los nodos de la vista en orden, con su tipo (`row`, `column`, `scroll`, `text`,
+  `input`, `image`, `canvas`, `chart`), su key si es explícita y su texto. Las ramas se pliegan con
+  la flecha. Un clic elige el nodo y muestra debajo su caja (`x`, `y`, ancho y alto en el último
+  frame), su texto, su estilo tal como llegó al núcleo (tokens ya resueltos, con muestra de color)
+  y sus eventos (`on_click`, `on_key`…). La lista es virtual: árboles de miles de nodos van fluidos.
+- **Modo selección**: pasar el ratón por la app resalta el nodo pintado más arriba (contenido en
+  azul, padding en verde, etiqueta con tipo, key y tamaño) sin hover ni llamadas a Python; un clic
+  lo elige sin llegar a la app y el árbol se despliega y desplaza hasta él. El nodo elegido queda
+  con un contorno rosa.
+- **Frames**: coste por fases de los últimos 240 frames (`build` —tu `view()`—, `parse`, estilo,
+  layout, `draw` y pintura) en barras apiladas frente al presupuesto de 60 fps (16,7 ms), con el
+  último, la media, el p95 y el máximo, el desglose por fase y los datos del último frame (nodos,
+  si reconstruyó la vista, si reutilizó el layout y la zona repintada). Son tiempos de CPU de
+  Aurora, sin la presentación en pantalla. Los frames que no reconstruyen ni pintan nada no
+  cuentan. Mientras llegan frames nuevos, el panel se refresca cada 250 ms (esos refrescos no se
+  registran).
+
+El panel se construye con las mismas primitivas que la app, así que su coste aparece en los
+frames mientras está abierto (con la vista cerrada no hay ninguno). Con el panel abierto, la raíz
+de la app pasa a ser hija de una fila: las keys por ruta llevan delante `0/` (`"0/0/1"` en vez de
+`"0/1"`); las explícitas no cambian.
 
 ## Primitivas
 
@@ -758,7 +799,7 @@ contenedores (como en CSS).
 | `placeholder_color` | color | Color del placeholder de un campo de texto. Por defecto, el color del texto al 45 %. |
 | `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |
 | `tooltip` | texto | Texto de ayuda que aparece al dejar el puntero encima. Ver [`tooltip`](#tooltipchild-tip). |
-| `cursor` | `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"` | Cursor del ratón sobre el elemento y sus hijos (salvo que un hijo fije otro). Durante un `on_drag` se mantiene el del elemento arrastrado. |
+| `cursor` | `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"`, `"crosshair"` | Cursor del ratón sobre el elemento y sus hijos (salvo que un hijo fije otro). Durante un `on_drag` se mantiene el del elemento arrastrado. |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
 | `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |
 

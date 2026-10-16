@@ -64,10 +64,16 @@ fn new_surface(width: f32, height: f32, scale: f32) -> PyResult<Surface> {
 #[pymethods]
 impl Pilot {
     #[new]
-    #[pyo3(signature = (build, width = 960.0, height = 640.0, scale = 1.0))]
-    fn new(build: Py<PyAny>, width: f32, height: f32, scale: f32) -> PyResult<Self> {
+    #[pyo3(signature = (build, width = 960.0, height = 640.0, scale = 1.0, inspector = false))]
+    fn new(
+        build: Py<PyAny>,
+        width: f32,
+        height: f32,
+        scale: f32,
+        inspector: bool,
+    ) -> PyResult<Self> {
         let mut pilot = Self {
-            rt: Runtime::new(build, Clipboard::Memory(String::new())),
+            rt: Runtime::new(build, Clipboard::Memory(String::new()), inspector),
             width,
             height,
             scale,
@@ -131,6 +137,7 @@ impl Pilot {
             C::Grabbing => "grabbing",
             C::ColResize => "col-resize",
             C::RowResize => "row-resize",
+            C::Crosshair => "crosshair",
         }
     }
 
@@ -298,28 +305,20 @@ impl Pilot {
     }
 
     /// Coste por fases del último frame, en milisegundos: `build` (Python),
-    /// `parse`, `style`, `layout`, `draw` (los `canvas` y los `chart`) y `paint`;
-    /// además `nodes`, `rebuilt`, `layout_cached` y `damage`, la zona repintada
-    /// `(x, y, ancho, alto)` o `None` si no se pintó nada.
+    /// `parse`, `style`, `layout`, `draw` (los `canvas` y los `chart`), `paint`
+    /// y `total` (su suma); además `nodes`, `rebuilt`, `layout_cached` y
+    /// `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si no se pintó nada.
     #[getter]
     fn stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let s = self.rt.stats;
-        let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0;
-        let out = PyDict::new(py);
-        out.set_item("build", ms(s.build))?;
-        out.set_item("parse", ms(s.parse))?;
-        out.set_item("style", ms(s.style))?;
-        out.set_item("layout", ms(s.layout))?;
-        out.set_item("draw", ms(s.draw))?;
-        out.set_item("paint", ms(s.paint))?;
-        out.set_item("nodes", s.nodes)?;
-        out.set_item("rebuilt", s.rebuilt)?;
-        out.set_item("layout_cached", s.layout_cached)?;
-        out.set_item(
-            "damage",
-            s.damage.map(|r| (r.left, r.top, r.width(), r.height())),
-        )?;
-        Ok(out)
+        self.rt.stats.to_dict(py)
+    }
+
+    /// Estado del inspector (como `_core.inspection()` dentro de la vista), o
+    /// `None` si el piloto se creó sin inspector.
+    #[getter]
+    fn inspection<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+        let inspector = &self.rt.inspector;
+        inspector.enabled.then(|| inspector.to_dict(py)).transpose()
     }
 
     #[getter]

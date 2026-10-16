@@ -13,14 +13,33 @@ def run(
     width: float = 960.0,
     height: float = 640.0,
     backend: str = "auto",
+    inspector: bool = False,
 ) -> None:
     """Abre una ventana y ejecuta el bucle de eventos hasta que se cierre.
 
     `backend`: `"auto"`, `"gpu"` o `"cpu"` (`ValueError` con otro valor).
+    `inspector`: F12 abre el inspector del árbol y el profiler de frames.
     """
 
 def wake() -> None:
     """Pide reconstruir la vista y despierta el bucle de eventos. Seguro desde cualquier hilo."""
+
+def inspection() -> dict[str, Any] | None:
+    """Estado del inspector de la app que construye la vista o ejecuta un manejador:
+    `open`, `pick`, `selected`, `hovered`, `rect` (caja del nodo elegido) y `frames` (coste
+    de los últimos frames, solo con el panel abierto). `None` si no hay app con inspector."""
+
+def inspect_open(open: bool) -> None:
+    """Abre o cierra el panel del inspector. `RuntimeError` fuera de la vista o un manejador."""
+
+def inspect_pick(pick: bool) -> None:
+    """Entra o sale del modo selección (entrar abre el panel)."""
+
+def inspect_select(key: str | None) -> None:
+    """Elige el nodo `key` en el inspector (o ninguno)."""
+
+def inspect_reveal(key: str, top: float, bottom: float) -> None:
+    """Tras el próximo layout, desplaza el `scroll` `key` para mostrar esa franja de su contenido."""
 
 class KeyEvent:
     """Evento de teclado que reciben los manejadores `on_key`."""
@@ -66,6 +85,7 @@ class Pilot:
         width: float = 960.0,
         height: float = 640.0,
         scale: float = 1.0,
+        inspector: bool = False,
     ) -> None: ...
     def frame(self, dt: float = 1 / 60) -> bool:
         """Avanza un frame. Devuelve `True` si quedan transiciones en curso."""
@@ -82,7 +102,7 @@ class Pilot:
     @property
     def cursor(self) -> str:
         """Cursor del ratón (`"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`,
-        `"col-resize"` o `"row-resize"`)."""
+        `"col-resize"`, `"row-resize"` o `"crosshair"`)."""
     def click(self, key: str) -> None:
         """Clic en el centro del nodo `key`. `LookupError` si no se pintó."""
     def rect(self, key: str) -> tuple[float, float, float, float] | None:
@@ -120,12 +140,15 @@ class Pilot:
     @property
     def stats(self) -> dict[str, Any]:
         """Coste del último frame en ms (`build`, `parse`, `style`, `layout`, `draw`
-        —los `canvas` y los `chart`—, `paint`), `nodes`,
+        —los `canvas` y los `chart`—, `paint` y `total`, su suma), `nodes`,
         `rebuilt`, `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`
         (zona repintada `(x, y, ancho, alto)`, o `None` si no se pintó nada)."""
     @property
     def hovered(self) -> str | None:
         """Key del nodo interactivo bajo el puntero."""
+    @property
+    def inspection(self) -> dict[str, Any] | None:
+        """Estado del inspector (como `inspection()`), o `None` si se creó sin inspector."""
     def resize(self, width: float, height: float) -> None: ...
     def png(self, path: str) -> None:
         """Guarda el último frame como PNG."""

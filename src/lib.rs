@@ -6,6 +6,7 @@ mod color;
 mod edit;
 mod image;
 mod input;
+mod inspect;
 mod keys;
 mod motion;
 mod pilot;
@@ -35,8 +36,9 @@ fn render_png(
 /// Abre una ventana y ejecuta el bucle de eventos hasta que se cierre.
 /// `build` es un callable sin argumentos que devuelve el árbol de la vista.
 /// `backend`: `"auto"` (GPU si se puede, si no CPU), `"gpu"` o `"cpu"`.
+/// `inspector` permite abrir el inspector con F12.
 #[pyfunction]
-#[pyo3(signature = (build, title = "Aurora".to_string(), width = 960.0, height = 640.0, backend = "auto"))]
+#[pyo3(signature = (build, title = "Aurora".to_string(), width = 960.0, height = 640.0, backend = "auto", inspector = false))]
 fn run(
     py: Python<'_>,
     build: Py<PyAny>,
@@ -44,8 +46,9 @@ fn run(
     width: f64,
     height: f64,
     backend: &str,
+    inspector: bool,
 ) -> PyResult<()> {
-    window::run(py, build, title, width, height, backend)
+    window::run(py, build, title, width, height, backend, inspector)
 }
 
 /// Pide reconstruir la vista y despierta el bucle de eventos. Seguro desde
@@ -60,6 +63,11 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render_png, m)?)?;
     m.add_function(wrap_pyfunction!(run, m)?)?;
     m.add_function(wrap_pyfunction!(wake, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect::inspection, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect::inspect_open, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect::inspect_pick, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect::inspect_select, m)?)?;
+    m.add_function(wrap_pyfunction!(inspect::inspect_reveal, m)?)?;
     m.add_class::<pilot::Pilot>()?;
     m.add_class::<keys::KeyEvent>()?;
     m.add_class::<scroll::ScrollEvent>()?;

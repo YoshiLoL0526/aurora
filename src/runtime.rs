@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use pyo3::types::PyString;
+use pyo3::types::{PyDict, PyString};
 
 use pyo3::prelude::*;
 use skia_safe::{Canvas, Point, Rect};
@@ -17,8 +17,9 @@ use skia_safe::{Canvas, Point, Rect};
 use crate::canvas::Canvases;
 use crate::chart::Charts;
 use crate::input::InputState;
+use crate::inspect::{self, Inspector, PANEL_KEY};
 use crate::keys::{KeyEvent, KeyInput, Mods};
-use crate::render::{Engine, TIP_DELAY, ancestors, hit_test, topmost};
+use crate::render::{Engine, Mark, TIP_DELAY, ancestors, hit_test, topmost};
 use crate::scroll::{LINE, ScrollEvent};
 use crate::spec::{self, Node};
 
@@ -65,6 +66,34 @@ pub struct FrameStats {
     /// Nodos del árbol actual.
     pub nodes: usize,
     pub rebuilt: bool,
+}
+
+impl FrameStats {
+    /// Tiempo de CPU del frame en Aurora: la suma de todas las fases.
+    pub fn total(&self) -> Duration {
+        self.build + self.parse + self.style + self.layout + self.draw + self.paint
+    }
+
+    /// Las fases en milisegundos, como las ve Python (`Pilot.stats`, inspector).
+    pub fn to_dict<'py>(self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+        let out = PyDict::new(py);
+        out.set_item("total", ms(self.total()))?;
+        out.set_item("build", ms(self.build))?;
+        out.set_item("parse", ms(self.parse))?;
+        out.set_item("style", ms(self.style))?;
+        out.set_item("layout", ms(self.layout))?;
+        out.set_item("draw", ms(self.draw))?;
+        out.set_item("paint", ms(self.paint))?;
+        out.set_item("nodes", self.nodes)?;
+        out.set_item("rebuilt", self.rebuilt)?;
+        out.set_item("layout_cached", self.layout_cached)?;
+        out.set_item(
+            "damage",
+            self.damage.map(|r| (r.left, r.top, r.width(), r.height())),
+        )?;
+        Ok(out)
+    }
 }
 
 /// Frames de los que se recuerda la zona pintada: un lienzo que contiene un
@@ -116,6 +145,8 @@ pub struct Runtime {
     canvases: Canvases,
     /// Cuándo volver a grabar cada `chart`.
     charts: Charts,
+    /// Inspector del árbol y profiler de frames.
+    pub inspector: Inspector,
 }
 
 /// Portapapeles del sistema (ventana) o en memoria (piloto, tests deterministas).
@@ -209,7 +240,7 @@ impl DragEvent {
 }
 
 impl Runtime {
-    pub fn new(build: Py<PyAny>, clipboard: Clipboard) -> Self {
+    pub fn new(build: Py<PyAny>, clipboard: Clipboard, inspector: bool) -> Self {
         Self {
             build,
             engine: Engine::new(),
@@ -235,6 +266,7 @@ impl Runtime {
             history: VecDeque::new(),
             canvases: Canvases::default(),
             charts: Charts::default(),
+            inspector: Inspector::new(inspector),
         }
     }
 
@@ -274,6 +306,11 @@ impl Runtime {
         self.stats.layout_cached = true;
         self.stats.draw = Duration::ZERO;
         self.update(width, height, scale);
+        if let Some((key, top, bottom)) = self.inspector.reveal.take()
+            && let Some(state) = self.engine.scroll.get_mut(&key)
+        {
+            state.reveal_content(top, bottom, 0.0);
+        }
         let mut rebuild = Duration::ZERO;
         if self.notify_scroll()? && self.needs_sync() {
             let t = Instant::now();
@@ -301,6 +338,7 @@ impl Runtime {
                 .take(n - 1)
                 .fold(None, |acc, d| join(acc, *d)),
         };
+        self.engine.marks = self.marks();
         let damage = match &self.tree {
             Some(tree) => self.engine.paint(canvas, tree, width, height, stale),
             None => None,
@@ -309,6 +347,9 @@ impl Runtime {
             .elapsed()
             .saturating_sub(self.stats.layout + rebuild + self.stats.draw);
         self.stats.damage = damage;
+        if self.inspector.enabled {
+            self.inspector.record(self.stats);
+        }
         self.history.push_front(damage);
         self.history.truncate(DAMAGE_HISTORY);
         // Tras una reconstrucción, lo que hay bajo el puntero puede haber cambiado
@@ -327,16 +368,25 @@ impl Runtime {
         self.stats.parse = Duration::ZERO;
         self.stats.style = Duration::ZERO;
         self.stats.rebuilt = false;
-        if !self.dirty && self.tree.is_some() {
+        // Refresco periódico del panel: reconstruye aunque nada haya cambiado.
+        if self.inspector.take_refresh() && self.dirty {
+            self.inspector.cancel_refresh();
+        }
+        if !self.dirty && !self.inspector.refreshing() && self.tree.is_some() {
             return Ok(());
         }
         self.dirty = false;
-        let (tree, build, parse) = Python::attach(|py| -> PyResult<_> {
-            let start = Instant::now();
-            let obj = self.build.call0(py)?;
-            let built = Instant::now();
-            let tree = self.parser.parse(obj.bind(py))?;
-            Ok((tree, built - start, built.elapsed()))
+        let selected_rect = self.inspector.selected.as_ref().and_then(|k| self.rect(k));
+        self.inspector.selected_rect = selected_rect;
+        let (build_fn, parser) = (&self.build, &mut self.parser);
+        let (tree, build, parse) = inspect::lend(&mut self.inspector, || {
+            Python::attach(|py| -> PyResult<_> {
+                let start = Instant::now();
+                let obj = build_fn.call0(py)?;
+                let built = Instant::now();
+                let tree = parser.parse(obj.bind(py))?;
+                Ok((tree, built - start, built.elapsed()))
+            })
         })?;
         self.stats.build = build;
         self.stats.parse = parse;
@@ -388,6 +438,7 @@ impl Runtime {
 
     /// Avanza el reloj real (parpadeo del cursor), independiente de las transiciones.
     pub fn advance_clock(&mut self, elapsed: f32) {
+        self.inspector.advance(elapsed);
         if let Some(state) = self.focused_input() {
             state.blink += elapsed;
         }
@@ -414,6 +465,11 @@ impl Runtime {
     /// Devuelve `true` si hace falta pintar otro frame.
     pub fn pointer_move(&mut self, x: f32, y: f32) -> PyResult<bool> {
         self.pointer = Some((x, y));
+        // Modo selección del inspector: sobre la app solo se resalta el nodo
+        // bajo el puntero, sin hover ni Python (ver `refresh_hover`).
+        if self.inspector.pick && self.pick_at(x, y).is_some() {
+            return Ok(self.refresh_hover());
+        }
         if let Some(key) = &self.selecting
             && let Some(state) = self.engine.inputs.get_mut(key)
         {
@@ -456,6 +512,81 @@ impl Runtime {
         Ok(hover_changed || bar_changed || grab_changed)
     }
 
+    /// Nodo que elegiría el modo selección en `(x, y)`: el pintado más arriba,
+    /// salvo dentro del panel del inspector (`None`).
+    fn pick_at(&self, x: f32, y: f32) -> Option<String> {
+        let regions = &self.engine.regions;
+        let idx = topmost(regions, x, y)?;
+        if ancestors(regions, Some(idx)).any(|r| r.key == PANEL_KEY) {
+            return None;
+        }
+        Some(regions[idx].key.clone())
+    }
+
+    /// Lo que el inspector resalta sobre la interfaz: el nodo elegido y el que
+    /// está bajo el puntero en modo selección.
+    fn marks(&self) -> Vec<Mark> {
+        let insp = &self.inspector;
+        if !insp.open {
+            return Vec::new();
+        }
+        let Some(tree) = &self.tree else {
+            return Vec::new();
+        };
+        let mark = |key: &String, hovered: bool| {
+            let rect = self.rect(key)?;
+            let node = tree.find(key)?;
+            // Como en el árbol del panel: `row`, `column` y `scroll` en vez de `box`.
+            let kind = match node.kind {
+                spec::Kind::Box if node.style.scroll.is_some() => "scroll",
+                spec::Kind::Box if node.style.row => "row",
+                spec::Kind::Box => "column",
+                kind => kind.name(),
+            };
+            Some(Mark {
+                rect,
+                padding: node.style.padding,
+                label: format!(
+                    "{} {}  {} × {}",
+                    kind,
+                    key,
+                    rect.width().round(),
+                    rect.height().round()
+                ),
+                hovered,
+            })
+        };
+        let selected = insp.selected.as_ref().and_then(|k| mark(k, false));
+        let hovered = insp
+            .hovered
+            .as_ref()
+            .filter(|k| insp.pick && insp.selected.as_ref() != Some(*k))
+            .and_then(|k| mark(k, true));
+        selected.into_iter().chain(hovered).collect()
+    }
+
+    /// Atajos del inspector: F12 abre y cierra el panel, Ctrl+Mayús+C entra
+    /// y sale del modo selección y Escape sale de él. Devuelve si la atendió.
+    fn inspector_key(&mut self, input: &KeyInput) -> bool {
+        let m = input.mods;
+        let plain = !(m.ctrl || m.shift || m.alt || m.meta);
+        let pick_combo =
+            (m.ctrl || m.meta) && m.shift && !m.alt && input.key.eq_ignore_ascii_case("c");
+        if input.is("F12") && plain {
+            let open = !self.inspector.open;
+            self.inspector.set_open(open);
+        } else if pick_combo {
+            let pick = !self.inspector.pick;
+            self.inspector.set_pick(pick);
+        } else if input.is("Escape") && plain && self.inspector.pick {
+            self.inspector.set_pick(false);
+        } else {
+            return false;
+        }
+        self.dirty = true;
+        true
+    }
+
     /// Entrega la posición actual del arrastre a su `on_drag`.
     fn send_drag(&mut self, phase: &str) -> PyResult<()> {
         let Some(grip) = &self.grip else {
@@ -485,6 +616,17 @@ impl Runtime {
     /// Pulsar enfoca el nodo enfocable más cercano bajo el puntero (sin anillo,
     /// como `:focus-visible`), o quita el foco si no hay ninguno.
     pub fn pointer_down(&mut self) -> PyResult<()> {
+        // En modo selección, un clic sobre la app elige el nodo y no le llega.
+        if self.inspector.pick
+            && let Some((x, y)) = self.pointer
+            && let Some(key) = self.pick_at(x, y)
+        {
+            self.inspector.selected = Some(key);
+            self.inspector.set_pick(false);
+            self.engine.pressed = None;
+            self.dirty = true;
+            return Ok(());
+        }
         if self.start_drag() {
             self.engine.pressed = None;
             return Ok(());
@@ -571,6 +713,9 @@ impl Runtime {
 
     /// Cursor del ratón para lo que hay bajo el puntero.
     pub fn cursor(&self) -> CursorKind {
+        if self.inspector.pick && self.inspector.hovered.is_some() {
+            return CursorKind::Crosshair;
+        }
         if self.selecting.is_some() {
             return CursorKind::Text;
         }
@@ -787,6 +932,9 @@ impl Runtime {
             return self.key_up(input);
         }
         self.engine.tip.suppressed = true;
+        if self.inspector.enabled && !input.repeat && self.inspector_key(input) {
+            return Ok(true);
+        }
         if self.dispatch_key(input)? {
             return Ok(true);
         }
@@ -1068,10 +1216,10 @@ impl Runtime {
         let tip = &self.engine.tip;
         let tooltip = (tip.key.is_some() && !tip.suppressed && tip.timer < TIP_DELAY)
             .then_some(TIP_DELAY - tip.timer);
-        match (blink, tooltip) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        }
+        [blink, tooltip, self.inspector.next_refresh()]
+            .into_iter()
+            .flatten()
+            .reduce(f32::min)
     }
 
     /// Texto del tooltip visible, si hay uno.
@@ -1234,6 +1382,19 @@ impl Runtime {
     }
 
     fn refresh_hover(&mut self) -> bool {
+        // En modo selección, sobre la app no hay hover: solo el nodo resaltado.
+        let mut picked_changed = false;
+        if self.inspector.pick {
+            let picked = self.pointer.and_then(|(x, y)| self.pick_at(x, y));
+            picked_changed = picked != self.inspector.hovered;
+            if picked.is_some() {
+                let changed = picked_changed || self.engine.hovered.is_some();
+                self.inspector.hovered = picked;
+                self.engine.hovered = None;
+                return self.engine.tip.set_key(None) || changed;
+            }
+            self.inspector.hovered = None;
+        }
         let hovered = self
             .pointer
             .and_then(|(x, y)| hit_test(&self.engine.regions, x, y));
@@ -1244,7 +1405,7 @@ impl Runtime {
                 .find(|r| r.tooltip)
                 .map(|r| r.key.clone())
         });
-        self.engine.tip.set_key(tip) || changed
+        self.engine.tip.set_key(tip) || changed || picked_changed
     }
 
     // ---------------------------------------------------------------- eventos
@@ -1273,9 +1434,11 @@ impl Runtime {
         else {
             return Ok(None);
         };
-        let result = Python::attach(|py| match arg {
-            Some(arg) => cb.call1(py, (arg,)),
-            None => cb.call0(py),
+        let result = inspect::lend(&mut self.inspector, || {
+            Python::attach(|py| match arg {
+                Some(arg) => cb.call1(py, (arg,)),
+                None => cb.call0(py),
+            })
         });
         self.dirty = true;
         result.map(Some)

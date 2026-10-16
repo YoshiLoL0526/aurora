@@ -123,3 +123,23 @@ def test_explicit_key_colliding_with_positional_key_is_rejected(tmp_path):
 def test_unique_keys_render(tmp_path):
     tree = row()[box(key="a"), box(key="b"), box()]
     _core.render_png(tree.to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+
+
+def test_inspector_outlines_the_selected_node(tmp_path):
+    def view():
+        return column(key="root", padding=40)[box(key="target", width=120, height=60, bg="#202020")]
+
+    pilot = App(view, size=(900, 400)).pilot(inspector=True)
+    pilot.press("f12")
+    pilot.click("aurora:inspector-tree#1")
+    pilot.settle()
+    x, y, w, h = pilot.rect("target")
+    out = tmp_path / "inspector.png"
+    pilot.png(str(out))
+    # Contorno rosa del nodo elegido y, por encima, la etiqueta oscura.
+    r, g, b = _png_pixel(out, int(x + w / 2), int(y))
+    assert r > 200 and g < 140 and b > 120
+    r, g, b = _png_pixel(out, int(x + w / 2), int(y + h / 2))
+    assert (r, g, b) == (0x20, 0x20, 0x20)
+    label = _png_pixel(out, int(x + 4), int(y - 6))
+    assert max(label) < 0x40

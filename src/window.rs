@@ -168,6 +168,7 @@ impl App {
                 CursorKind::Grabbing => CursorIcon::Grabbing,
                 CursorKind::ColResize => CursorIcon::ColResize,
                 CursorKind::RowResize => CursorIcon::RowResize,
+                CursorKind::Crosshair => CursorIcon::Crosshair,
                 CursorKind::Default => CursorIcon::Default,
             });
         }
@@ -391,6 +392,7 @@ pub fn run(
     width: f64,
     height: f64,
     backend: &str,
+    inspector: bool,
 ) -> PyResult<()> {
     let backend = Backend::resolve(backend).map_err(pyo3::exceptions::PyValueError::new_err)?;
     let fatal = py.detach(move || -> Result<Option<String>, String> {
@@ -399,7 +401,7 @@ pub fn run(
             .map_err(|e| e.to_string())?;
         event_loop.set_control_flow(ControlFlow::Wait);
         let mut app = App {
-            rt: Runtime::new(build, Clipboard::System(None)),
+            rt: Runtime::new(build, Clipboard::System(None), inspector),
             title,
             size: (width, height),
             backend,

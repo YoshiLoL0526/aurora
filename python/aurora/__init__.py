@@ -9,6 +9,7 @@ from concurrent.futures import Future
 from typing import Any, Literal, TypeVar
 
 from . import _core, animate, reactive
+from . import inspector as _inspector
 from ._core import DragEvent, KeyEvent, Pilot, ScrollEvent
 from .canvas import Canvas, Path, canvas
 from .charts import chart
@@ -87,6 +88,10 @@ class App:
 
     `view` es una función sin argumentos que devuelve el árbol de la interfaz.
     Se vuelve a llamar cada vez que un evento puede haber cambiado el estado.
+
+    `inspector=True` permite abrir con F12 el inspector del árbol y el profiler
+    de frames (ver `aurora.inspector`). Sin indicarlo, lo activa la variable de
+    entorno `AURORA_INSPECTOR=1`.
     """
 
     def __init__(
@@ -96,11 +101,14 @@ class App:
         title: str = "Aurora",
         size: tuple[float, float] = (960, 640),
         theme: Theme | Callable[[], Theme] = MIDNIGHT,
+        inspector: bool | None = None,
     ) -> None:
         self.view = view
         self.title = title
         self.size = size
         self.theme = theme
+        self.inspector = _inspector.enabled(inspector)
+        self._inspector = _inspector.Inspector()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._loop_lock = threading.Lock()
 
@@ -117,7 +125,12 @@ class App:
             # Burbuja de tooltip invertida respecto al tema: destaca en claro y en oscuro.
             root.style.setdefault("tooltip_bg", "$text")
             root.style.setdefault("tooltip_color", "$background")
-            return root.to_spec(theme)
+            spec = root.to_spec(theme)
+            # Con el panel del inspector abierto, se acopla a la derecha de la vista.
+            info = _core.inspection()
+            if info is not None and info["open"]:
+                spec = self._inspector.dock(spec, info, theme.font_family)
+            return spec
         finally:
             reactive.end_build()
 
@@ -128,17 +141,22 @@ class App:
         `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de
         entorno `AURORA_BACKEND` puede forzar uno de los otros dos.
         """
-        _core.run(self._build, self.title, *self.size, backend)
+        _core.run(self._build, self.title, *self.size, backend, self.inspector)
 
     def render_png(self, path: str, *, size: tuple[float, float] | None = None, scale: float = 2.0) -> None:
         """Renderiza la vista a PNG sin ventana (tests de snapshot, CI, previews)."""
         w, h = size or self.size
         _core.render_png(self._build(), w, h, path, scale)
 
-    def pilot(self, *, size: tuple[float, float] | None = None, scale: float = 1.0) -> Pilot:
-        """Ejecuta la app sin ventana y devuelve un `Pilot` para simular interacción en tests."""
+    def pilot(
+        self, *, size: tuple[float, float] | None = None, scale: float = 1.0, inspector: bool = False
+    ) -> Pilot:
+        """Ejecuta la app sin ventana y devuelve un `Pilot` para simular interacción en tests.
+
+        Con `inspector=True` el inspector se abre con `pilot.press("f12")`, como en la ventana.
+        """
         w, h = size or self.size
-        return Pilot(self._build, w, h, scale)
+        return Pilot(self._build, w, h, scale, inspector)
 
     def spawn(self, coro: Coroutine[Any, Any, T]) -> Future[T]:
         """Ejecuta una corrutina en un bucle `asyncio` en segundo plano.
