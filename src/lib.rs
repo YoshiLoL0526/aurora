@@ -1,5 +1,6 @@
 //! aurora._core — núcleo nativo: layout, render, eventos y animaciones.
 
+mod canvas;
 mod color;
 mod edit;
 mod image;

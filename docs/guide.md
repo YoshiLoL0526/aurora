@@ -335,6 +335,28 @@ row(gap=12, align="center")[
 ]
 ```
 
+### Dibujo libre con `canvas`
+
+Para gráficos e indicadores que no son cajas, `canvas` te da un lienzo con comandos de dibujo.
+Tu función recibe el lienzo ya con su tamaño, y se vuelve a llamar cuando cambia el estado:
+
+```python
+from aurora import Canvas, canvas
+
+
+def barras(c: Canvas):
+    ancho = c.width / len(ventas())
+    for i, v in enumerate(ventas()):
+        alto = v / max(ventas()) * c.height
+        c.rect(i * ancho + 2, c.height - alto, ancho - 4, alto, radius=4, fill="$primary")
+
+
+canvas(barras, height=160)
+```
+
+Mira [`examples/canvas.py`](../examples/canvas.py) y la [referencia](reference.md) para el resto
+de figuras (líneas, arcos, trazados, texto) y transformaciones.
+
 ### Más componentes
 
 Además de `button`, `card`, `badge` y `stat`, Aurora trae `checkbox`, `switch`, `select`, `tabs`,

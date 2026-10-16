@@ -162,6 +162,8 @@ pub enum Kind {
     Input,
     /// Imagen de un archivo o de bytes en memoria.
     Image,
+    /// Lienzo de dibujo inmediato: Python graba sus comandos con `draw`.
+    Canvas,
 }
 
 #[derive(Debug)]
@@ -176,6 +178,9 @@ pub struct Node {
     pub children: Vec<Node>,
     /// Manejadores de eventos por nombre (`"click"`, …), sin el prefijo `on_`.
     pub handlers: HashMap<String, Py<PyAny>>,
+    /// Solo en `Kind::Canvas`: `draw(width, height, force)` devuelve el lote de
+    /// comandos (o `None` si lo anterior sigue valiendo). Ver `canvas.rs`.
+    pub draw: Option<Py<PyAny>>,
 }
 
 impl Node {
@@ -193,6 +198,7 @@ impl Node {
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone_ref(py)))
                 .collect(),
+            draw: self.draw.as_ref().map(|d| d.clone_ref(py)),
         }
     }
 
@@ -552,6 +558,7 @@ fn parse_fresh(
         Some("text") => Kind::Text,
         Some("input") => Kind::Input,
         Some("image") => Kind::Image,
+        Some("canvas") => Kind::Canvas,
         _ => Kind::Box,
     };
     let style_dict = match get(d, "style")? {
@@ -573,6 +580,15 @@ fn parse_fresh(
         None => Vec::new(),
     };
 
+    let draw = match get(d, "draw")? {
+        Some(cb) if cb.is_callable() => Some(cb.unbind()),
+        Some(_) => return Err(PyValueError::new_err("draw debe ser callable")),
+        None if kind == Kind::Canvas => {
+            return Err(PyValueError::new_err("un canvas necesita una función draw"));
+        }
+        None => None,
+    };
+
     Ok(Node {
         key,
         kind,
@@ -581,6 +597,7 @@ fn parse_fresh(
         text_props,
         children,
         handlers: parse_handlers(d)?,
+        draw,
     })
 }
 

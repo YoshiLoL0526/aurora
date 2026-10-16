@@ -261,7 +261,7 @@ impl Pilot {
     }
 
     /// Coste por fases del último frame, en milisegundos: `build` (Python),
-    /// `parse`, `style`, `layout` y `paint`; además `nodes`, `rebuilt`,
+    /// `parse`, `style`, `layout`, `draw` (los `canvas`) y `paint`; además `nodes`, `rebuilt`,
     /// `layout_cached` y `damage`, la zona repintada `(x, y, ancho, alto)` o
     /// `None` si no se pintó nada.
     #[getter]
@@ -273,6 +273,7 @@ impl Pilot {
         out.set_item("parse", ms(s.parse))?;
         out.set_item("style", ms(s.style))?;
         out.set_item("layout", ms(s.layout))?;
+        out.set_item("draw", ms(s.draw))?;
         out.set_item("paint", ms(s.paint))?;
         out.set_item("nodes", s.nodes)?;
         out.set_item("rebuilt", s.rebuilt)?;

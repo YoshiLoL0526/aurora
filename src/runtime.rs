@@ -14,6 +14,7 @@ use pyo3::types::PyString;
 use pyo3::prelude::*;
 use skia_safe::{Canvas, Point, Rect};
 
+use crate::canvas::Canvases;
 use crate::input::InputState;
 use crate::keys::{KeyEvent, KeyInput, Mods};
 use crate::render::{Engine, TIP_DELAY, ancestors, hit_test, topmost};
@@ -49,6 +50,8 @@ pub struct FrameStats {
     pub layout: Duration,
     /// El layout se reutilizó del frame anterior (no cambió nada que lo afecte).
     pub layout_cached: bool,
+    /// Llamadas a las funciones `draw` de los `canvas` y grabación de sus comandos.
+    pub draw: Duration,
     /// Composición y pintura (el resto del frame, sin el layout ni la reconstrucción).
     pub paint: Duration,
     /// Zona repintada (píxeles lógicos), o `None` si no se pintó nada.
@@ -97,6 +100,8 @@ pub struct Runtime {
     /// antiguo (`None`: nada). Con ella se pone al día un lienzo que se quedó
     /// unos frames atrás (ventanas con varios buffers).
     history: VecDeque<Option<Rect>>,
+    /// Cuándo volver a grabar cada `canvas`.
+    canvases: Canvases,
 }
 
 /// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
@@ -175,6 +180,7 @@ impl Runtime {
             scroll_listeners: Vec::new(),
             scroll_seen: HashMap::new(),
             history: VecDeque::new(),
+            canvases: Canvases::default(),
         }
     }
 
@@ -212,6 +218,7 @@ impl Runtime {
         let start = Instant::now();
         self.stats.layout = Duration::ZERO;
         self.stats.layout_cached = true;
+        self.stats.draw = Duration::ZERO;
         self.update(width, height, scale);
         let mut rebuild = Duration::ZERO;
         if self.notify_scroll()? && self.needs_sync() {
@@ -220,6 +227,13 @@ impl Runtime {
             rebuild = t.elapsed();
             self.update(width, height, scale);
             self.notify_scroll()?;
+        }
+        // Con el layout hecho se conoce el tamaño de cada `canvas`.
+        if let Some(tree) = &self.tree {
+            let t = Instant::now();
+            self.canvases
+                .draw(tree, &mut self.engine, !self.stats.layout_cached)?;
+            self.stats.draw = t.elapsed();
         }
         // Lo que se pintó en los frames que este lienzo no vio también hay que pintarlo.
         let stale = match age as usize {
@@ -235,7 +249,9 @@ impl Runtime {
             Some(tree) => self.engine.paint(canvas, tree, width, height, stale),
             None => None,
         };
-        self.stats.paint = start.elapsed().saturating_sub(self.stats.layout + rebuild);
+        self.stats.paint = start
+            .elapsed()
+            .saturating_sub(self.stats.layout + rebuild + self.stats.draw);
         self.stats.damage = damage;
         self.history.push_front(damage);
         self.history.truncate(DAMAGE_HISTORY);
@@ -270,6 +286,7 @@ impl Runtime {
         self.stats.parse = parse;
         self.stats.rebuilt = true;
         self.stats.nodes = tree.count();
+        self.canvases.rebuilt();
 
         // El foco se pierde si su nodo desaparece o deja de ser enfocable.
         if let Some(focused) = &self.engine.focused

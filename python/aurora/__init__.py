@@ -10,6 +10,7 @@ from typing import Any, Literal, TypeVar
 
 from . import _core, reactive
 from ._core import KeyEvent, Pilot, ScrollEvent
+from .canvas import Canvas, Path, canvas
 from .components import (
     avatar,
     badge,
@@ -35,8 +36,10 @@ __all__ = [
     "DAYLIGHT",
     "MIDNIGHT",
     "App",
+    "Canvas",
     "Element",
     "KeyEvent",
+    "Path",
     "Pilot",
     "ScrollEvent",
     "Signal",
@@ -45,6 +48,7 @@ __all__ = [
     "badge",
     "box",
     "button",
+    "canvas",
     "card",
     "checkbox",
     "column",

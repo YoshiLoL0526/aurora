@@ -10,6 +10,15 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- `canvas(draw, **estilo)`: lienzo de dibujo inmediato. `draw(c)` recibe un `Canvas` con su
+  tamaño (`c.width`, `c.height`) y dibuja rectángulos, círculos, elipses, arcos, líneas,
+  polilíneas, polígonos, trazados libres (`Path`) y texto, con relleno, trazo, guiones,
+  transformaciones y recortes; los colores aceptan tokens del tema. Los comandos cruzan al núcleo
+  en un solo lote y se graban en un `Picture` de Skia que se repinta sin volver a Python. `draw`
+  se llama tras el layout, al reconstruirse la vista o cambiar el tamaño; dentro de un
+  `@component`, solo si cambia algún `Signal` que lea. Los puntos admiten arrays de numpy sin
+  recorrerlos en Python. Ejemplo en `examples/canvas.py`.
+- `Pilot.stats["draw"]`: coste de las funciones `draw` de los `canvas` en el último frame.
 - Backend GPU: la ventana pinta con Skia sobre Vulkan (Windows y Linux) o Metal (macOS), y vuelve a
   la CPU (softbuffer) si la GPU no arranca o se pierde el dispositivo. El repintado parcial se
   conserva con un lienzo persistente en la GPU. `App.run(backend="auto" | "gpu" | "cpu")` y la

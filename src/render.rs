@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use skia_safe::{
     BlurStyle, Canvas, ClipOp, Color, Color4f, EncodedImageFormat, FilterMode, FontMgr, FontStyle,
-    IRect, MaskFilter, MipmapMode, Paint, PaintStyle, Point, RRect, Rect, SamplingOptions, Surface,
-    TileMode,
+    IRect, MaskFilter, MipmapMode, Paint, PaintStyle, Picture, Point, RRect, Rect, SamplingOptions,
+    Surface, TileMode,
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
@@ -311,6 +311,8 @@ pub struct Engine {
     /// Imagen decodificada de cada nodo `image` del árbol actual, por key.
     images: HashMap<String, Rc<Loaded>>,
     image_cache: ImageCache,
+    /// Dibujo grabado de cada `canvas`, por key (lo graba `Runtime::draw_canvases`).
+    pictures: HashMap<String, Picture>,
     pub hovered: Option<String>,
     pub pressed: Option<String>,
     pub focused: Option<String>,
@@ -401,6 +403,7 @@ impl Engine {
             inputs: HashMap::new(),
             images: HashMap::new(),
             image_cache: ImageCache::default(),
+            pictures: HashMap::new(),
             hovered: None,
             pressed: None,
             focused: None,
@@ -668,6 +671,28 @@ impl Engine {
         Ok(())
     }
 
+    /// Graba el lote de comandos de un `canvas` (ver `canvas.rs`) y marca su
+    /// nodo para repintarlo. `size`: tamaño de su caja de contenido.
+    pub fn record_canvas(
+        &mut self,
+        key: &str,
+        batch: &pyo3::Bound<'_, pyo3::PyAny>,
+        size: (f32, f32),
+    ) -> pyo3::PyResult<()> {
+        let picture = crate::canvas::record(batch, size.0, size.1, &self.fonts)?;
+        match picture {
+            Some(p) => self.pictures.insert(key.to_owned(), p),
+            None => self.pictures.remove(key),
+        };
+        self.restyled.push(key.to_owned());
+        Ok(())
+    }
+
+    /// Olvida los dibujos de los `canvas` que ya no están en la vista.
+    pub fn retain_canvases(&mut self, keep: impl Fn(&str) -> bool) {
+        self.pictures.retain(|k, _| keep(k));
+    }
+
     /// Si el foco está en un campo de texto.
     pub fn focus_is_editable(&self) -> bool {
         self.focused
@@ -681,7 +706,7 @@ impl Engine {
     /// estilo de las imágenes, que no se estiran en el eje cruzado.
     fn leaf_spec(&self, node: &Node, style: &mut taffy::Style) -> Option<LeafSpec> {
         match node.kind {
-            Kind::Box => None,
+            Kind::Box | Kind::Canvas => None,
             Kind::Image => {
                 // Sin ancho propio, una imagen no se estira en el eje cruzado: se
                 // queda a su tamaño (o al que quepa) sin deformarse.
@@ -1539,7 +1564,8 @@ fn same_shape(a: &Node, b: &Node) -> bool {
 fn same_geometry(a: &Node, b: &Node) -> bool {
     let (sa, sb) = (&a.style, &b.style);
     let content = match b.kind {
-        Kind::Box => true,
+        // El dibujo de un `canvas` no afecta a su caja.
+        Kind::Box | Kind::Canvas => true,
         // Las métricas del texto; el color se cambia en el propio párrafo.
         Kind::Text => {
             let (ta, tb) = (&a.text_props, &b.text_props);
@@ -1920,19 +1946,7 @@ impl<'a> Painter<'a> {
         if node.kind == Kind::Image
             && let Some(loaded) = self.engine.images.get(&node.key)
         {
-            let (b, pad) = (layout.border, layout.padding);
-            let inner = Rect::new(
-                rect.left + b.left,
-                rect.top + b.top,
-                rect.right - b.right,
-                rect.bottom - b.bottom,
-            );
-            let content = Rect::new(
-                inner.left + pad.left,
-                inner.top + pad.top,
-                inner.right - pad.right,
-                inner.bottom - pad.bottom,
-            );
+            let (inner, content) = content_box(rect, layout);
             let r = (s.radius - s.border_width).max(0.0);
             paint_image(
                 canvas,
@@ -1941,6 +1955,19 @@ impl<'a> Painter<'a> {
                 content,
                 RRect::new_rect_xy(inner, r, r),
             );
+        }
+
+        if node.kind == Kind::Canvas
+            && let Some(picture) = self.engine.pictures.get(&node.key)
+        {
+            let (inner, content) = content_box(rect, layout);
+            let r = (s.radius - s.border_width).max(0.0);
+            canvas.save();
+            canvas.clip_rrect(RRect::new_rect_xy(inner, r, r), ClipOp::Intersect, true);
+            canvas.clip_rect(content, ClipOp::Intersect, true);
+            canvas.translate((content.left, content.top));
+            canvas.draw_picture(picture, None, None);
+            canvas.restore();
         }
 
         if s.border_width > 0.0
@@ -2012,6 +2039,24 @@ impl<'a> Painter<'a> {
         }
         canvas.restore_to_count(save_count);
     }
+}
+
+/// Caja de relleno (dentro del borde) y caja de contenido (dentro del padding).
+fn content_box(rect: Rect, layout: &taffy::Layout) -> (Rect, Rect) {
+    let (b, pad) = (layout.border, layout.padding);
+    let inner = Rect::new(
+        rect.left + b.left,
+        rect.top + b.top,
+        rect.right - b.right,
+        rect.bottom - b.bottom,
+    );
+    let content = Rect::new(
+        inner.left + pad.left,
+        inner.top + pad.top,
+        inner.right - pad.right,
+        inner.bottom - pad.bottom,
+    );
+    (inner, content)
 }
 
 /// Separación y grosor del anillo de foco.
@@ -2446,6 +2491,9 @@ pub fn render_png(
     engine.load_images(root)?;
     let mut surface = raster_surface(width, height, scale).map_err(PyRuntimeError::new_err)?;
     engine.update(root, width, height, scale);
+    let mut canvases = crate::canvas::Canvases::default();
+    canvases.rebuilt();
+    canvases.draw(root, &mut engine, true)?;
     engine.paint(surface.canvas(), root, width, height, None);
     write_png(&mut surface, path).map_err(PyRuntimeError::new_err)
 }

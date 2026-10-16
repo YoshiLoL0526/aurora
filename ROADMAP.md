@@ -46,11 +46,11 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Listas virtualizadas (`virtual_list`, filas de alto fijo) y evento `on_scroll`
 - ✅ Suite de benchmarks reproducible en CI (lista de 10k ítems, dashboard de 50 paneles, escritura)
 
-## v0.4 — Datos y gráficos ⏳
+## v0.4 — Datos y gráficos 🚧
 
 *Dashboards de nivel profesional sin librerías externas.*
 
-- ⏳ `canvas`: API de dibujo inmediato desde Python, enviada en lote a Rust
+- ✅ `canvas`: API de dibujo inmediato desde Python, enviada en lote a Rust
 - ⏳ Charts nativos (líneas, barras, áreas, dispersión) alimentados con numpy/polars sin copias
 - ⏳ Downsampling (LTTB) en Rust para millones de puntos, zoom y pan
 - ⏳ `table` con ordenación, columnas redimensionables y virtualización

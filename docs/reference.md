@@ -136,7 +136,7 @@ def test_counter():
 | `settle()` | Avanza frames hasta que terminen todas las transiciones. |
 | `resize(ancho, alto)` | Cambia el tamaño de la "ventana". |
 | `png(path)` | Guarda el último frame como PNG. |
-| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `style` (comparar el árbol nuevo con el anterior), `layout` y `paint` (composición y pintura); además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build`, `parse` y `style` valen 0), `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si el frame no pintó nada. Lo usa la [suite de benchmarks](../benchmarks/README.md). |
+| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `style` (comparar el árbol nuevo con el anterior), `layout`, `draw` (las funciones `draw` de los `canvas` y la grabación de sus comandos) y `paint` (composición y pintura); además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build`, `parse` y `style` valen 0), `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si el frame no pintó nada. Lo usa la [suite de benchmarks](../benchmarks/README.md). |
 
 Las excepciones de la vista y de los manejadores **se propagan** al test (con ventana, se
 imprimen y la app sigue viva).
@@ -187,6 +187,73 @@ image(png_bytes)
   cambia en disco, se vuelve a leer en la siguiente reconstrucción.
 - Un archivo que no existe lanza `FileNotFoundError`, y uno que no se puede decodificar,
   `ValueError`, ambos con la ruta en el mensaje.
+
+### `canvas(draw, **estilo)`
+
+Lienzo de **dibujo inmediato**: `draw(c)` recibe un `Canvas` del tamaño de la caja y dibuja en él
+con comandos sueltos, como un `<canvas>` de HTML. Para gráficos, indicadores, diagramas o
+cualquier cosa que no sea una composición de cajas.
+
+```python
+from aurora import Canvas, canvas
+
+
+def sparkline(c: Canvas):
+    step = c.width / (len(values) - 1)
+    points = [(i * step, c.height - v * c.height) for i, v in enumerate(values)]
+    c.polyline(points, stroke="$primary", stroke_width=2)
+    c.text(c.width, 0, "máx.", align="right", size=11, color="$muted")
+
+
+canvas(sparkline, height=60, bg="$surface", radius="$md", padding=8)
+```
+
+- **Coordenadas:** píxeles lógicos con el origen en la esquina superior izquierda de la caja de
+  contenido (dentro del `padding`) y el eje y hacia abajo. `c.width` y `c.height` son su tamaño.
+  Lo que se sale se recorta (también a las esquinas redondeadas).
+- **Tamaño:** sin `height`, `grow`, `min_height` ni `max_height` mide 200 px de alto; a lo ancho
+  se estira como cualquier caja. Admite el estilo de una caja (`bg`, `radius`, `border_*`,
+  `shadow`…), manejadores (`on_click`…) e hijos con `[...]`, que se pintan encima del dibujo.
+- **Cuándo se llama a `draw`:** después del layout (por eso ya conoce su tamaño), cada vez que
+  la vista se reconstruye y cuando el lienzo cambia de tamaño. Hover, scroll y animaciones de
+  otros nodos **no** lo llaman: el dibujo grabado se repinta sin volver a Python. Dentro de un
+  `@component` que no se reconstruye, `draw` solo se repite si cambia el tamaño o algún `Signal`
+  que lea la propia función.
+- **En lote:** los comandos se acumulan en Python y cruzan al núcleo de una vez, donde se graban
+  en un `Picture` de Skia. Las listas de puntos viajan como un bloque de `float32`; un array de
+  numpy de forma `(n, 2)` se convierte sin recorrerlo en Python.
+- Un comando inválido (color desconocido, `dash` impar…) lanza `ValueError`; una excepción en
+  `draw` se propaga como las de la vista.
+
+Métodos de `Canvas`. Los colores aceptan tokens (`"$primary"`) y hex con alfa. Las figuras se
+rellenan con `fill`, se perfilan con `stroke` (de grosor `stroke_width`) o ambas cosas; sin
+ninguno de los dos usan `$primary` (rellenas las figuras cerradas, trazadas las líneas y arcos).
+`dash=(on, off, ...)` hace el trazo discontinuo.
+
+| Método | Descripción |
+|---|---|
+| `clear(color="$background")` | Rellena todo el lienzo. |
+| `rect(x, y, w, h, *, radius=0, fill, stroke, stroke_width=1, dash)` | Rectángulo, con esquinas redondeadas opcionales. |
+| `oval(x, y, w, h, ...)` / `circle(cx, cy, r, ...)` | Elipse inscrita en el rectángulo / círculo. |
+| `arc(cx, cy, r, start, sweep, *, pie=False, ..., cap="butt")` | Arco (grados, 0 = derecha, sentido horario). `pie=True` lo cierra por el centro. |
+| `line(x1, y1, x2, y2, *, stroke="$primary", stroke_width=1, cap="butt", dash)` | Segmento. |
+| `polyline(points, *, stroke, fill, stroke_width=1, closed=False, cap, join="round", dash)` | Línea quebrada por `[(x, y), ...]` o un array `(n, 2)`. |
+| `polygon(points, *, fill, stroke, ...)` | Polígono cerrado y relleno. |
+| `path(path, *, fill, stroke, ...)` | Trazado libre (`Path`, abajo). |
+| `text(x, y, content, *, color="$text", size=14, weight=400, family=None, align="left", baseline="top")` | Una línea de texto. `align` (`"left"`, `"center"`, `"right"`) la coloca respecto a `x`; `baseline` (`"top"`, `"middle"`, `"alphabetic"`, `"bottom"`) respecto a `y`. La familia por defecto es la del tema. |
+| `save()` / `restore()` / `saved()` | Guardan y recuperan la transformación y el recorte. `with c.saved(): ...` hace las dos cosas. |
+| `translate(dx, dy)` / `scale(sx, sy=None)` / `rotate(grados)` | Transforman lo que se dibuje después. |
+| `clip_rect(x, y, w, h)` | Recorta lo que se dibuje después (hasta el próximo `restore`). |
+
+`cap`: `"butt"`, `"round"` o `"square"`; `join`: `"miter"`, `"round"` o `"bevel"`.
+
+`Path()` construye trazados encadenando `move_to(x, y)`, `line_to(x, y)`,
+`quad_to(cx, cy, x, y)`, `cubic_to(c1x, c1y, c2x, c2y, x, y)`, `arc(cx, cy, r, start, sweep)` y
+`close()`:
+
+```python
+c.path(Path().move_to(0, 40).quad_to(30, 0, 60, 40).close(), fill="$accent")
+```
 
 ### `scroll(*, axis="y", **estilo)`
 

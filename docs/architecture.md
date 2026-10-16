@@ -19,6 +19,7 @@ sobre ese árbol sin volver a consultar al intérprete.
 python/aurora/
 ├── __init__.py      App: une la vista, el tema y el núcleo nativo
 ├── elements.py      Element y primitivas (box, row, column, text, spacer)
+├── canvas.py        canvas(), Canvas y Path: graba comandos de dibujo en un lote
 ├── components.py    Componentes con estilo (button, card, badge, stat), solo con primitivas
 ├── signal.py        Estado reactivo
 ├── theme.py         Design tokens y temas MIDNIGHT / DAYLIGHT
@@ -35,6 +36,7 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── edit.rs          Modelo de edición puro: texto, cursor, selección, deshacer, grafemas
 ├── input.rs         Estado de los campos de texto y geometría de cursor y selección
 ├── image.rs         Decodificación de imágenes (raster y SVG), caché y encaje (fit)
+├── canvas.rs        Lote de comandos de un canvas → Picture de Skia; cuándo volver a grabarlo
 ├── window.rs        Bucle de ventana (winit) sobre Runtime
 ├── surface/         Trait Surface: dónde se pinta y presenta cada frame
 │   ├── cpu.rs       Skia raster en el framebuffer de softbuffer
@@ -351,6 +353,27 @@ resuelve cada `src` contra una `ImageCache` (`src/image.rs`) indexada por ruta +
 del archivo (o por un hash de los bytes): cada imagen se decodifica una vez, con mipmaps para
 reducir sin aliasing. Los SVG se cargan como `svg::Dom` de Skia y se pintan como vectores. Los
 errores de carga se convierten en `FileNotFoundError`/`ValueError` al reconstruir la vista.
+
+## Canvas
+
+Un nodo `canvas` (`Kind::Canvas`) es una caja normal para el layout. Su `Node::draw` es un
+`Drawing` de Python (`canvas.py`): la función del usuario ya ligada al tema. No se llama al
+construir la vista, porque entonces aún no se conoce el tamaño de la caja: `Runtime::draw_frame`
+la llama tras el layout y antes de pintar, como `on_scroll`, a través de `canvas::Canvases`.
+
+- `Drawing(width, height, force)` ejecuta la función sobre un `Canvas` que solo acumula comandos
+  (tuplas, con los pinceles deduplicados y los puntos en `bytes` de `f32`) y devuelve el lote.
+  `canvas::record` lo recorre una vez y lo graba en un `Picture` de Skia que `Engine` guarda por
+  key. `Painter` lo dibuja recortado a la caja de contenido; hover, scroll o animaciones de otros
+  nodos lo repintan sin volver a Python.
+- `Canvases` decide cuándo llamar: tras una reconstrucción (a todos) o tras un layout (a los que
+  cambiaron de tamaño). `force` es `True` si cambió el tamaño o la función (otro `Drawing`, es
+  decir, el nodo se volvió a serializar). Con `force=False` —el dict memorizado de un
+  `@component`— Python devuelve `None` si no cambió ningún `Signal` que leyera la función en su
+  última llamada: se conserva el dibujo.
+- Grabar un dibujo nuevo marca el nodo como cambiado de aspecto (`restyled`): solo se repinta su
+  zona. El dibujo no afecta a la geometría (`same_geometry` trata el canvas como una caja), así
+  que nunca obliga a rehacer el layout.
 
 ## Campos de texto
 
