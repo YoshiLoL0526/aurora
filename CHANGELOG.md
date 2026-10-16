@@ -149,6 +149,12 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   su ruta (`"0/1/2"`) tiene ahora como prefijo la key de su ancestro con key más cercano.
 - Crear elementos y resolver tokens de tema es algo más rápido (un solo recorrido de los argumentos).
 
+### Corregido
+
+- La ventana ya no muestra un destello blanco al abrirse: se crea oculta y aparece con su primer
+  frame ya pintado, en vez de enseñar el fondo vacío del sistema mientras arranca la GPU y se
+  construye la vista.
+
 ## [0.2.0] — 2026-10-15
 
 Apps de verdad: scroll, teclado y foco, campos de texto, imágenes y más componentes.

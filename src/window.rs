@@ -60,6 +60,10 @@ struct App {
     last_frame: Instant,
     /// Si el frame anterior dejó transiciones en curso.
     animating: bool,
+    /// Si la ventana ya se mostró. Se crea oculta y aparece con su primer
+    /// frame presentado, para no enseñar el fondo vacío del sistema mientras
+    /// arranca la GPU y se construye la vista.
+    shown: bool,
     fatal: Option<String>,
 }
 
@@ -96,6 +100,10 @@ impl App {
             report(result.map(drop));
             damage
         });
+        if presented.is_ok() && !self.shown {
+            window.set_visible(true);
+            self.shown = true;
+        }
         if let Err(err) = presented {
             // La GPU dejó de responder (dispositivo perdido, driver reiniciado):
             // se sigue pintando por CPU.
@@ -215,7 +223,8 @@ impl ApplicationHandler<Wake> for App {
         }
         let attrs = Window::default_attributes()
             .with_title(&self.title)
-            .with_inner_size(LogicalSize::new(self.size.0, self.size.1));
+            .with_inner_size(LogicalSize::new(self.size.0, self.size.1))
+            .with_visible(false);
         let window = match event_loop.create_window(attrs) {
             Ok(window) => Arc::new(window),
             Err(err) => {
@@ -232,8 +241,21 @@ impl ApplicationHandler<Wake> for App {
                 return;
             }
         }
-        window.request_redraw();
-        self.window = Some(window);
+        self.window = Some(window.clone());
+        // El primer frame se pinta aquí mismo: una ventana oculta no recibe
+        // `RedrawRequested` en todas las plataformas (en Windows, WM_PAINT).
+        self.redraw();
+        if self.fatal.is_some() {
+            event_loop.exit();
+            return;
+        }
+        // Si el primer present no salió (p. ej. se cambió a la CPU y queda
+        // pendiente repetirlo), se muestra igualmente para no quedar invisible.
+        if !self.shown {
+            window.set_visible(true);
+            self.shown = true;
+            window.request_redraw();
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -388,6 +410,7 @@ pub fn run(
             wake_at: None,
             last_frame: Instant::now(),
             animating: false,
+            shown: false,
             fatal: None,
         };
         set_proxy(Some(event_loop.create_proxy()));
