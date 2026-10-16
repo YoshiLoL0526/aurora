@@ -64,10 +64,13 @@ def _is_series(value: Any) -> bool:
     if isinstance(value, (list, tuple, range)):
         return True
     try:
-        memoryview(value)
+        view = memoryview(value)
     except TypeError:
         return hasattr(value, "to_numpy")
-    return True
+    # Un escalar de numpy (`np.float64(1.5)`) también expone un búfer, pero de
+    # 0 dimensiones: es un número, no una serie (`list(array)` los da así).
+    with view:
+        return view.ndim > 0
 
 
 def _columns(values: Any) -> list[tuple[memoryview, int]]:

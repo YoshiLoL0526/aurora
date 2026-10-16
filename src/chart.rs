@@ -75,6 +75,9 @@ pub struct Column {
     base: *const u8,
     stride: isize,
     len: usize,
+    /// El búfer está en el orden de bytes contrario al de la máquina (p. ej.
+    /// un array de numpy `>f8` en x86): cada valor se lee dándole la vuelta.
+    swap: bool,
 }
 
 // La vista solo se lee (siempre con el GIL tomado, ver `Charts::draw`) y la
@@ -112,6 +115,14 @@ impl Column {
                 ));
             }
         };
+        // `ElementType` ignora el orden de bytes del formato (`<`, `>`, `!`):
+        // se mira aquí para no leer como basura los arrays de otro endianness.
+        let big = match buf.format().to_bytes().first() {
+            Some(b'>' | b'!') => Some(true),
+            Some(b'<') => Some(false),
+            _ => None,
+        };
+        let swap = big.is_some_and(|big| big != cfg!(target_endian = "big"));
         let base = buf.buf_ptr() as *const u8;
         let (len, stride, base) = match buf.dimensions() {
             1 if column == 0 => (buf.shape()[0], buf.strides()[0], base),
@@ -138,6 +149,7 @@ impl Column {
             base,
             stride,
             len,
+            swap,
             _buf: buf,
         })
     }
@@ -156,19 +168,24 @@ impl Column {
         let p = self
             .base
             .wrapping_offset(self.stride.wrapping_mul(i as isize));
-        unsafe {
-            match self.num {
-                Num::F64 => p.cast::<f64>().read_unaligned(),
-                Num::F32 => p.cast::<f32>().read_unaligned() as f64,
-                Num::I64 => p.cast::<i64>().read_unaligned() as f64,
-                Num::I32 => p.cast::<i32>().read_unaligned() as f64,
-                Num::I16 => p.cast::<i16>().read_unaligned() as f64,
-                Num::I8 => p.cast::<i8>().read_unaligned() as f64,
-                Num::U64 => p.cast::<u64>().read_unaligned() as f64,
-                Num::U32 => p.cast::<u32>().read_unaligned() as f64,
-                Num::U16 => p.cast::<u16>().read_unaligned() as f64,
-                Num::U8 => p.cast::<u8>().read_unaligned() as f64,
-            }
+        // Lee un entero del ancho de `$t`, dándole la vuelta si hace falta.
+        macro_rules! read {
+            ($t:ty) => {{
+                let v = unsafe { p.cast::<$t>().read_unaligned() };
+                if self.swap { v.swap_bytes() } else { v }
+            }};
+        }
+        match self.num {
+            Num::F64 => f64::from_bits(read!(u64)),
+            Num::F32 => f32::from_bits(read!(u32)) as f64,
+            Num::I64 => read!(i64) as f64,
+            Num::I32 => read!(i32) as f64,
+            Num::I16 => read!(i16) as f64,
+            Num::I8 => read!(i8) as f64,
+            Num::U64 => read!(u64) as f64,
+            Num::U32 => read!(u32) as f64,
+            Num::U16 => read!(u16) as f64,
+            Num::U8 => read!(u8) as f64,
         }
     }
 }
@@ -370,6 +387,11 @@ fn f32_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f32>> {
 /// el trazo no pierda picos ni escalones.
 const POINTS_PER_PX: f64 = 2.0;
 
+/// Píxeles que puede salirse un punto de la línea por arriba o por abajo antes
+/// de topar (lo de fuera lo recorta el `clip_rect`; el tope solo evita
+/// coordenadas desorbitadas, que Skia no maneja bien en `f32`).
+const FAR: f32 = 100_000.0;
+
 /// Ventana visible del eje x, en unidades de datos.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Window {
@@ -546,9 +568,18 @@ struct Curves {
 /// puntos que `budget` (su ancho en pantalla), lo reduce con LTTB.
 fn curves(series: &Series, span: Span, budget: impl Fn(f64, f64) -> usize) -> Curves {
     let len = series.len();
+    let finite = |i: usize| series.x_at(i).is_finite() && series.y_at(i).is_finite();
+    // Con x desordenada entra cada punto visible y sus vecinos: así se siguen
+    // dibujando los segmentos que cruzan el borde (luego se recortan en él).
     let visible = |i: usize| {
-        let (x, y) = (series.x_at(i), series.y_at(i));
-        x.is_finite() && y.is_finite() && span.visible(x)
+        finite(i)
+            && match span {
+                Span::Filtered(..) => {
+                    let inside = |j: usize| span.visible(series.x_at(j)) && finite(j);
+                    inside(i) || (i > 0 && inside(i - 1)) || (i + 1 < len && inside(i + 1))
+                }
+                _ => true,
+            }
     };
     // Tramos continuos: un `NaN` en x o en y corta la línea.
     let mut runs: Vec<(usize, usize)> = Vec::new();
@@ -634,6 +665,58 @@ fn lttb(n: usize, target: usize, point: impl Fn(usize) -> (f64, f64), out: &mut 
     out.push(point(n - 1));
 }
 
+/// Recorta una polilínea (en unidades de datos) a la franja `x ∈ [x0, x1]`:
+/// el segmento que cruza un borde se corta justo en él, interpolando su y, así
+/// que en el borde se ve la pendiente de verdad. Puede partirla en varios
+/// tramos (con x desordenada la línea sale y vuelve a entrar).
+fn clip_x(run: &[(f64, f64)], x0: f64, x1: f64, out: &mut Vec<Vec<(f64, f64)>>) {
+    fn flush(cur: &mut Vec<(f64, f64)>, out: &mut Vec<Vec<(f64, f64)>>) {
+        if !cur.is_empty() {
+            out.push(std::mem::take(cur));
+        }
+    }
+    let inside = |x: f64| x >= x0 && x <= x1;
+    if let [p] = run {
+        if inside(p.0) {
+            out.push(vec![*p]);
+        }
+        return;
+    }
+    let mut cur = Vec::new();
+    for w in run.windows(2) {
+        let ((ax, ay), (bx, by)) = (w[0], w[1]);
+        // Parámetros (0..1) del segmento donde entra y sale de la franja.
+        let (mut t0, mut t1) = (0.0f64, 1.0f64);
+        let dx = bx - ax;
+        if dx == 0.0 {
+            if !inside(ax) {
+                flush(&mut cur, out);
+                continue;
+            }
+        } else {
+            let (ta, tb) = ((x0 - ax) / dx, (x1 - ax) / dx);
+            t0 = t0.max(ta.min(tb));
+            t1 = t1.min(ta.max(tb));
+            if t0 > t1 {
+                flush(&mut cur, out);
+                continue;
+            }
+        }
+        let at = |t: f64| (ax + dx * t, ay + (by - ay) * t);
+        let p0 = if t0 > 0.0 { at(t0) } else { (ax, ay) };
+        let p1 = if t1 < 1.0 { at(t1) } else { (bx, by) };
+        if cur.last() != Some(&p0) {
+            flush(&mut cur, out);
+            cur.push(p0);
+        }
+        cur.push(p1);
+        if t1 < 1.0 {
+            flush(&mut cur, out);
+        }
+    }
+    flush(&mut cur, out);
+}
+
 // ---------------------------------------------------------------------------
 // Grabado: de los datos a un `Picture` de Skia
 // ---------------------------------------------------------------------------
@@ -693,7 +776,11 @@ fn paint(
                 x_lo = x_lo.min(x);
                 x_hi = x_hi.max(x);
             }
-            if explicit && x.is_finite() {
+            if explicit && !x.is_finite() {
+                // Un hueco en x rompe la búsqueda binaria (un `NaN` no se
+                // compara con nada): la serie se recorre filtrando por x.
+                (asc, desc) = (false, false);
+            } else if explicit {
                 match prev {
                     Some(p) if x < p => asc = false,
                     Some(p) if x > p => desc = false,
@@ -837,9 +924,20 @@ fn paint(
         .unwrap_or(0);
     let slot = bar_slot(chart, plot, x_lo, x_hi, points, implicit_x);
     let total = chart.series.len();
-    for (index, (s, span)) in chart.series.iter().zip(&spans).enumerate() {
+    for (index, ((s, span), order)) in chart.series.iter().zip(&spans).zip(&orders).enumerate() {
         draw_series(
-            canvas, chart, s, *span, plot, &xpix, &ypix, slot, index, total,
+            canvas,
+            chart,
+            s,
+            *span,
+            *order,
+            (x_lo, x_hi),
+            plot,
+            &xpix,
+            &ypix,
+            slot,
+            index,
+            total,
         );
     }
     canvas.restore();
@@ -922,6 +1020,8 @@ fn draw_series(
     chart: &Chart,
     series: &Series,
     span: Span,
+    order: Order,
+    x_range: (f64, f64),
     plot: Rect,
     xpix: &impl Fn(f64) -> f32,
     ypix: &impl Fn(f64) -> f32,
@@ -986,26 +1086,46 @@ fn draw_series(
             let base = ypix(0.0).clamp(plot.top, plot.bottom);
             // Puntos objetivo de cada tramo: los que caben en su ancho en
             // pantalla, para que un pico vertical no se lleve el presupuesto.
+            // Con x desordenada (una curva cerrada, una espiral…) el ancho entre
+            // el primer y el último punto no dice nada: se da el de todo el dibujo.
+            let width = f64::from(plot.width().max(1.0));
             let budget = |first: f64, last: f64| {
-                let width = plot.width().max(1.0);
-                let frac = (f64::from((xpix(last) - xpix(first)).abs()) / f64::from(width))
-                    .clamp(0.0, 1.0);
-                (f64::from(width) * POINTS_PER_PX * frac).round() as usize + 3
+                let frac = if order == Order::Mixed {
+                    1.0
+                } else {
+                    (f64::from((xpix(last) - xpix(first)).abs()) / width).clamp(0.0, 1.0)
+                };
+                (width * POINTS_PER_PX * frac).round() as usize + 3
             };
             let reduced = curves(series, span, budget);
-            let mut stroke = PathBuilder::new();
-            let mut fill = PathBuilder::new();
-            let mut dots: Vec<Point> = Vec::new();
+            // Cada tramo se recorta a la ventana en unidades de datos (los
+            // puntos de margen quedan fuera): sin eso, el segmento que cruza el
+            // borde se dibujaría con otra pendiente.
+            let mut runs = Vec::new();
             let mut from = 0usize;
             for &end in &reduced.ends {
                 let run = &reduced.pts[from..end];
                 from = end;
+                if run.len() == 1 {
+                    // Un tramo de un solo punto se ve como un punto.
+                    if run[0].0 >= x_range.0 && run[0].0 <= x_range.1 {
+                        runs.push((run.to_vec(), true));
+                    }
+                    continue;
+                }
+                let mut clipped = Vec::new();
+                clip_x(run, x_range.0, x_range.1, &mut clipped);
+                runs.extend(clipped.into_iter().map(|r| (r, false)));
+            }
+            let mut stroke = PathBuilder::new();
+            let mut fill = PathBuilder::new();
+            let mut dots: Vec<Point> = Vec::new();
+            for (run, dot) in &runs {
                 let mut last = Point::default();
                 for (k, &(x, y)) in run.iter().enumerate() {
-                    let p = Point::new(
-                        xpix(x).clamp(plot.left, plot.right),
-                        ypix(y).clamp(plot.top, plot.bottom),
-                    );
+                    // La y fuera del rango la recorta el `clip_rect`; el tope
+                    // solo evita coordenadas desorbitadas para Skia.
+                    let p = Point::new(xpix(x), ypix(y).clamp(plot.top - FAR, plot.bottom + FAR));
                     if k == 0 {
                         stroke.move_to(p);
                         if area {
@@ -1024,8 +1144,7 @@ fn draw_series(
                     fill.line_to((last.x, base));
                     fill.close();
                 }
-                // Un tramo de un solo punto se ve como un punto.
-                if run.len() == 1 {
+                if *dot {
                     dots.push(last);
                 }
             }
@@ -1515,6 +1634,28 @@ mod tests {
         assert_eq!(out.first().unwrap().0, 0.0);
         assert_eq!(out.last().unwrap().0, 9.0);
         assert!(out.windows(2).all(|w| w[0].0 < w[1].0), "fuera de orden");
+    }
+
+    #[test]
+    fn clipping_cuts_the_segments_at_the_edges() {
+        let mut out = Vec::new();
+        // Un punto de margen a cada lado: se cortan en el borde, interpolando y.
+        clip_x(&[(0.0, 0.0), (2.0, 4.0), (4.0, 0.0)], 1.0, 3.0, &mut out);
+        assert_eq!(out, vec![vec![(1.0, 2.0), (2.0, 4.0), (3.0, 2.0)]]);
+        // La línea sale y vuelve a entrar (x desordenada): dos tramos.
+        out.clear();
+        clip_x(&[(1.0, 0.0), (5.0, 0.0), (2.0, 1.0)], 0.0, 3.0, &mut out);
+        assert_eq!(
+            out,
+            vec![
+                vec![(1.0, 0.0), (3.0, 0.0)],
+                vec![(3.0, 2.0 / 3.0), (2.0, 1.0)]
+            ]
+        );
+        // Del todo fuera: nada.
+        out.clear();
+        clip_x(&[(5.0, 0.0), (6.0, 1.0)], 0.0, 3.0, &mut out);
+        assert!(out.is_empty());
     }
 
     #[test]

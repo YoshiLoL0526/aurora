@@ -178,6 +178,23 @@ def test_fortran_and_integer_arrays(tmp_path):
     assert _pixels(_single(tmp_path, series, kind="bar", y_min=0, y_max=4, name="i.png"), RED)
 
 
+@pytest.mark.parametrize("dtype", [">f8", ">f4", ">i4", ">u2"])
+def test_big_endian_arrays_read_their_values(tmp_path, dtype):
+    """Un array con el orden de bytes contrario al de la máquina no se lee como basura."""
+    values = np.array([0, 3, 1], dtype=dtype)
+    reference = _single(tmp_path, values.astype("=f8"), y_min=0, y_max=4)
+    other = _single(tmp_path, values, y_min=0, y_max=4, name="be.png")
+    assert reference.read_bytes() == other.read_bytes()
+
+
+def test_a_list_of_numpy_scalars_is_one_series(tmp_path):
+    """`list(array)` da escalares de numpy, que exponen un búfer 0-D: son números."""
+    reference = _single(tmp_path, np.array([0.0, 1.0, 0.5]), y_min=0, y_max=1)
+    for i, values in enumerate([list(np.array([0.0, 1.0, 0.5])), list(np.array([0, 1, 0.5], "f4"))]):
+        other = _single(tmp_path, values, y_min=0, y_max=1, name=f"s{i}.png")
+        assert reference.read_bytes() == other.read_bytes()
+
+
 # --- sin copias --------------------------------------------------------------
 
 
@@ -347,6 +364,14 @@ def test_downsampling_keeps_the_gaps(tmp_path):
     assert [p for p in pixels if p[0] > 140]
     # El hueco ocupa del 40 % al 60 % del ancho del área de dibujo (~30..192).
     assert not [x for x, _ in pixels if 100 < x < 122]
+
+
+def test_a_closed_curve_is_not_reduced_to_a_line(tmp_path):
+    """Con x desordenada (aquí un círculo, que empieza y acaba en la misma x), el
+    presupuesto de la reducción no sale del ancho entre el primer y el último punto."""
+    t = np.linspace(0.0, 2 * np.pi, 200)
+    x0, y0, x1, y1 = _bounds(_pixels(_single(tmp_path, np.sin(t), x=np.cos(t)), RED))
+    assert x1 - x0 > 120 and y1 - y0 > 120  # sigue siendo un círculo
 
 
 # --- zoom y pan ---------------------------------------------------------------
@@ -595,6 +620,45 @@ def test_the_wheel_falls_through_to_the_scroll_at_the_limit():
     pilot.wheel(-1)  # hacia dentro: se acerca y el scroll no se toca
     assert pilot.chart_view("c") != (0.0, 49.0)
     assert pilot.scroll_offset("s") == (0.0, 1.0)
+
+
+def test_segments_crossing_the_edge_keep_their_slope(tmp_path):
+    """Con zoom, el segmento que cruza el borde se corta en él (interpolado) en vez
+    de pegar el punto de fuera al borde, que cambiaría su pendiente."""
+    pilot, _ = _zoomable(np.array([0.0, 10.0, 0.0, 10.0]), y_min=0, y_max=10)
+    pilot.move_to(*_center(pilot))
+    for _ in range(8):
+        pilot.wheel(-1, lines=True)
+    view = pilot.chart_view("c")
+    assert view is not None and view[0] > 1.0 and view[1] < 2.0  # dentro del tramo 10 → 0
+    out = tmp_path / "edge.png"
+    pilot.png(str(out))
+    pixels = _pixels(out, RED)
+    x0, y0, _, y1 = _bounds(pixels)
+    # La línea baja de 10 - 10·(x0 - 1) a 10 - 10·(x1 - 1): ni toca el tope ni el suelo…
+    plot_h = SIZE - BOTTOM - TOP
+    assert y0 > TOP + plot_h * (view[0] - 1.0) - 6
+    assert y1 < TOP + plot_h * (view[1] - 1.0) + 6
+    # …y no hay una línea vertical falsa pegada al borde izquierdo.
+    edge = [y for x, y in pixels if x == x0]
+    assert max(edge) - min(edge) < 12
+
+
+def test_zoom_with_gaps_in_x_keeps_the_points_after_the_gap(tmp_path):
+    """Un `NaN` en x no debe confundir la búsqueda de la ventana visible."""
+    x = np.arange(1000, dtype=float)
+    x[750] = np.nan
+    pilot, _ = _zoomable(np.ones(1000), x=x, y_min=0, y_max=2)
+    px, py, w, h = pilot.rect("c")
+    pilot.move_to(px + w * 0.75, py + h / 2)
+    for _ in range(6):
+        pilot.wheel(-1, lines=True)
+    view = pilot.chart_view("c")
+    assert view is not None and view[0] < 740 and view[1] > 760  # el hueco queda dentro
+    out = tmp_path / "gap.png"
+    pilot.png(str(out))
+    pixels = _pixels(out, RED)
+    assert _bounds(pixels)[2] >= SIZE - RIGHT - 3  # la línea llega al borde derecho
 
 
 # --- interacción y errores ----------------------------------------------------

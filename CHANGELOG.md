@@ -12,9 +12,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 - **Downsampling (LTTB) en Rust:** los `chart` reducen cada serie a ~2 puntos por píxel al
   grabarla (*Largest-Triangle-Three-Buckets*), tramo a tramo (los `NaN` cortan la línea) y con
-  presupuesto por ancho en pantalla, así que los picos se conservan. Un gráfico de **millones de
-  puntos** se graba en milisegundos: con x ordenada solo se recorren los índices visibles (más un
-  punto de margen a cada lado). Los datos se siguen leyendo sin copiarlos y solo se releen cuando
+  presupuesto por ancho en pantalla, así que los picos se conservan (con x desordenada, como una
+  curva cerrada, el presupuesto es el ancho entero). Un gráfico de **millones de puntos** se graba
+  en milisegundos: con x ordenada (y sin huecos en x) solo se recorren los índices visibles, más
+  un punto de margen a cada lado cuyo segmento se corta justo en el borde. Los datos se siguen leyendo sin copiarlos y solo se releen cuando
   la ventana o los datos cambian.
 - **`chart(..., zoom=True)`**: zoom y pan sobre el eje x. La rueda acerca y aleja con el puntero
   como ancla (el dato bajo el cursor no se mueve), el arrastre y la rueda horizontal desplazan la
@@ -26,9 +27,9 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 - `chart(y, *, kind="line", **estilo)`: gráficos nativos de **línea**, **área**, **barras** y
   **dispersión**, con los ejes (ticks redondos), la rejilla y la leyenda calculados solos. Los
   datos se leen **sin copiarlos**, con el protocolo de búfer: arrays de numpy (`f32`/`f64` y
-  enteros, contiguos o con *strides*: vistas, matrices por columnas, arrays en orden Fortran),
-  `array.array`, `memoryview` y Series/DataFrames de polars o pandas (vía `to_numpy`), además de
-  listas. Varias series con una lista, un array 2-D o un DataFrame; `color` (un color o la paleta
+  enteros, en cualquier orden de bytes, contiguos o con *strides*: vistas, matrices por columnas,
+  arrays en orden Fortran), `array.array`, `memoryview` y Series/DataFrames de polars o pandas
+  (vía `to_numpy`), además de listas (también de escalares de numpy). Varias series con una lista, un array 2-D o un DataFrame; `color` (un color o la paleta
   del tema por serie), `names` (leyenda), `labels` (categorías), `x`, `y_min`/`y_max`, `grid`,
   `stroke_width`, `point_size` y `bar_width` (las barras de varias series se agrupan). El dibujo se
   graba en un `Picture` de Skia que se repinta sin releer los datos: solo se vuelve a grabar si
