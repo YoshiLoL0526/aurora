@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.png" alt="Aurora — Interfaces de escritorio profesionales en Python" width="100%">
+  <img src="https://raw.githubusercontent.com/YoshiLoL0526/aurora/main/docs/assets/banner.png" alt="Aurora — Interfaces de escritorio profesionales en Python" width="100%">
 </p>
 
 <p align="center">
@@ -55,7 +55,7 @@ App(view, title="Contador").run()
 ```
 
 <p align="center">
-  <img src="docs/studio/1-resumen.png" alt="Aurora Studio, la app de demostración" width="100%">
+  <img src="https://raw.githubusercontent.com/YoshiLoL0526/aurora/main/docs/studio/1-resumen.png" alt="Aurora Studio, la app de demostración" width="100%">
   <br><sub><code>examples/studio.py</code>: navegación, kanban con búsqueda, gráfico interactivo, formularios, ajustes, modal, toasts y tema claro/oscuro.<br>
   Todas las capturas del repositorio están renderizadas por la propia librería.</sub>
 </p>

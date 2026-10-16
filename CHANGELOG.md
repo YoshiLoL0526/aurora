@@ -190,6 +190,11 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   identidad (hover, foco, scroll) aunque el padre cambie de sitio. Un test que buscara un nodo por
   su ruta (`"0/1/2"`) tiene ahora como prefijo la key de su ancestro con key más cercano.
 - Crear elementos y resolver tokens de tema es algo más rápido (un solo recorrido de los argumentos).
+- **Empaquetado para PyPI**: las capturas del README se referencian con URLs absolutas (antes
+  relativas), así que se ven también fuera de GitHub; `Cargo.toml` declara `repository`,
+  `homepage` y `documentation` (ya no avisa al empaquetar); y el sdist se limita con el whitelist
+  `include` de `Cargo.toml` a lo necesario para recompilar el paquete (antes arrastraba
+  `.github/`, `docs/`, `examples/`, `benchmarks/` y `tests/`: 1,3 MB → 195 KB).
 
 ### Corregido
 

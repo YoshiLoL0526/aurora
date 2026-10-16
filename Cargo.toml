@@ -4,7 +4,27 @@ version = "0.2.0"
 edition = "2024"
 description = "Núcleo nativo de Aurora: layout, render, eventos y animaciones."
 license = "MIT"
+repository = "https://github.com/YoshiLoL0526/aurora"
+homepage = "https://yoshilol0526.github.io/aurora/"
+documentation = "https://yoshilol0526.github.io/aurora/architecture/"
 publish = false
+# `maturin sdist` empaqueta lo que lista `cargo package`, así que este whitelist define
+# el contenido del sdist: solo lo necesario para recompilar el paquete. El resto del
+# repositorio (workflows, docs, ejemplos, benchmarks, tests) vive solo en GitHub.
+# Las rutas van ancladas con `/`: sin el ancla, `LICENSE` o `README.md` casarían a
+# cualquier profundidad (por ejemplo, dentro de un `.venv` local).
+include = [
+    "/pyproject.toml",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/src/**/*.rs",
+    "/python/aurora/**/*.py",
+    "/python/aurora/**/*.pyi",
+    "/python/aurora/py.typed",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 
 [dependencies]
 arboard = { version = "3", default-features = false }
