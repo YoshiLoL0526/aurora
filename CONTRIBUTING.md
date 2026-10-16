@@ -13,7 +13,7 @@ proponer una idea o implementar una funcionalidad.
 
 ## Entorno de desarrollo
 
-Necesitas Python ≥ 3.10, [uv](https://docs.astral.sh/uv/) y Rust estable
+Necesitas Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust estable
 ([rustup](https://rustup.rs)). En Linux, además, `libfontconfig-dev` y `libfreetype-dev`.
 
 ```bash

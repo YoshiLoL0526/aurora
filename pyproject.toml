@@ -7,7 +7,7 @@ name = "aurora-ui"
 version = "0.2.0"
 description = "Interfaces de escritorio profesionales en Python, con un núcleo nativo en Rust (Skia + Taffy)."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Raidel" }]
 keywords = ["gui", "ui", "desktop", "declarative", "reactive", "skia", "rust", "dashboard"]
@@ -41,6 +41,8 @@ features = ["pyo3/extension-module"]
 [dependency-groups]
 dev = [
     "maturin>=1.7,<2",
+    "numpy>=1.26",
+    "polars>=1.0",
     "pytest>=8",
     "ruff>=0.6",
     "ty>=0.0.88",
@@ -75,7 +77,7 @@ known-first-party = ["aurora"]
 "examples/*" = ["B023", "E501"]
 
 [tool.ty.environment]
-python-version = "3.10"
+python-version = "3.11"
 # `python/` permite comprobar sin instalar el paquete (el núcleo se resuelve con `_core.pyi`);
 # `benchmarks/`, porque tests/test_benchmarks.py importa la suite añadiéndola a sys.path.
 extra-paths = ["python", "benchmarks"]

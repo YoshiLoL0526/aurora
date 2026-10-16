@@ -11,6 +11,7 @@ from typing import Any, Literal, TypeVar
 from . import _core, reactive
 from ._core import KeyEvent, Pilot, ScrollEvent
 from .canvas import Canvas, Path, canvas
+from .charts import chart
 from .components import (
     avatar,
     badge,
@@ -50,6 +51,7 @@ __all__ = [
     "button",
     "canvas",
     "card",
+    "chart",
     "checkbox",
     "column",
     "component",

@@ -22,7 +22,7 @@ Cada paso es un programa completo que puedes ejecutar. Si algo no queda claro, l
 
 ## 1. Instalación
 
-Necesitas Python ≥ 3.10, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
+Necesitas Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
 
 ```bash
 git clone https://github.com/<usuario>/aurora.git
@@ -356,6 +356,27 @@ canvas(barras, height=160)
 
 Mira [`examples/canvas.py`](../examples/canvas.py) y la [referencia](reference.md) para el resto
 de figuras (líneas, arcos, trazados, texto) y transformaciones.
+
+### Gráficos con `chart`
+
+Para series de datos no hace falta dibujar a mano: `chart` pinta el gráfico completo (ejes,
+rejilla y leyenda) a partir de un array de numpy, una serie de polars o una lista.
+
+```python
+from aurora import chart
+
+chart(cierres(), height=180)  # una línea
+chart(df, names=["p50", "p95"], kind="area")  # varias series de un DataFrame
+chart(visitas, labels=DIAS, kind="bar", height=140)  # barras por categoría
+chart(ys, x=xs, kind="scatter", point_size=3)  # dispersión
+```
+
+Con `kind` eliges la forma (`"line"`, `"area"`, `"bar"` o `"scatter"`); con una lista de series o
+un DataFrame, varias series y su leyenda. Los datos **no se copian**: el gráfico lee la memoria
+del array, así que si lo mutas en sitio basta con reconstruir la vista (por ejemplo, al cambiar
+un `Signal`) para que se actualice.
+
+Mira [`examples/charts.py`](../examples/charts.py) para un panel con las cuatro formas.
 
 ### Más componentes
 

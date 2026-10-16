@@ -106,7 +106,7 @@ def banner() -> Element:
                 line_height=1.5,
             ),
             row(gap=8, wrap=True)[
-                [chip(c) for c in ["Python 3.10+", "Rust", "Skia", "Taffy", "Sin WebView"]]
+                [chip(c) for c in ["Python 3.11+", "Rust", "Skia", "Taffy", "Sin WebView"]]
             ],
         ],
         mini_app(),

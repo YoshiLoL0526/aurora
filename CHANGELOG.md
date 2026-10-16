@@ -10,6 +10,17 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- `chart(y, *, kind="line", **estilo)`: gráficos nativos de **línea**, **área**, **barras** y
+  **dispersión**, con los ejes (ticks redondos), la rejilla y la leyenda calculados solos. Los
+  datos se leen **sin copiarlos**, con el protocolo de búfer: arrays de numpy (`f32`/`f64` y
+  enteros, contiguos o con *strides*: vistas, matrices por columnas, arrays en orden Fortran),
+  `array.array`, `memoryview` y Series/DataFrames de polars o pandas (vía `to_numpy`), además de
+  listas. Varias series con una lista, un array 2-D o un DataFrame; `color` (un color o la paleta
+  del tema por serie), `names` (leyenda), `labels` (categorías), `x`, `y_min`/`y_max`, `grid`,
+  `stroke_width`, `point_size` y `bar_width` (las barras de varias series se agrupan). El dibujo se
+  graba en un `Picture` de Skia que se repinta sin releer los datos: solo se vuelve a grabar si
+  cambian los datos u opciones, o la caja del gráfico. Ejemplo en `examples/charts.py`.
+- `Pilot.stats["draw"]` incluye también el grabado de los `chart`.
 - `canvas(draw, **estilo)`: lienzo de dibujo inmediato. `draw(c)` recibe un `Canvas` con su
   tamaño (`c.width`, `c.height`) y dibuja rectángulos, círculos, elipses, arcos, líneas,
   polilíneas, polígonos, trazados libres (`Path`) y texto, con relleno, trazo, guiones,
@@ -45,6 +56,9 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Cambiado
 
+- **Incompatible:** Python ≥ 3.11 (antes 3.10). Los `chart` leen los arrays sin copiarlos con el
+  protocolo de búfer, que la API estable (abi3) expone desde 3.11; el wheel sigue siendo uno por
+  plataforma y arquitectura.
 - El layout se cachea entre frames: si no cambia el árbol, el tamaño ni el texto de los campos
   (hover, scroll, animaciones, parpadeo del cursor), solo se vuelve a pintar. En una lista de
   10 000 filas un frame sin reconstrucción pasa de ~1,2 s a ~30 ms.

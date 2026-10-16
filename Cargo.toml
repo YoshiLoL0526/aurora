@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 arboard = { version = "3", default-features = false }
-pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py310"] }
+pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py311"] }
 # Las features coinciden con binarios precompilados de Skia (rust-skia/skia-binaries)
 # para cada sistema: con otra combinación, la primera compilación construiría Skia
 # desde el código fuente (requiere LLVM y tarda mucho). SVG solo existe junto a

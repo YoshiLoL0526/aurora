@@ -14,13 +14,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from aurora import (
     App,
+    Element,
     Pilot,
     Signal,
     badge,
     box,
     card,
+    chart,
     column,
     component,
     row,
@@ -257,6 +261,72 @@ def typing(scale: float = 1.0) -> Bench:
     )
 
 
+# ------------------------------------------------------- gráficos con muchos puntos
+
+
+def charts_points(scale: float = 1.0) -> Bench:
+    """Cuatro gráficos de 20 000 puntos (80 000 en total) que se vuelven a grabar.
+
+    Mide el camino completo de un `chart`: releer los arrays (sin copias), calcular los ejes y
+    grabar el `Picture` de Skia, que es lo que se paga cuando llegan datos nuevos. Repintar sin
+    datos nuevos (`hover`/`idle`) no relee nada.
+    """
+    n = max(100, int(20_000 * scale))
+    version = Signal(0)
+    x = np.arange(n, dtype=np.float64)
+    base = np.sin(x / 40) + np.sin(x / 173) * 0.45
+    live = base.copy()
+    otra = base.copy()
+
+    def panel(key_: str, data, **kind) -> Element:
+        return card(key=key_, width=560, gap=8, bg_hover="$surface_hover", on_click=lambda: None)[
+            text(key_, size=12, color="$muted"),
+            chart(data, x=x, height=200, **kind),
+        ]
+
+    @component
+    def panel_linea(_v: int) -> Element:
+        return panel("línea", live)
+
+    @component
+    def panel_area(_v: int) -> Element:
+        return panel("área", live, kind="area", color="$accent")
+
+    @component
+    def panel_dispersion(_v: int) -> Element:
+        return panel("dispersión", live, kind="scatter", point_size=2, color="$success")
+
+    @component
+    def panel_doble(_v: int) -> Element:
+        return panel("dos series", [live, otra], names=["a", "b"])
+
+    def view():
+        return scroll(key="charts", padding=20)[
+            row(wrap=True, gap=16)[
+                panel_linea(version()),
+                panel_area(version()),
+                panel_dispersion(version()),
+                panel_doble(version()),
+            ]
+        ]
+
+    def rebuild(pilot: Pilot) -> None:
+        live[:] = base + (version() % 5) * 0.05
+        otra[:] = base - (version() % 5) * 0.05
+        version.set(version() + 1)
+        pilot.frame()
+
+    return Bench(
+        App(view, size=(1280, 800)),
+        {
+            "rebuild": rebuild,
+            "hover": _alternate(lambda p: p.move_to(200, 120), lambda p: p.move_to(800, 120)),
+            "idle": _idle,
+        },
+        info={"points": n * 4},
+    )
+
+
 SCENARIOS = [
     Scenario("lista_10k", "Lista de 10 000 filas en un scroll, con selección", list_10k),
     Scenario(
@@ -271,4 +341,9 @@ SCENARIOS = [
     ),
     Scenario("dashboard_50", "50 paneles con 24 barras cada uno, datos que cambian", dashboard_50),
     Scenario("typing", "Escribir en un campo que filtra un formulario de 500 filas", typing),
+    Scenario(
+        "charts_points",
+        "Cuatro gráficos de 20 000 puntos que se vuelven a grabar con datos nuevos",
+        charts_points,
+    ),
 ]

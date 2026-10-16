@@ -3,6 +3,7 @@
 //! Python → Rust por frame: un solo recorrido, sin llamadas de ida y vuelta.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -164,6 +165,8 @@ pub enum Kind {
     Image,
     /// Lienzo de dibujo inmediato: Python graba sus comandos con `draw`.
     Canvas,
+    /// Gráfico nativo: series de datos y ejes (ver `chart.rs`).
+    Chart,
 }
 
 #[derive(Debug)]
@@ -181,6 +184,9 @@ pub struct Node {
     /// Solo en `Kind::Canvas`: `draw(width, height, force)` devuelve el lote de
     /// comandos (o `None` si lo anterior sigue valiendo). Ver `canvas.rs`.
     pub draw: Option<Py<PyAny>>,
+    /// Solo en `Kind::Chart`: los datos y las opciones del gráfico, ya
+    /// convertidos a vistas sin copia de los búferes. Ver `chart.rs`.
+    pub chart: Option<Arc<crate::chart::Chart>>,
 }
 
 impl Node {
@@ -199,6 +205,7 @@ impl Node {
                 .map(|(k, v)| (k.clone(), v.clone_ref(py)))
                 .collect(),
             draw: self.draw.as_ref().map(|d| d.clone_ref(py)),
+            chart: self.chart.clone(),
         }
     }
 
@@ -559,6 +566,7 @@ fn parse_fresh(
         Some("input") => Kind::Input,
         Some("image") => Kind::Image,
         Some("canvas") => Kind::Canvas,
+        Some("chart") => Kind::Chart,
         _ => Kind::Box,
     };
     let style_dict = match get(d, "style")? {
@@ -589,6 +597,17 @@ fn parse_fresh(
         None => None,
     };
 
+    let chart = match get(d, "chart")? {
+        Some(obj) => {
+            let dict = obj.cast_into::<PyDict>()?;
+            Some(Arc::new(crate::chart::parse(&dict)?))
+        }
+        None if kind == Kind::Chart => {
+            return Err(PyValueError::new_err("un chart necesita datos"));
+        }
+        None => None,
+    };
+
     Ok(Node {
         key,
         kind,
@@ -598,6 +617,7 @@ fn parse_fresh(
         children,
         handlers: parse_handlers(d)?,
         draw,
+        chart,
     })
 }
 

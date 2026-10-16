@@ -15,6 +15,7 @@ use pyo3::prelude::*;
 use skia_safe::{Canvas, Point, Rect};
 
 use crate::canvas::Canvases;
+use crate::chart::Charts;
 use crate::input::InputState;
 use crate::keys::{KeyEvent, KeyInput, Mods};
 use crate::render::{Engine, TIP_DELAY, ancestors, hit_test, topmost};
@@ -102,6 +103,8 @@ pub struct Runtime {
     history: VecDeque<Option<Rect>>,
     /// Cuándo volver a grabar cada `canvas`.
     canvases: Canvases,
+    /// Cuándo volver a grabar cada `chart`.
+    charts: Charts,
 }
 
 /// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
@@ -181,6 +184,7 @@ impl Runtime {
             scroll_seen: HashMap::new(),
             history: VecDeque::new(),
             canvases: Canvases::default(),
+            charts: Charts::default(),
         }
     }
 
@@ -228,10 +232,12 @@ impl Runtime {
             self.update(width, height, scale);
             self.notify_scroll()?;
         }
-        // Con el layout hecho se conoce el tamaño de cada `canvas`.
+        // Con el layout hecho se conoce el tamaño de cada `canvas` y cada `chart`.
         if let Some(tree) = &self.tree {
             let t = Instant::now();
             self.canvases
+                .draw(tree, &mut self.engine, !self.stats.layout_cached)?;
+            self.charts
                 .draw(tree, &mut self.engine, !self.stats.layout_cached)?;
             self.stats.draw = t.elapsed();
         }
@@ -287,6 +293,7 @@ impl Runtime {
         self.stats.rebuilt = true;
         self.stats.nodes = tree.count();
         self.canvases.rebuilt();
+        self.charts.rebuilt();
 
         // El foco se pierde si su nodo desaparece o deja de ser enfocable.
         if let Some(focused) = &self.engine.focused

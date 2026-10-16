@@ -136,7 +136,7 @@ def test_counter():
 | `settle()` | Avanza frames hasta que terminen todas las transiciones. |
 | `resize(ancho, alto)` | Cambia el tamaño de la "ventana". |
 | `png(path)` | Guarda el último frame como PNG. |
-| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `style` (comparar el árbol nuevo con el anterior), `layout`, `draw` (las funciones `draw` de los `canvas` y la grabación de sus comandos) y `paint` (composición y pintura); además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build`, `parse` y `style` valen 0), `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si el frame no pintó nada. Lo usa la [suite de benchmarks](../benchmarks/README.md). |
+| `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `style` (comparar el árbol nuevo con el anterior), `layout`, `draw` (las funciones `draw` de los `canvas` y la grabación de los `chart`) y `paint` (composición y pintura); además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build`, `parse` y `style` valen 0), `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si el frame no pintó nada. Lo usa la [suite de benchmarks](../benchmarks/README.md). |
 
 Las excepciones de la vista y de los manejadores **se propagan** al test (con ventana, se
 imprimen y la app sigue viva).
@@ -161,6 +161,8 @@ Dentro de los corchetes se aceptan elementos, listas (se aplanan), strings (se c
 | `spacer()` | Caja con `grow=1`: ocupa todo el espacio libre del eje principal. |
 | `scroll(*, axis="y", **estilo)` | Contenedor desplazable (rueda, trackpad y barra arrastrable). Ver abajo. |
 | `image(src, *, fit="contain", **estilo)` | Imagen de un archivo o de bytes. Ver abajo. |
+| `canvas(draw, **estilo)` | Lienzo de dibujo inmediato. Ver abajo. |
+| `chart(y, *, kind="line", **estilo)` | Gráfico nativo (línea, área, barras, dispersión) alimentado por arrays. Ver abajo. |
 
 ### `image(src, *, fit="contain", **estilo)`
 
@@ -254,6 +256,47 @@ ninguno de los dos usan `$primary` (rellenas las figuras cerradas, trazadas las 
 ```python
 c.path(Path().move_to(0, 40).quad_to(30, 0, 60, 40).close(), fill="$accent")
 ```
+
+### `chart(y, *, x=None, kind="line", **estilo)`
+
+Gráfico nativo: **línea**, **área**, **barras** o **dispersión**, con los ejes, la rejilla y la
+leyenda calculados solos. Los datos se leen de los arrays **sin copiarlos**.
+
+```python
+from aurora import chart
+
+chart(ventas(), height=160)  # una línea
+chart(df, names=["p50", "p95"], kind="area")  # varias series de un DataFrame
+chart(cierres, labels=DIAS, kind="bar", height=140)
+chart(ys, x=xs, kind="scatter", point_size=3)
+```
+
+- **Datos:** `y` puede ser un array de numpy, un `array.array`, un `memoryview` o una lista; una
+  `Series` o un `DataFrame` de polars (o cualquier cosa con `to_numpy()`, como pandas — un
+  DataFrame aporta **una serie por columna**); una **lista de series**; o un array 2-D `(n, m)`,
+  una serie por columna. Los datos cruzan al núcleo **sin copiarse**: el gráfico lee la memoria
+  del array, así que mutarlo en sitio y reconstruir la vista basta para actualizarlo (los de
+  polars se convierten con `to_numpy()`, que comparte memoria cuando el tipo lo permite). Los
+  valores que falten (`NaN`) se saltan y, en una línea o un área, la cortan.
+- **Series:** `color` admite un color o una lista (uno por serie; sin él, rota la paleta del
+  tema) y `names` dibuja la leyenda de arriba.
+- **Ejes:** el de x son posiciones 0, 1, 2… salvo que des `x` (numérico) o `labels` (categorías:
+  meses, días…). El de y sale de los datos, con ticks redondos, o de `y_min`/`y_max` (los dos
+  juntos deben ser coherentes). Las barras siempre nacen del cero y, con varias series, se
+  agrupan (una al lado de otra). `grid=False` quita la rejilla.
+- **Aspecto:** `stroke_width` (grosor de la línea, 2), `point_size` (radio de la dispersión, 3.5),
+  `bar_width` (fracción del hueco de cada barra, 0.7), `label_size`, `label_color` y `grid_color`;
+  admite el estilo de una caja (`bg`, `radius`, `padding`, `border_*`…) y manejadores como
+  `on_click` (que recibe el clic en el gráfico, no en cada barra).
+- **Tamaño:** sin `height`, `grow`, `min_height` ni `max_height` mide 200 px de alto; a lo ancho
+  se estira como cualquier caja (en una `row`, dale `grow=1` o `width`).
+- **Cuándo se vuelve a grabar:** cuando la vista se reconstruye con otros datos u opciones, o
+  cuando cambia su caja. Hover, scroll y animaciones de otros nodos lo repintan sin releer los
+  datos. Dentro de un `@component`, solo si cambian sus argumentos o algún `Signal` que lea.
+- Un dato no numérico (texto, complejos…), unas `labels` que no encajen con los puntos o una
+  `kind` desconocida lanzan `ValueError` (`TypeError` si los datos no son ni números ni arrays).
+
+Ejemplo completo en [`examples/charts.py`](../examples/charts.py).
 
 ### `scroll(*, axis="y", **estilo)`
 

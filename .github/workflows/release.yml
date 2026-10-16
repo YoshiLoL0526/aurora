@@ -6,7 +6,7 @@
 #   2. Crear el environment "pypi" en la configuración del repositorio.
 #
 # Nota: el wheel es abi3, así que basta uno por plataforma y arquitectura para todas
-# las versiones de Python >= 3.10.
+# las versiones de Python >= 3.11.
 
 name: Release
 

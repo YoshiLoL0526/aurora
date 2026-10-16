@@ -70,11 +70,12 @@ App(view, title="Contador").run()
 | **🔁 Reactiva** | El estado vive en `Signal`s y la interfaz se mantiene sincronizada sola. |
 | **🎨 Temas con tokens** | `bg="$primary"` en lugar de colores sueltos. Cambia de tema claro a oscuro en caliente con un `Signal[Theme]`. |
 | **⌨️ Apps de verdad** | Scroll con inercia, teclado y foco con Tab, campos de texto con selección, portapapeles, deshacer e IME, imágenes y SVG, y componentes como `select`, `tabs`, `switch` o `tooltip`. |
+| **📊 Gráficos con tus datos** | `chart()` dibuja líneas, áreas, barras y dispersión a partir de arrays de numpy o de polars **sin copiarlos**, con los ejes, la rejilla y la leyenda calculados solos. |
 | **🧪 Testeable sin pantalla** | `app.render_png()` renderiza cualquier vista sin abrir ventana, y `app.pilot()` simula clics, teclas y rueda con el mismo motor que la ventana: tests de interacción, CI y documentación visual. |
 
 ## Inicio rápido
 
-**Requisitos:** Python ≥ 3.10, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
+**Requisitos:** Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
 En Linux también `libfontconfig-dev` y `libfreetype-dev`.
 
 ```bash

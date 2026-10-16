@@ -20,6 +20,7 @@ python/aurora/
 ├── __init__.py      App: une la vista, el tema y el núcleo nativo
 ├── elements.py      Element y primitivas (box, row, column, text, spacer)
 ├── canvas.py        canvas(), Canvas y Path: graba comandos de dibujo en un lote
+├── charts.py        chart(): gráficos de línea, área, barras y dispersión
 ├── components.py    Componentes con estilo (button, card, badge, stat), solo con primitivas
 ├── signal.py        Estado reactivo
 ├── theme.py         Design tokens y temas MIDNIGHT / DAYLIGHT
@@ -37,6 +38,7 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── input.rs         Estado de los campos de texto y geometría de cursor y selección
 ├── image.rs         Decodificación de imágenes (raster y SVG), caché y encaje (fit)
 ├── canvas.rs        Lote de comandos de un canvas → Picture de Skia; cuándo volver a grabarlo
+├── chart.rs         Gráficos nativos: vista sin copia de los datos y grabado de ejes y series
 ├── window.rs        Bucle de ventana (winit) sobre Runtime
 ├── surface/         Trait Surface: dónde se pinta y presenta cada frame
 │   ├── cpu.rs       Skia raster en el framebuffer de softbuffer

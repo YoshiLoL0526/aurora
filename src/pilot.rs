@@ -261,9 +261,9 @@ impl Pilot {
     }
 
     /// Coste por fases del último frame, en milisegundos: `build` (Python),
-    /// `parse`, `style`, `layout`, `draw` (los `canvas`) y `paint`; además `nodes`, `rebuilt`,
-    /// `layout_cached` y `damage`, la zona repintada `(x, y, ancho, alto)` o
-    /// `None` si no se pintó nada.
+    /// `parse`, `style`, `layout`, `draw` (los `canvas` y los `chart`) y `paint`;
+    /// además `nodes`, `rebuilt`, `layout_cached` y `damage`, la zona repintada
+    /// `(x, y, ancho, alto)` o `None` si no se pintó nada.
     #[getter]
     fn stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let s = self.rt.stats;

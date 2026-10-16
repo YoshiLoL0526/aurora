@@ -334,19 +334,51 @@ fn draw_op(
     Ok(())
 }
 
-/// `("text", x, y, contenido, color, tamaño, peso, familia | None, align, baseline)`.
-/// `align` coloca el texto respecto a `x` (izquierda, centro o derecha) y
-/// `baseline` respecto a `y` (arriba, centro, línea base o abajo).
-fn draw_text(canvas: &Canvas, a: &Args<'_, '_>, fonts: &FontCollection) -> PyResult<()> {
-    let (x, y) = (a.f(1)?, a.f(2)?);
-    let content: String = a.item(3)?.extract()?;
-    let color: Color = parse_color(&a.item(4)?.extract::<String>()?)?;
-    let size = a.f(5)?;
-    let weight = a.f(6)? as i32;
-    let family: Option<String> = a.item(7)?.extract()?;
-    let align: String = a.item(8)?.extract()?;
-    let baseline: String = a.item(9)?.extract()?;
+/// Alineación horizontal de una línea de texto respecto a su `x`.
+#[derive(Clone, Copy)]
+pub enum Align {
+    Left,
+    Center,
+    Right,
+}
 
+/// Línea base de una línea de texto respecto a su `y`.
+#[derive(Clone, Copy)]
+pub enum Baseline {
+    Top,
+    Middle,
+    Alphabetic,
+    Bottom,
+}
+
+fn parse_align(s: &str) -> PyResult<Align> {
+    match s {
+        "left" => Ok(Align::Left),
+        "center" => Ok(Align::Center),
+        "right" => Ok(Align::Right),
+        other => Err(err(format!("align inválido: {other:?}"))),
+    }
+}
+
+fn parse_baseline(s: &str) -> PyResult<Baseline> {
+    match s {
+        "top" => Ok(Baseline::Top),
+        "middle" => Ok(Baseline::Middle),
+        "alphabetic" => Ok(Baseline::Alphabetic),
+        "bottom" => Ok(Baseline::Bottom),
+        other => Err(err(format!("baseline inválida: {other:?}"))),
+    }
+}
+
+/// Párrafo de una línea con esos rasgos (el que dibuja `text_at` y mide `measure_text`).
+fn paragraph(
+    content: &str,
+    color: Color,
+    size: f32,
+    weight: i32,
+    family: &str,
+    fonts: &FontCollection,
+) -> skia_safe::textlayout::Paragraph {
     let mut ts = TextStyle::new();
     ts.set_color(color)
         .set_font_size(size)
@@ -355,33 +387,77 @@ fn draw_text(canvas: &Canvas, a: &Args<'_, '_>, fonts: &FontCollection) -> PyRes
             Width::NORMAL,
             Slant::Upright,
         ));
-    if let Some(f) = &family {
-        ts.set_font_families(&[f.as_str()]);
-    }
+    ts.set_font_families(&[family]);
     let mut ps = ParagraphStyle::new();
     ps.set_text_style(&ts);
     let mut builder = ParagraphBuilder::new(&ps, fonts.clone());
     builder.push_style(&ts);
-    builder.add_text(&content);
+    builder.add_text(content);
     let mut paragraph = builder.build();
     // Una sola línea: sin ancho límite (prácticamente infinito).
     paragraph.layout(1.0e6);
-    let w = paragraph.longest_line();
-    let dx = match align.as_str() {
-        "left" => 0.0,
-        "center" => -w / 2.0,
-        "right" => -w,
-        _ => return Err(err(format!("align inválido: {align:?}"))),
+    paragraph
+}
+
+/// Ancho de una línea de texto, para colocar etiquetas (ejes de un `chart`, leyenda).
+pub fn measure_text(
+    content: &str,
+    size: f32,
+    weight: i32,
+    family: &str,
+    fonts: &FontCollection,
+) -> f32 {
+    paragraph(content, Color::BLACK, size, weight, family, fonts).longest_line()
+}
+
+/// Dibuja una línea de texto: `align` la coloca respecto a `x` y `baseline`
+/// respecto a `y` (`Top`: `y` es su borde superior; `Middle`, su centro;
+/// `Alphabetic`, la línea base). Lo usan `canvas` y `chart`.
+#[allow(clippy::too_many_arguments)]
+pub fn text_at(
+    canvas: &Canvas,
+    x: f32,
+    y: f32,
+    content: &str,
+    color: Color,
+    size: f32,
+    weight: i32,
+    family: &str,
+    align: Align,
+    baseline: Baseline,
+    fonts: &FontCollection,
+) {
+    let paragraph = paragraph(content, color, size, weight, family, fonts);
+    let dx = match align {
+        Align::Left => 0.0,
+        Align::Center => -paragraph.longest_line() / 2.0,
+        Align::Right => -paragraph.longest_line(),
     };
-    let h = paragraph.height();
-    let dy = match baseline.as_str() {
-        "top" => 0.0,
-        "middle" => -h / 2.0,
-        "alphabetic" => -paragraph.alphabetic_baseline(),
-        "bottom" => -h,
-        _ => return Err(err(format!("baseline inválida: {baseline:?}"))),
+    let dy = match baseline {
+        Baseline::Top => 0.0,
+        Baseline::Middle => -paragraph.height() / 2.0,
+        Baseline::Alphabetic => -paragraph.alphabetic_baseline(),
+        Baseline::Bottom => -paragraph.height(),
     };
     paragraph.paint(canvas, (x + dx, y + dy));
+}
+
+/// `("text", x, y, contenido, color, tamaño, peso, familia | None, align, baseline)`.
+fn draw_text(canvas: &Canvas, a: &Args<'_, '_>, fonts: &FontCollection) -> PyResult<()> {
+    let (x, y) = (a.f(1)?, a.f(2)?);
+    let content: String = a.item(3)?.extract()?;
+    let color: Color = parse_color(&a.item(4)?.extract::<String>()?)?;
+    let size = a.f(5)?;
+    let weight = a.f(6)? as i32;
+    let family = a
+        .item(7)?
+        .extract::<Option<String>>()?
+        .unwrap_or_else(|| "Inter".to_owned());
+    let align = parse_align(&a.item(8)?.extract::<String>()?)?;
+    let baseline = parse_baseline(&a.item(9)?.extract::<String>()?)?;
+    text_at(
+        canvas, x, y, &content, color, size, weight, &family, align, baseline, fonts,
+    );
     Ok(())
 }
 
@@ -424,17 +500,17 @@ impl Canvases {
         if nodes.is_empty() && self.drawn.is_empty() {
             return Ok(());
         }
-        // Tamaño de la caja de contenido de cada lienzo, en una pasada por las regiones.
-        let mut sizes: HashMap<&str, (f32, f32)> = HashMap::new();
-        for region in &engine.regions {
-            if let Some(node) = nodes.iter().find(|n| n.key == region.key) {
-                let s = &node.style;
-                let (pad, bw) = (s.padding, s.border_width);
-                let w = region.rect.width() - pad.left - pad.right - 2.0 * bw;
-                let h = region.rect.height() - pad.top - pad.bottom - 2.0 * bw;
-                sizes.insert(node.key.as_str(), (w.max(0.0), h.max(0.0)));
-            }
-        }
+        // Tamaño de la caja de contenido de cada lienzo, según el layout actual.
+        let sizes: HashMap<&str, (f32, f32)> = {
+            let rects = engine.node_rects();
+            nodes
+                .iter()
+                .filter_map(|n| {
+                    let rect = rects.get(n.key.as_str())?;
+                    Some((n.key.as_str(), crate::render::content_size(n, *rect)))
+                })
+                .collect()
+        };
         let result = Python::attach(|py| -> PyResult<()> {
             for node in &nodes {
                 let (Some(draw), Some(&size)) = (&node.draw, sizes.get(node.key.as_str())) else {

@@ -41,6 +41,7 @@ de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
 | `lista_10k_memo` | La misma lista con cada fila como `@component`: al cambiar la selección solo se reconstruyen 2 filas. | las mismas que `lista_10k` |
 | `lista_virtual_100k` | 100 000 filas en una `virtual_list` con filas `@component`: solo existen las visibles. | `cold`, `rebuild`, `hover`, `scroll` (cada paso cambia el rango visible), `idle` |
 | `dashboard_50` | 50 paneles con 24 barras cada uno y datos que cambian. | `cold`, `rebuild` (avanzan los datos), `hover`, `idle` |
+| `charts_points` | Cuatro gráficos (línea, área, dispersión y dos series) de 20 000 puntos cada uno. | `cold`, `rebuild` (datos nuevos: se vuelven a grabar), `hover`, `idle` |
 | `typing` | Escribir en un campo que filtra un formulario de 500 filas. | `cold`, `type` (una tecla), `idle` |
 
 - `cold`: crear la app y pintar el primer frame (sin estado previo).

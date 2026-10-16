@@ -11,7 +11,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 *La tesis funciona: Python describe, Rust pinta, y el resultado se ve profesional.*
 
-- ✅ Puente PyO3 + maturin, wheel abi3 (Python ≥ 3.10), integración con uv
+- ✅ Puente PyO3 + maturin, wheel abi3 (Python ≥ 3.11), integración con uv
 - ✅ Layout flexbox con Taffy: `gap`, `padding`, alineación, `grow`/`shrink`, `wrap`, `%`, posicionamiento absoluto
 - ✅ Render con Skia: esquinas redondeadas, bordes, sombras con blur, gradientes lineales, opacidad
 - ✅ Texto con shaping real, herencia de estilos, alineación por baseline, `max_lines` con elipsis
@@ -51,7 +51,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 *Dashboards de nivel profesional sin librerías externas.*
 
 - ✅ `canvas`: API de dibujo inmediato desde Python, enviada en lote a Rust
-- ⏳ Charts nativos (líneas, barras, áreas, dispersión) alimentados con numpy/polars sin copias
+- ✅ Charts nativos (líneas, barras, áreas, dispersión) alimentados con numpy/polars sin copias
 - ⏳ Downsampling (LTTB) en Rust para millones de puntos, zoom y pan
 - ⏳ `table` con ordenación, columnas redimensionables y virtualización
 

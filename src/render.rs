@@ -311,8 +311,10 @@ pub struct Engine {
     /// Imagen decodificada de cada nodo `image` del árbol actual, por key.
     images: HashMap<String, Rc<Loaded>>,
     image_cache: ImageCache,
-    /// Dibujo grabado de cada `canvas`, por key (lo graba `Runtime::draw_canvases`).
+    /// Dibujo grabado de cada `canvas`, por key (lo graba `canvas::Canvases`).
     pictures: HashMap<String, Picture>,
+    /// Gráfico grabado de cada `chart`, por key (lo graba `chart::Charts`).
+    charts: HashMap<String, Picture>,
     pub hovered: Option<String>,
     pub pressed: Option<String>,
     pub focused: Option<String>,
@@ -404,6 +406,7 @@ impl Engine {
             images: HashMap::new(),
             image_cache: ImageCache::default(),
             pictures: HashMap::new(),
+            charts: HashMap::new(),
             hovered: None,
             pressed: None,
             focused: None,
@@ -693,6 +696,35 @@ impl Engine {
         self.pictures.retain(|k, _| keep(k));
     }
 
+    /// Graba el dibujo de un `chart` (lo calcula `chart::Charts`) y marca su
+    /// nodo para repintarlo.
+    pub fn record_chart(&mut self, key: &str, picture: Option<Picture>) {
+        match picture {
+            Some(p) => self.charts.insert(key.to_owned(), p),
+            None => self.charts.remove(key),
+        };
+        self.restyled.push(key.to_owned());
+    }
+
+    /// Olvida los gráficos que ya no están en la vista.
+    pub fn retain_charts(&mut self, keep: impl Fn(&str) -> bool) {
+        self.charts.retain(|k, _| keep(k));
+    }
+
+    /// Rectángulo (caja de borde) de cada nodo del layout actual, por key.
+    pub fn node_rects(&self) -> HashMap<&str, Rect> {
+        self.regions
+            .iter()
+            .map(|r| (r.key.as_str(), r.rect))
+            .collect()
+    }
+
+    /// La colección de fuentes con la que se maqueta y pinta (la comparten
+    /// `canvas` y `chart` al grabar sus `Picture`).
+    pub fn fonts(&self) -> &FontCollection {
+        &self.fonts
+    }
+
     /// Si el foco está en un campo de texto.
     pub fn focus_is_editable(&self) -> bool {
         self.focused
@@ -706,7 +738,7 @@ impl Engine {
     /// estilo de las imágenes, que no se estiran en el eje cruzado.
     fn leaf_spec(&self, node: &Node, style: &mut taffy::Style) -> Option<LeafSpec> {
         match node.kind {
-            Kind::Box | Kind::Canvas => None,
+            Kind::Box | Kind::Canvas | Kind::Chart => None,
             Kind::Image => {
                 // Sin ancho propio, una imagen no se estira en el eje cruzado: se
                 // queda a su tamaño (o al que quepa) sin deformarse.
@@ -1564,8 +1596,8 @@ fn same_shape(a: &Node, b: &Node) -> bool {
 fn same_geometry(a: &Node, b: &Node) -> bool {
     let (sa, sb) = (&a.style, &b.style);
     let content = match b.kind {
-        // El dibujo de un `canvas` no afecta a su caja.
-        Kind::Box | Kind::Canvas => true,
+        // El dibujo de un `canvas` o un `chart` no afecta a su caja.
+        Kind::Box | Kind::Canvas | Kind::Chart => true,
         // Las métricas del texto; el color se cambia en el propio párrafo.
         Kind::Text => {
             let (ta, tb) = (&a.text_props, &b.text_props);
@@ -1957,16 +1989,21 @@ impl<'a> Painter<'a> {
             );
         }
 
-        if node.kind == Kind::Canvas
-            && let Some(picture) = self.engine.pictures.get(&node.key)
-        {
+        // Un `canvas` o un `chart` se pintan de su `Picture` grabado (ver
+        // `canvas.rs` y `chart.rs`), recortado a la caja de contenido.
+        let recorded = match node.kind {
+            Kind::Canvas => self.engine.pictures.get(&node.key),
+            Kind::Chart => self.engine.charts.get(&node.key),
+            _ => None,
+        };
+        if let Some(recorded) = recorded {
             let (inner, content) = content_box(rect, layout);
             let r = (s.radius - s.border_width).max(0.0);
             canvas.save();
             canvas.clip_rrect(RRect::new_rect_xy(inner, r, r), ClipOp::Intersect, true);
             canvas.clip_rect(content, ClipOp::Intersect, true);
             canvas.translate((content.left, content.top));
-            canvas.draw_picture(picture, None, None);
+            canvas.draw_picture(recorded, None, None);
             canvas.restore();
         }
 
@@ -2057,6 +2094,16 @@ fn content_box(rect: Rect, layout: &taffy::Layout) -> (Rect, Rect) {
         inner.bottom - pad.bottom,
     );
     (inner, content)
+}
+
+/// Tamaño de la caja de contenido de un nodo (dentro del padding y del borde),
+/// que es lo que reciben `draw` de un `canvas` y los ejes de un `chart`.
+pub fn content_size(node: &Node, rect: Rect) -> (f32, f32) {
+    let (pad, bw) = (node.style.padding, node.style.border_width);
+    (
+        (rect.width() - pad.left - pad.right - 2.0 * bw).max(0.0),
+        (rect.height() - pad.top - pad.bottom - 2.0 * bw).max(0.0),
+    )
 }
 
 /// Separación y grosor del anillo de foco.
@@ -2494,6 +2541,9 @@ pub fn render_png(
     let mut canvases = crate::canvas::Canvases::default();
     canvases.rebuilt();
     canvases.draw(root, &mut engine, true)?;
+    let mut charts = crate::chart::Charts::default();
+    charts.rebuilt();
+    charts.draw(root, &mut engine, true)?;
     engine.paint(surface.canvas(), root, width, height, None);
     write_png(&mut surface, path).map_err(PyRuntimeError::new_err)
 }
