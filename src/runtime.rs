@@ -1065,6 +1065,9 @@ impl Runtime {
         // Atajos: Cmd en macOS, Ctrl en el resto. Saltar palabras: Alt en macOS, Ctrl en el resto.
         let cmd = if mac { m.meta } else { m.ctrl };
         let word = if mac { m.alt } else { m.ctrl };
+        // Inicio/Fin de documento en un campo multilínea: Cmd en macOS (donde `alt`
+        // ya salta por palabras), Ctrl en el resto; mismo modificador que `word`.
+        let doc_edge = if mac { m.meta } else { m.ctrl };
         let (shift, multiline) = (m.shift, state.multiline);
         let before = state.editor.text().to_owned();
         let len = before.len();
@@ -1086,8 +1089,16 @@ impl Runtime {
             }
             "ArrowUp" => state.editor.move_to(0, shift),
             "ArrowDown" => state.editor.move_to(len, shift),
-            "Home" if multiline && !m.ctrl => line_edge(state, false, shift),
-            "End" if multiline && !m.ctrl => line_edge(state, true, shift),
+            // Inicio/Fin de línea en multilínea; con el modificador de documento (Ctrl en
+            // Windows/Linux, Cmd en macOS), al principio o al final del texto.
+            "End" | "Home" if multiline && doc_edge => {
+                state
+                    .editor
+                    .move_to(if input.key == "End" { len } else { 0 }, shift);
+            }
+            "End" | "Home" if multiline => {
+                line_edge(state, input.key == "End", shift);
+            }
             "Home" => state.editor.move_to(0, shift),
             "End" => state.editor.move_to(len, shift),
             "Enter" if multiline && !cmd => {

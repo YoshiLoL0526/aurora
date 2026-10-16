@@ -107,7 +107,9 @@ fn floats(obj: &Bound<'_, PyAny>) -> PyResult<Vec<f32>> {
         return Err(err("datos de coordenadas truncados"));
     }
     Ok(raw
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
         .collect())
 }
@@ -117,7 +119,11 @@ fn points(obj: &Bound<'_, PyAny>) -> PyResult<Vec<Point>> {
     if !v.len().is_multiple_of(2) {
         return Err(err("los puntos deben ser pares (x, y)"));
     }
-    Ok(v.chunks_exact(2).map(|p| Point::new(p[0], p[1])).collect())
+    Ok(v.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|p| Point::new(p[0], p[1]))
+        .collect())
 }
 
 /// Verbos de un trazado (`Path` en Python): cuántos números consume cada uno.
