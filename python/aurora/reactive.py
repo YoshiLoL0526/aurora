@@ -29,7 +29,7 @@ P = ParamSpec("P")
 # Cada reconstrucción de la vista es una generación: al terminar se olvidan las
 # entradas que no se usaron (componentes que ya no están en la vista).
 _generation = 0
-_components: weakref.WeakSet[Component[Any]] = weakref.WeakSet()
+_components: weakref.WeakSet[Component[...]] = weakref.WeakSet()
 
 
 class Entry:
@@ -86,6 +86,7 @@ def report(entry: Entry) -> None:
 class Component(Generic[P]):
     def __init__(self, fn: Callable[P, Element]) -> None:
         self.fn = fn
+        self.name: str = getattr(fn, "__name__", repr(fn))
         self.cache: dict[Hashable, Entry] = {}
         functools.update_wrapper(self, fn)
         _components.add(self)
@@ -109,7 +110,7 @@ class Component(Generic[P]):
         finally:
             stack.pop()
         if not isinstance(element, Element):
-            raise TypeError(f"el componente {self.fn.__name__} debe devolver un Element")
+            raise TypeError(f"el componente {self.name} debe devolver un Element")
         entry = Entry(element, frame)
         # Si devuelve tal cual el resultado de otro componente, la serialización
         # memorizada ya es la de ese otro (y sus dependencias ya están en `frame`).
@@ -121,7 +122,7 @@ class Component(Generic[P]):
         return element
 
     def __repr__(self) -> str:
-        return f"<component {self.fn.__name__}>"
+        return f"<component {self.name}>"
 
 
 def component(fn: Callable[P, Element]) -> Component[P]:

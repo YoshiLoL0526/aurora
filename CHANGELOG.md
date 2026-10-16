@@ -31,6 +31,8 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   llama cuando cambian el desplazamiento o la zona visible, sin reconstruir la vista por sí solo.
 - `Pilot.stats["style"]` (coste de la fase de estilo) y `Pilot.stats["damage"]` (zona repintada en
   el último frame, o `None`). La suite de benchmarks muestra la fase `style`.
+- Comprobación de tipos con [ty](https://docs.astral.sh/ty/) en la CI, junto a ruff, sobre la
+  librería, los tests, los ejemplos y los benchmarks.
 
 ### Cambiado
 

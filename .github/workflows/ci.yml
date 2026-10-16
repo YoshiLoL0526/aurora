@@ -29,6 +29,12 @@ jobs:
         run: |
           uvx ruff check .
           uvx ruff format --check .
+      # Sin compilar el núcleo: ty resuelve `aurora` desde python/ y `_core` desde su stub.
+      # La versión de ty sale de uv.lock (cambia a menudo antes de la 1.0).
+      - name: ty
+        run: |
+          uv sync --only-group dev
+          uv run --no-sync ty check
       - name: rustfmt
         run: cargo fmt --check
       - name: Clippy

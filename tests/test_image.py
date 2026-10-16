@@ -130,4 +130,5 @@ def test_corrupt_file_raises_value_error(tmp_path):
 
 def test_invalid_fit_raises(tmp_path, split_png):
     with pytest.raises(ValueError, match="fit"):
-        _core.render_png(image(split_png, fit="zoom").to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+        bad = image(split_png, fit="zoom")  # ty: ignore[invalid-argument-type]
+        _core.render_png(bad.to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)

@@ -95,7 +95,7 @@ class App:
         reactive.begin_build()
         try:
             # El tema puede ser reactivo (p. ej. un Signal[Theme]) para alternar claro/oscuro.
-            theme = self.theme() if callable(self.theme) else self.theme
+            theme = self.theme if isinstance(self.theme, Theme) else self.theme()
             root = self.view()
             root.style.setdefault("bg", "$background")
             root.style.setdefault("font_family", theme.font_family)

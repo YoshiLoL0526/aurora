@@ -57,7 +57,8 @@ def _png_rows(path: Path, count: int | None = None) -> tuple[int, list[bytearray
 
 def _png_pixel(path: Path, x: int, y: int) -> tuple[int, int, int]:
     channels, rows = _png_rows(path, y + 1)
-    return tuple(rows[y][x * channels : x * channels + 3])
+    r, g, b = rows[y][x * channels : x * channels + 3]
+    return r, g, b
 
 
 def test_render_png_size_respects_scale(tmp_path):

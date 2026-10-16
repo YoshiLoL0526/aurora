@@ -21,7 +21,7 @@ uv run examples/hello.py --png hello.png
 Full lint, same as CI:
 
 ```bash
-uv run ruff check . && uv run ruff format --check .
+uv run ruff check . && uv run ruff format --check . && uv run ty check
 cargo fmt --check && cargo clippy --release -- -D warnings
 ```
 
@@ -98,5 +98,8 @@ full rebuilds — every event currently rebuilds the whole view.
 - Children are attached with `[...]` (`column(gap=8)[a, b]`); theme colors use `"$token"` strings.
 - Rust: no `unwrap()` on paths that depend on user data — input errors must surface in Python as
   clear exceptions.
+- Type checking with `ty` (config in `pyproject.toml`, run in CI). Fix the types rather than
+  silencing them; when an error is intended (tests of invalid input), use
+  `# ty: ignore[rule]` on that line.
 - Ruff line length is 110; Spanish typography rules (RUF001–003) and lambda assignment (E731) are
   ignored on purpose.

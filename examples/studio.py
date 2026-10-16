@@ -16,6 +16,7 @@ Una app de gestión de proyectos con:
 
 from __future__ import annotations
 
+import io
 import itertools
 import sys
 from dataclasses import dataclass, replace
@@ -172,7 +173,9 @@ def move(task_id: int, delta: int) -> None:
 
 
 def confirm_delete() -> None:
-    _, task_id = modal()
+    if (current := modal()) is None:
+        return
+    _, task_id = current
     victim = next(t for t in tasks() if t.id == task_id)
     tasks.update(lambda ts: tuple(t for t in ts if t.id != task_id))
     modal.set(None)
@@ -906,7 +909,8 @@ def render_gallery(out: Path) -> None:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--png":
         # Consolas sin UTF-8 (cp1252 en Windows): que "✓" no rompa la salida.
-        sys.stdout.reconfigure(errors="replace")
+        if isinstance(sys.stdout, io.TextIOWrapper):
+            sys.stdout.reconfigure(errors="replace")
         render_gallery(Path(sys.argv[2]))
     else:
         app.run()

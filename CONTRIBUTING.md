@@ -19,7 +19,7 @@ Necesitas Python ≥ 3.10, [uv](https://docs.astral.sh/uv/) y Rust estable
 ```bash
 git clone https://github.com/<usuario>/aurora.git
 cd aurora
-uv sync                     # compila el núcleo e instala todo (incluye pytest y ruff)
+uv sync                     # compila el núcleo e instala todo (incluye pytest, ruff y ty)
 uv run pytest               # tests
 uv run examples/studio.py   # demo completa
 ```
@@ -32,7 +32,7 @@ uv run examples/studio.py   # demo completa
 Ejecuta lo mismo que la CI:
 
 ```bash
-uv run ruff check . && uv run ruff format --check .
+uv run ruff check . && uv run ruff format --check . && uv run ty check
 cargo fmt --check && cargo clippy --release -- -D warnings
 uv run pytest
 ```
@@ -64,7 +64,8 @@ Y verifica a mano:
 
 ### Código
 
-- **Python:** formateado con `ruff format` y con type hints en la API pública.
+- **Python:** formateado con `ruff format`, con type hints en la API pública y sin errores de
+  `ty check` (comprobación de tipos).
 - **Rust:** `cargo fmt` y `clippy` sin warnings. Nada de `unwrap()` en rutas que dependan de datos
   del usuario: los errores de entrada deben llegar a Python como excepciones claras.
 - **Commits:** mensajes en imperativo y descriptivos (`Añade contenedor scroll con clipping`).

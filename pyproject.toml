@@ -39,7 +39,12 @@ module-name = "aurora._core"
 features = ["pyo3/extension-module"]
 
 [dependency-groups]
-dev = ["maturin>=1.7,<2", "pytest>=8", "ruff>=0.6"]
+dev = [
+    "maturin>=1.7,<2",
+    "pytest>=8",
+    "ruff>=0.6",
+    "ty>=0.0.88",
+]
 
 [tool.uv]
 # uv cachea el paquete construido: estas claves hacen que recompile
@@ -68,3 +73,15 @@ known-first-party = ["aurora"]
 
 [tool.ruff.lint.per-file-ignores]
 "examples/*" = ["B023", "E501"]
+
+[tool.ty.environment]
+python-version = "3.10"
+# `python/` permite comprobar sin instalar el paquete (el núcleo se resuelve con `_core.pyi`);
+# `benchmarks/`, porque tests/test_benchmarks.py importa la suite añadiéndola a sys.path.
+extra-paths = ["python", "benchmarks"]
+
+# `Pilot.rect()` y compañía devuelven `None` si la clave no existe; en los tests se indexa
+# directamente: si faltara la clave, el test fallaría igual (TypeError) y con un mensaje claro.
+[[tool.ty.overrides]]
+include = ["tests/**"]
+rules = { not-subscriptable = "ignore", not-iterable = "ignore" }

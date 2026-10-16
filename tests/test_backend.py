@@ -11,7 +11,7 @@ def view():
 
 def test_unknown_backend_is_rejected_before_opening_a_window():
     with pytest.raises(ValueError, match="'auto', 'gpu' o 'cpu'"):
-        App(view).run(backend="opengl")  # type: ignore[arg-type]
+        App(view).run(backend="opengl")  # ty: ignore[invalid-argument-type]
 
 
 def test_unknown_backend_in_environment_is_rejected(monkeypatch):

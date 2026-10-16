@@ -93,14 +93,13 @@ def list_10k(scale: float = 1.0, *, memo: bool = False) -> Bench:
             text(f"{(i * 37) % 100} %", size=13, color="$muted"),
         ]
 
-    if memo:
-        item = component(item)
+    make = component(item) if memo else item
 
     def view():
         current = selected()
         return column(padding=16, gap=12)[
             text(f"{n} tareas", size=20, weight=700),
-            scroll(key="lista", gap=2)[[item(i, i == current) for i in range(n)]],
+            scroll(key="lista", gap=2)[[make(i, i == current) for i in range(n)]],
         ]
 
     def rebuild(pilot: Pilot) -> None:
