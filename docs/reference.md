@@ -10,6 +10,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Primitivas](#primitivas)
 - [Teclado y foco](#teclado-y-foco)
 - [Componentes](#componentes)
+- [Animaciones](#animaciones)
 - [Propiedades de estilo](#propiedades-de-estilo)
 - [Temas y tokens](#temas-y-tokens)
 - [Formatos de valores](#formatos-de-valores)
@@ -648,6 +649,64 @@ a partir de un mínimo de `rows` líneas. Las flechas ↑ ↓ cambian de línea 
 principio y al final de la línea. Para limitar su altura, ponlo dentro de un
 `scroll(max_height=...)`: el cursor siempre se mantiene a la vista.
 
+## Animaciones
+
+Las animaciones se **declaran** en el elemento y las interpola el núcleo en cada frame, sin volver a
+llamar a Python ni competir por el GIL. Cuatro propiedades de estilo las activan:
+
+```python
+from aurora import animate
+
+row(
+    key=f"tarea-{t.id}",  # identidad estable: imprescindible para animar
+    bg="$surface_pressed" if t.done else "$surface",
+    transition=animate.spring(),  # cambios de bg, border_color, opacity y radius
+    animate_layout=True,  # se desliza cuando el layout lo mueve
+    enter=animate.slide(y=12),  # aparece subiendo y haciéndose visible
+    exit=animate.zoom(0.95),  # se va encogiendo y desvaneciéndose
+)
+```
+
+| Propiedad | Valores | Descripción |
+|---|---|---|
+| `transition` | `animate.spring(...)`, `animate.tween(...)` | Al reconstruir la vista, los cambios de `bg`, `border_color`, `opacity` y `radius` se animan desde lo que se ve hacia el valor nuevo. Un color que aparece o desaparece se funde desde/hacia transparente. Es también la curva por defecto de las otras tres. |
+| `animate_layout` | `True` o una curva | Cuando un layout cambia la caja del elemento (otro elemento aparece, se va, cambia de tamaño o se reordena), se desliza desde la caja que mostraba; su fondo, borde y sombra cambian de tamaño con ella y sus hijos se desplazan con él. Con `True` usa la curva de `transition` (o un muelle). Al redimensionar la ventana el layout salta, sin animarse. |
+| `enter` | efecto | Valores desde los que **aparece** cuando entra en la vista. No se reproduce en el primer frame de la app (ni en `render_png`). |
+| `exit` | efecto | Valores hacia los que **se va** cuando sale de la vista. Mientras dura se pinta una instantánea del elemento tal como estaba, encima de su capa: ya no ocupa sitio en el layout (los demás pueden deslizarse a su hueco con `animate_layout`) ni recibe eventos. Si vuelve a la vista antes de terminar, entra desde donde estaba. |
+
+Todo se anima **por `key`**: un elemento sin `key` explícita toma la identidad de su posición, así
+que en listas que cambian dale siempre una. Mientras una animación de layout o un efecto
+transforma un elemento, los clics usan su caja final (la de `pilot.rect`).
+
+### Curvas de tiempo
+
+| Función | Descripción |
+|---|---|
+| `animate.spring(*, stiffness=380, damping=30, mass=1, delay=0)` | Muelle físico (por defecto): más `stiffness`, más rápido; menos `damping`, más rebote. Su duración sale de la física (~0,3 s con los valores por defecto) y, si el destino cambia a medias, sigue desde donde está. |
+| `animate.tween(duration=0.25, *, easing="ease_out", delay=0)` | Duración fija en segundos con una curva de CSS: `"linear"`, `"ease"`, `"ease_in"`, `"ease_out"`, `"ease_in_out"`. |
+
+`delay` (segundos) retrasa el comienzo; con él se escalonan las entradas de una lista
+(`enter=animate.slide(y=8, transition=animate.spring(delay=i * 0.03))`).
+
+### Efectos de entrada y salida
+
+Un efecto son cuatro valores relativos al elemento: opacidad, desplazamiento `x`/`y` en píxeles y
+escala alrededor de su centro. Cada uno acepta `transition=` para usar otra curva que la del
+elemento.
+
+| Función | Efecto |
+|---|---|
+| `animate.fade(opacity=0.0)` | Solo opacidad. |
+| `animate.slide(x=0, y=0, *, fade=True)` | Desplazamiento, por defecto desvaneciéndose. |
+| `animate.zoom(scale=0.9, *, fade=True)` | Escala, por defecto desvaneciéndose. |
+| `animate.effect(*, opacity=1, x=0, y=0, scale=1)` | Cualquier combinación. |
+
+Los valores inválidos (rigidez no positiva, duración o retardo negativos, easing desconocido,
+escala negativa) lanzan `ValueError` al crearlos.
+
+En los tests, `pilot.frame(dt)` avanza las animaciones `dt` segundos y devuelve `True` mientras
+alguna sigue en curso; `pilot.settle()` espera a que terminen todas (salidas incluidas).
+
 ## Propiedades de estilo
 
 Las longitudes están en **píxeles lógicos**. Las propiedades marcadas con *H* se **heredan** de los
@@ -691,6 +750,7 @@ contenedores (como en CSS).
 | `shadow` | `(dx, dy, blur, color)` | Sombra difuminada desplazada. |
 | `opacity` | `0.0` – `1.0` | Opacidad del elemento y todos sus hijos. |
 | `press_scale` | número | Escala al pulsar (p. ej. `0.96`). Animada. |
+| `transition`, `animate_layout`, `enter`, `exit` | curvas y efectos de `animate` | Animaciones declarativas. Ver [Animaciones](#animaciones). |
 | `scrollbar_color` | color | Color del pulgar de la barra de un `scroll` (se pinta translúcido). `scroll()` usa `$muted`. |
 | `placeholder_color` | color | Color del placeholder de un campo de texto. Por defecto, el color del texto al 45 %. |
 | `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |

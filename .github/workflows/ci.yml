@@ -97,6 +97,7 @@ jobs:
           uv run examples/studio.py --png studio-shots
           uv run examples/charts.py --png charts.png
           uv run examples/table.py --png table.png
+          uv run examples/animate.py --png animate.png
       - name: Subir capturas
         if: always()
         uses: actions/upload-artifact@v4

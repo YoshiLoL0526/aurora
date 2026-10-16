@@ -506,6 +506,37 @@ def view():
 Dale `autofocus=True` al botón principal del modal para que el foco salte a él al abrirlo; mientras
 esté abierto, Tab no sale de la tarjeta con `capture=True`.
 
+### Animaciones
+
+Hasta ahora el modal aparece y desaparece de golpe. Las animaciones en Aurora se **declaran**: dices
+cómo entra y cómo sale un elemento, y el núcleo lo interpola en cada frame sin volver a llamar a
+Python:
+
+```python
+from aurora import animate
+
+card(width=420, capture=True, enter=animate.zoom(0.95), exit=animate.fade())[...]
+```
+
+Lo mismo sirve para la lista de servicios: con `animate_layout=True` cada fila se desliza a su
+nuevo sitio cuando el filtro quita o añade otras, y con `transition` los cambios de color (el
+estado de un servicio que se reinicia) se funden en vez de saltar:
+
+```python
+row(
+    key=s.name,  # identidad estable: las animaciones siguen a cada fila por su key
+    bg="$surface" if s.healthy else "#3A1E24",
+    transition=animate.spring(),
+    animate_layout=True,
+    enter=animate.slide(y=8),
+    exit=animate.fade(),
+)[...]
+```
+
+`animate.spring()` es un muelle físico (natural y sin duración fija); `animate.tween(0.2)` es una
+transición clásica de duración fija. Todo lo demás está en la
+[referencia](reference.md#animaciones).
+
 ## 9. Tema claro y oscuro
 
 Pasa un `Signal[Theme]` a `App` y cámbialo cuando quieras. Como todo usa tokens, la interfaz

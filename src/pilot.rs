@@ -48,7 +48,7 @@ impl Pilot {
             self.rt
                 .draw_frame(canvas, self.width, self.height, self.scale, age)?;
         // Un `on_scroll` puede haber vuelto a cambiar un `Signal`: queda otro frame.
-        Ok(animating || hover_changed || self.rt.needs_sync())
+        Ok(animating || hover_changed || self.rt.needs_sync() || self.rt.animating())
     }
 }
 

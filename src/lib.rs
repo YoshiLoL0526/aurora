@@ -7,6 +7,7 @@ mod edit;
 mod image;
 mod input;
 mod keys;
+mod motion;
 mod pilot;
 mod render;
 mod runtime;

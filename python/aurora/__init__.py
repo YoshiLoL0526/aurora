@@ -8,7 +8,7 @@ from collections.abc import Callable, Coroutine
 from concurrent.futures import Future
 from typing import Any, Literal, TypeVar
 
-from . import _core, reactive
+from . import _core, animate, reactive
 from ._core import DragEvent, KeyEvent, Pilot, ScrollEvent
 from .canvas import Canvas, Path, canvas
 from .charts import chart
@@ -48,6 +48,7 @@ __all__ = [
     "ScrollEvent",
     "Signal",
     "Theme",
+    "animate",
     "avatar",
     "badge",
     "box",

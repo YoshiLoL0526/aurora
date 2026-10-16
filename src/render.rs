@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use skia_safe::{
     BlurStyle, Canvas, ClipOp, Color, Color4f, EncodedImageFormat, FilterMode, FontMgr, FontStyle,
-    IRect, MaskFilter, MipmapMode, Paint, PaintStyle, Picture, Point, RRect, Rect, SamplingOptions,
-    Surface, TileMode,
+    IRect, MaskFilter, MipmapMode, Paint, PaintStyle, Picture, PictureRecorder, Point, RRect, Rect,
+    SamplingOptions, Surface, TileMode,
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
@@ -28,6 +28,7 @@ use taffy::{
 use crate::color::lerp;
 use crate::image::{Decoded, Fit, ImageCache, ImageError, Loaded};
 use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
+use crate::motion::{IDENTITY, Timing, Track, Vec4};
 use crate::scroll::{BAR_WIDTH, ScrollState};
 use crate::spec::{Axis, Cursor, Kind, Len, Node, Style, TextProps};
 
@@ -303,9 +304,75 @@ pub struct AnimState {
     pub focus: f32,
 }
 
+/// Animaciones declarativas en curso de un nodo (ver `motion.rs`).
+#[derive(Default)]
+struct Motion {
+    /// Propiedades con `transition`: colores (`a, r, g, b`) y escalares.
+    bg: Option<Track>,
+    border: Option<Track>,
+    opacity: Option<Track>,
+    radius: Option<Track>,
+    /// Caja que se muestra (`l, t, r, b`, en coordenadas locales de su capa)
+    /// mientras se desliza hacia la que le dio el layout (`animate_layout`).
+    layout: Option<Track>,
+    /// Efecto de entrada (`opacidad, x, y, escala`) camino de la identidad.
+    enter: Option<Track>,
+    /// Zona (absoluta y visible) en la que se pintó desplazado o transformado
+    /// en el último frame: hay que repintarla cuando se mueve o termina.
+    painted: Option<Rect>,
+}
+
+impl Motion {
+    fn is_empty(&self) -> bool {
+        !self.restyled() && !self.transformed()
+    }
+
+    /// Alguna propiedad de estilo está en transición.
+    fn restyled(&self) -> bool {
+        self.bg.is_some()
+            || self.border.is_some()
+            || self.opacity.is_some()
+            || self.radius.is_some()
+    }
+
+    /// Se pinta fuera de su caja o transformado: desplazado por el layout o
+    /// con el efecto de entrada.
+    fn transformed(&self) -> bool {
+        self.layout.is_some() || self.enter.is_some()
+    }
+}
+
+/// Nodo que salió de la vista con `exit`: se pinta una instantánea suya (como
+/// estaba al salir) mientras avanza su efecto de salida. No ocupa sitio en el
+/// layout ni recibe eventos.
+struct Ghost {
+    key: String,
+    picture: Picture,
+    /// Caja que mostraba y su tinta, en coordenadas locales de su capa.
+    rect: Rect,
+    ink: Rect,
+    /// Capa en la que estaba, con su desplazamiento y recorte al salir (por si
+    /// la capa desaparece con él).
+    layer: String,
+    offset: Point,
+    clip: Rect,
+    /// Estaba dentro de una capa superior: se pinta por encima de ellas.
+    overlay: bool,
+    /// Efecto de salida, de la identidad a los valores de `exit`.
+    track: Track,
+    painted: Option<Rect>,
+}
+
 pub struct Engine {
     fonts: FontCollection,
     anim: HashMap<String, AnimState>,
+    /// Animaciones declarativas de cada nodo, por key.
+    motion: HashMap<String, Motion>,
+    /// Nodos que salieron con `exit` y aún se están yendo.
+    ghosts: Vec<Ghost>,
+    /// Nodos transformados por una animación y sus ancestros: el pintor no
+    /// puede descartarlos por su tinta, que no cuenta con la transformación.
+    moving: HashSet<String>,
     /// Estado de cada contenedor `scroll`, por key.
     pub scroll: HashMap<String, ScrollState>,
     /// Estado de cada campo de texto, por key.
@@ -403,6 +470,9 @@ impl Engine {
         Self {
             fonts,
             anim: HashMap::new(),
+            motion: HashMap::new(),
+            ghosts: Vec::new(),
+            moving: HashSet::new(),
             scroll: HashMap::new(),
             inputs: HashMap::new(),
             images: HashMap::new(),
@@ -541,6 +611,7 @@ impl Engine {
             self.repainted = None;
             return;
         };
+        self.animate_changes(old, new);
         if !self.tree_changed
             && let Some(mut cache) = self.layout_cache.take()
         {
@@ -560,6 +631,340 @@ impl Engine {
         self.tree_changed = true;
         if let Some(repainted) = &mut self.repainted {
             repainted_nodes(old, new, repainted);
+        }
+    }
+
+    // ------------------------------------------------- animaciones declarativas
+
+    /// Lo que una reconstrucción pone en marcha antes del layout: las
+    /// transiciones de estilo (`transition`) y las salidas (`exit`). Un nodo que
+    /// vuelve mientras se iba deja de irse y entra desde donde estaba.
+    fn animate_changes(&mut self, old: &Node, new: &Node) {
+        let mut before: HashMap<&str, &Node> = HashMap::new();
+        let mut stack = vec![old];
+        while let Some(n) = stack.pop() {
+            if n.style.transition.is_some() || n.style.exit.is_some() {
+                before.insert(n.key.as_str(), n);
+            }
+            stack.extend(&n.children);
+        }
+        if before.is_empty() && self.motion.is_empty() && self.ghosts.is_empty() {
+            return;
+        }
+        let mut present = HashSet::new();
+        let mut stack = vec![new];
+        while let Some(n) = stack.pop() {
+            present.insert(n.key.as_str());
+            if let Some(timing) = n.style.transition
+                && let Some(o) = before.get(n.key.as_str())
+            {
+                self.retarget_style(o, n, timing);
+            }
+            stack.extend(&n.children);
+        }
+        let mut i = 0;
+        while i < self.ghosts.len() {
+            if !present.contains(self.ghosts[i].key.as_str()) {
+                i += 1;
+                continue;
+            }
+            let ghost = self.ghosts.remove(i);
+            self.pending = union(self.pending, ghost.painted);
+            if let Some(node) = new.find(&ghost.key)
+                && let Some(enter) = node.style.enter
+            {
+                let timing = enter.timing.or(node.style.transition).unwrap_or_default();
+                let m = self.motion.entry(ghost.key).or_default();
+                m.enter = Some(Track::new(ghost.track.value(), IDENTITY, timing));
+            }
+        }
+        // Solo el nodo más alto que sale: sus descendientes van en su instantánea.
+        let mut exits = Vec::new();
+        let mut stack = vec![old];
+        while let Some(n) = stack.pop() {
+            if n.style.exit.is_some() && !present.contains(n.key.as_str()) {
+                exits.push(n);
+            } else {
+                stack.extend(&n.children);
+            }
+        }
+        for node in exits {
+            if let Some(ghost) = self.snapshot(node) {
+                self.ghosts.push(ghost);
+            }
+        }
+        let pending = &mut self.pending;
+        self.motion.retain(|key, m| {
+            let keep = present.contains(key.as_str());
+            if !keep {
+                *pending = union(*pending, m.painted);
+            }
+            keep
+        });
+    }
+
+    /// Anima hacia el estilo nuevo las propiedades que cambiaron, desde lo que
+    /// se ve ahora (una transición a medias cambia de destino sin saltos).
+    fn retarget_style(&mut self, old: &Node, new: &Node, timing: Timing) {
+        let (a, b) = (&old.style, &new.style);
+        let scalar = |v: f32| Some([v, 0.0, 0.0, 0.0]);
+        let changes = [
+            color_pair(a.bg, b.bg),
+            color_pair(a.border_color, b.border_color),
+            (scalar(a.opacity), scalar(b.opacity)),
+            (scalar(a.radius), scalar(b.radius)),
+        ];
+        // Lo habitual es que nada cambie: entonces no hace falta ni la entrada.
+        if !self.motion.contains_key(&new.key) && changes.iter().all(|(from, to)| from == to) {
+            return;
+        }
+        let m = self.motion.entry(new.key.clone()).or_default();
+        let slots = [&mut m.bg, &mut m.border, &mut m.opacity, &mut m.radius];
+        for (slot, change) in slots.into_iter().zip(changes) {
+            match (slot.as_mut(), change) {
+                (Some(track), (_, Some(to))) => track.retarget(to, timing),
+                (None, (Some(from), Some(to))) if from != to => {
+                    *slot = Some(Track::new(from, to, timing));
+                }
+                _ => {}
+            }
+        }
+        if m.is_empty() && m.painted.is_none() {
+            self.motion.remove(&new.key);
+        }
+    }
+
+    /// Instantánea de un nodo que sale con `exit`, tal como se pintó en el
+    /// último frame (con su layout, que aún es el anterior). `None` si no se
+    /// llegó a pintar.
+    fn snapshot(&self, node: &Node) -> Option<Ghost> {
+        let exit = node.style.exit?;
+        let cache = self.layout_cache.as_ref()?;
+        let lnode = find_layout(cache.root.as_ref()?, &node.key)?;
+        // Con varias reconstrucciones antes del layout, el árbol anterior puede
+        // no ser el que está maquetado.
+        if !same_keys(node, lnode) {
+            return None;
+        }
+        let region = self.regions.iter().rev().find(|r| r.key == node.key)?;
+        let layout = cache.tree.layout(lnode.id).ok()?;
+        let origin = Point::new(
+            region.local.left - layout.location.x,
+            region.local.top - layout.location.y,
+        );
+        let (rect, ink) = match self.motion.get(&node.key) {
+            Some(m) => (shown_rect(m, region.local), motion_ink(m, region)),
+            None => (region.local, region.ink),
+        };
+        let mut recorder = PictureRecorder::new();
+        let canvas = recorder.begin_recording(ink, false);
+        let mut painter = Painter {
+            engine: self,
+            canvas,
+            tree: &cache.tree,
+            scale: if self.scale > 0.0 { self.scale } else { 1.0 },
+            damage: no_clip(),
+            overlays: Vec::new(),
+            inputs: Vec::new(),
+            moved: Point::default(),
+            cull: false,
+        };
+        painter.paint_node(node, lnode, origin, Point::default());
+        let mut i = 0;
+        while let Some(&(node, lnode, origin, shift)) = painter.overlays.get(i) {
+            painter.paint_node(node, lnode, origin, shift);
+            i += 1;
+        }
+        drop(painter);
+        let picture = recorder.finish_recording_as_picture(None)?;
+        let layer = &self.layers[region.layer];
+        let timing = exit.timing.or(node.style.transition).unwrap_or_default();
+        Some(Ghost {
+            key: node.key.clone(),
+            picture,
+            rect,
+            ink,
+            layer: layer.owner.clone(),
+            offset: layer.offset,
+            clip: region.clip,
+            overlay: self.in_overlay(region.layer),
+            track: Track::new(IDENTITY, exit.values, timing),
+            painted: None,
+        })
+    }
+
+    /// Si la capa es una capa superior o está dentro de una.
+    fn in_overlay(&self, layer: usize) -> bool {
+        std::iter::successors(Some(layer), |&l| self.layers[l].parent)
+            .any(|l| self.layers[l].unclipped)
+    }
+
+    /// Tras un layout: los nodos con `animate_layout` cuya caja cambió se
+    /// deslizan desde la que mostraban, y los que aparecen con `enter` entran
+    /// (salvo en el primer frame). Al cambiar el tamaño de la ventana el
+    /// layout salta, sin animarse. `old`: regiones y capas del layout anterior.
+    fn start_motions(
+        &mut self,
+        root: &Node,
+        old: &[HitRegion],
+        old_layers: &[Layer],
+        resized: bool,
+    ) {
+        let mut nodes: HashMap<&str, &Node> = HashMap::new();
+        let mut stack = vec![root];
+        while let Some(n) = stack.pop() {
+            if n.style.animate_layout.is_some() || n.style.enter.is_some() {
+                nodes.insert(n.key.as_str(), n);
+            }
+            stack.extend(&n.children);
+        }
+        // Un nodo que deja de tener `animate_layout` se queda en su caja.
+        for (key, m) in &mut self.motion {
+            if nodes
+                .get(key.as_str())
+                .is_none_or(|n| n.style.animate_layout.is_none())
+            {
+                m.layout = None;
+            }
+        }
+        if nodes.is_empty() {
+            return;
+        }
+        let first = old.is_empty();
+        let before: HashMap<&str, usize> = old
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| nodes.contains_key(r.key.as_str()))
+            .map(|(i, r)| (r.key.as_str(), i))
+            .collect();
+        for r in &self.regions {
+            let Some(node) = nodes.get(r.key.as_str()) else {
+                continue;
+            };
+            match before.get(r.key.as_str()) {
+                Some(&i) => {
+                    let Some(timing) = node.style.animate_layout else {
+                        continue;
+                    };
+                    let o = &old[i];
+                    let to = rect4(r.local);
+                    let other_layer = old_layers[o.layer].owner != self.layers[r.layer].owner;
+                    let m = self.motion.entry(r.key.clone()).or_default();
+                    match &mut m.layout {
+                        _ if resized || other_layer => m.layout = None,
+                        Some(track) => track.retarget(to, timing),
+                        None if o.local != r.local => {
+                            m.layout = Some(Track::new(rect4(o.local), to, timing));
+                        }
+                        None => {}
+                    }
+                }
+                None if !first => {
+                    let Some(enter) = node.style.enter else {
+                        continue;
+                    };
+                    let m = self.motion.entry(r.key.clone()).or_default();
+                    if m.enter.is_none() {
+                        let timing = enter.timing.or(node.style.transition).unwrap_or_default();
+                        m.enter = Some(Track::new(enter.values, IDENTITY, timing));
+                    }
+                }
+                None => {}
+            }
+        }
+        self.motion
+            .retain(|_, m| !m.is_empty() || m.painted.is_some());
+    }
+
+    /// Recalcula `moving`: los nodos transformados y sus ancestros.
+    fn refresh_moving(&mut self) {
+        self.moving.clear();
+        if !self.motion.values().any(Motion::transformed) {
+            return;
+        }
+        for r in &self.regions {
+            if !self.motion.get(&r.key).is_some_and(Motion::transformed) {
+                continue;
+            }
+            let mut at = Some(r);
+            while let Some(region) = at {
+                if !self.moving.insert(region.key.clone()) {
+                    break;
+                }
+                at = region.parent.map(|p| &self.regions[p]);
+            }
+        }
+    }
+
+    /// Si queda alguna animación declarativa en curso (o un nodo saliendo).
+    pub fn animating(&self) -> bool {
+        !self.ghosts.is_empty() || self.motion.values().any(|m| !m.is_empty())
+    }
+
+    /// Zona que hay que repintar por las animaciones que transforman nodos (o
+    /// los que salen): donde se pintaron en el último frame y donde se pintan
+    /// en este, hasta que terminan.
+    fn motion_damage(&mut self) -> Option<Rect> {
+        let mut damage = None;
+        let (regions, layers) = (&self.regions, &self.layers);
+        let visible =
+            |ink: Rect, r: &HitRegion| intersect(ink.with_offset(-layers[r.layer].offset), r.clip);
+        for (key, m) in &mut self.motion {
+            let now = if m.transformed() {
+                regions
+                    .iter()
+                    .rev()
+                    .find(|r| r.key == *key)
+                    .map(|r| visible(motion_ink(m, r), r))
+            } else {
+                None
+            };
+            // Mientras se transforma se repinta en cada frame: la opacidad del
+            // efecto de entrada cambia aunque su tinta no se mueva.
+            damage = union(union(damage, m.painted), now);
+            m.painted = now;
+        }
+        for i in 0..self.ghosts.len() {
+            let g = &self.ghosts[i];
+            let (offset, clip) = self.ghost_place(g);
+            let ink = effect_rect(g.ink, g.rect.center(), g.track.value());
+            let now = Some(intersect(
+                ink.with_outset((1.0, 1.0)).with_offset(-offset),
+                clip,
+            ));
+            let g = &mut self.ghosts[i];
+            damage = union(union(damage, g.painted), now);
+            g.painted = now;
+        }
+        damage
+    }
+
+    /// Desplazamiento y recorte de la capa de un nodo que sale: los actuales
+    /// si la capa sigue existiendo y, si no, los que tenía al salir.
+    fn ghost_place(&self, g: &Ghost) -> (Point, Rect) {
+        self.layers
+            .iter()
+            .find(|l| l.owner == g.layer)
+            .map_or((g.offset, g.clip), |l| (l.offset, l.clip))
+    }
+
+    /// Pinta las instantáneas de los nodos que salen: las de la capa base
+    /// (`overlay = false`, antes de las capas superiores) o las de dentro de
+    /// una capa superior (después de ellas).
+    fn paint_ghosts(&self, canvas: &Canvas, overlay: bool) {
+        for g in self.ghosts.iter().filter(|g| g.overlay == overlay) {
+            let (offset, clip) = self.ghost_place(g);
+            let v = g.track.value();
+            let count = canvas.save();
+            canvas.clip_rect(clip, ClipOp::Intersect, true);
+            canvas.translate(-offset);
+            apply_effect(canvas, g.rect, v);
+            let alpha = v[0].clamp(0.0, 1.0);
+            if alpha < 1.0 {
+                canvas.save_layer_alpha_f(None, alpha);
+            }
+            canvas.draw_picture(&g.picture, None, None);
+            canvas.restore_to_count(count);
         }
     }
 
@@ -1011,7 +1416,54 @@ impl Engine {
         for s in self.scroll.values_mut() {
             animating |= s.tick(dt);
         }
+        animating |= self.tick_motions(dt);
         animating
+    }
+
+    /// Avanza las animaciones declarativas. Las propiedades de estilo que
+    /// cambian, y los nodos que terminan de transformarse, se repintan en su
+    /// caja (`animated`); lo transformado lo repinta `motion_damage`.
+    fn tick_motions(&mut self, dt: f32) -> bool {
+        let mut animating = false;
+        for (key, m) in &mut self.motion {
+            let mut repaint = false;
+            for slot in [&mut m.bg, &mut m.border, &mut m.opacity, &mut m.radius] {
+                if let Some(track) = slot {
+                    repaint |= track.step(dt);
+                    if track.done() {
+                        *slot = None;
+                    } else {
+                        animating = true;
+                    }
+                }
+            }
+            for slot in [&mut m.layout, &mut m.enter] {
+                if let Some(track) = slot {
+                    track.step(dt);
+                    if track.done() {
+                        *slot = None;
+                        repaint = true;
+                    } else {
+                        animating = true;
+                    }
+                }
+            }
+            if repaint {
+                self.animated.push(key.clone());
+            }
+        }
+        self.motion
+            .retain(|_, m| !m.is_empty() || m.painted.is_some());
+        let pending = &mut self.pending;
+        self.ghosts.retain_mut(|g| {
+            g.track.step(dt);
+            if g.track.done() {
+                *pending = union(*pending, g.painted);
+            }
+            !g.track.done()
+        });
+        self.refresh_moving();
+        animating || !self.ghosts.is_empty()
     }
 
     // ---------------------------------------------------------------- pintura
@@ -1053,6 +1505,8 @@ impl Engine {
             let lroot = cache.root.as_mut().expect("layout calculado");
             compute_ink(&cache.tree, root, lroot, Point::default());
             let old = self.geometry(&cache.tree, root, lroot);
+            self.start_motions(root, &old.0, &old.1, resized);
+            self.refresh_moving();
             match self.repainted.replace(HashSet::new()) {
                 Some(repainted) if !resized && !self.full => previous = Some((old, repainted)),
                 _ => self.full = true,
@@ -1109,6 +1563,7 @@ impl Engine {
             }
         }
         damage = union(damage, self.inputs_damage());
+        damage = union(damage, self.motion_damage());
         let tip = self.tooltip(root, width, height);
         let tip_paint = tip.as_ref().map(|t| t.paint.clone());
         if tip_paint != self.tip_painted {
@@ -1231,16 +1686,23 @@ impl Engine {
             damage: cull,
             overlays: Vec::new(),
             inputs: Vec::new(),
+            moved: Point::default(),
+            cull: true,
         };
         painter.paint(frame.root, frame.lroot, Point::default(), Point::default());
+        // Los nodos que salen se pintan encima de la capa en la que estaban.
+        self.paint_ghosts(canvas, false);
         // Las capas superiores se pintan al final, en orden de aparición. Una capa
         // anidada dentro de otra se encola al pintar la primera y queda por encima.
-        // Escapan del recorte de los `scroll` que las contienen.
+        // Escapan del recorte de los `scroll` que las contienen (y de las
+        // animaciones de sus ancestros).
         let mut i = 0;
         while let Some(&(node, lnode, origin, shift)) = painter.overlays.get(i) {
+            (painter.moved, painter.cull) = (Point::default(), true);
             painter.paint_node(node, lnode, origin, shift);
             i += 1;
         }
+        self.paint_ghosts(canvas, true);
         // El tooltip va por encima de todo, capas incluidas, y no recibe eventos.
         if let Some(tip) = frame.tip {
             paint_tooltip(canvas, tip);
@@ -1685,6 +2147,129 @@ fn compute_ink(tree: &TaffyTree<Leaf>, node: &Node, lnode: &mut LayoutNode, orig
     lnode.sticky = sticky;
 }
 
+// ------------------------------------------------------ animaciones declarativas
+
+fn color4(c: Color) -> Vec4 {
+    [c.a() as f32, c.r() as f32, c.g() as f32, c.b() as f32]
+}
+
+fn vec_color(v: Vec4) -> Color {
+    let byte = |x: f32| x.round().clamp(0.0, 255.0) as u8;
+    Color::from_argb(byte(v[0]), byte(v[1]), byte(v[2]), byte(v[3]))
+}
+
+/// Origen y destino de la transición de un color. Aparecer o desaparecer es
+/// ir desde, o hacia, el mismo color transparente.
+fn color_pair(a: Option<Color>, b: Option<Color>) -> (Option<Vec4>, Option<Vec4>) {
+    match (a, b) {
+        (Some(a), Some(b)) => (Some(color4(a)), Some(color4(b))),
+        (Some(a), None) => (Some(color4(a)), Some(color4(a.with_a(0)))),
+        (None, Some(b)) => (Some(color4(b.with_a(0))), Some(color4(b))),
+        (None, None) => (None, None),
+    }
+}
+
+fn rect4(r: Rect) -> Vec4 {
+    [r.left, r.top, r.right, r.bottom]
+}
+
+/// Estilo con los valores que muestran sus transiciones en curso.
+fn animated_style(style: &Style, m: &Motion) -> Style {
+    let mut s = style.clone();
+    if let Some(t) = &m.bg {
+        s.bg = Some(vec_color(t.value()));
+    }
+    if let Some(t) = &m.border {
+        s.border_color = Some(vec_color(t.value()));
+    }
+    if let Some(t) = &m.opacity {
+        s.opacity = t.value()[0].clamp(0.0, 1.0);
+    }
+    if let Some(t) = &m.radius {
+        s.radius = t.value()[0].max(0.0);
+    }
+    s
+}
+
+/// Caja que muestra un nodo cuya caja final es `local` (coordenadas locales
+/// de su capa): la de su animación de layout, si está en curso.
+fn shown_rect(m: &Motion, local: Rect) -> Rect {
+    match &m.layout {
+        Some(t) => {
+            let [l, t, r, b] = t.value();
+            Rect::new(l, t, r.max(l), b.max(t))
+        }
+        None => local,
+    }
+}
+
+/// Tinta (coordenadas locales de su capa) de un nodo transformado por sus
+/// animaciones: desplazada con su caja, ampliada a la caja que se muestra (el
+/// fondo se dibuja con ella) y con el efecto de entrada aplicado.
+fn motion_ink(m: &Motion, r: &HitRegion) -> Rect {
+    let shown = shown_rect(m, r.local);
+    let mut ink = r
+        .ink
+        .with_offset((shown.left - r.local.left, shown.top - r.local.top));
+    if m.layout.is_some() {
+        let margin = [
+            r.local.left - r.ink.left,
+            r.local.top - r.ink.top,
+            r.ink.right - r.local.right,
+            r.ink.bottom - r.local.bottom,
+        ]
+        .into_iter()
+        .fold(0.0, f32::max);
+        ink = join(ink, shown.with_outset((margin, margin)));
+    }
+    if let Some(t) = &m.enter {
+        ink = effect_rect(ink, shown.center(), t.value());
+    }
+    ink.with_outset((1.0, 1.0))
+}
+
+/// Rectángulo transformado por un efecto (`opacidad, x, y, escala`): escalado
+/// alrededor de `center` y desplazado.
+fn effect_rect(r: Rect, center: Point, v: Vec4) -> Rect {
+    let (c, k) = (center, v[3]);
+    Rect::new(
+        c.x + (r.left - c.x) * k,
+        c.y + (r.top - c.y) * k,
+        c.x + (r.right - c.x) * k,
+        c.y + (r.bottom - c.y) * k,
+    )
+    .with_offset((v[1], v[2]))
+}
+
+/// Aplica al lienzo el desplazamiento y la escala (alrededor del centro de
+/// `rect`) de un efecto. La opacidad la aplica quien llama.
+fn apply_effect(canvas: &Canvas, rect: Rect, v: Vec4) {
+    canvas.translate((v[1], v[2]));
+    if v[3] != 1.0 {
+        let c = rect.center();
+        canvas.translate(c).scale((v[3], v[3])).translate(-c);
+    }
+}
+
+/// Nodo de layout con esa key.
+fn find_layout<'a>(lnode: &'a LayoutNode, key: &str) -> Option<&'a LayoutNode> {
+    if lnode.key == key {
+        return Some(lnode);
+    }
+    lnode.children.iter().find_map(|c| find_layout(c, key))
+}
+
+/// Si el árbol de layout tiene la misma forma (por keys) que el subárbol.
+fn same_keys(node: &Node, lnode: &LayoutNode) -> bool {
+    node.key == lnode.key
+        && node.children.len() == lnode.children.len()
+        && node
+            .children
+            .iter()
+            .zip(&lnode.children)
+            .all(|(c, l)| same_keys(c, l))
+}
+
 fn region_key(regions: &[HitRegion], i: Option<usize>) -> Option<&str> {
     i.map(|i| regions[i].key.as_str())
 }
@@ -1922,6 +2507,13 @@ struct Painter<'a> {
     overlays: Vec<Deferred<'a>>,
     /// Geometría de cada campo pintado: key, desplazamiento horizontal y frame.
     inputs: Vec<(String, f32, InputFrame)>,
+    /// Desplazamiento que ya aplicaron al lienzo las animaciones de layout de
+    /// los ancestros (un hijo que también se anima solo añade la diferencia).
+    moved: Point,
+    /// Si se descartan los subárboles cuya tinta queda fuera de la zona a
+    /// repintar. Dentro de un nodo transformado no se puede: su tinta no cuenta
+    /// con la transformación.
+    cull: bool,
 }
 
 impl<'a> Painter<'a> {
@@ -1938,7 +2530,11 @@ impl<'a> Painter<'a> {
     /// Pinta el nodo y sus hijos. Una capa aplazada se pinta en coordenadas
     /// absolutas: no hereda la opacidad ni la escala de sus ancestros.
     fn paint_node(&mut self, node: &'a Node, lnode: &'a LayoutNode, origin: Point, shift: Point) {
-        if !lnode.sticky && !overlaps(lnode.ink.with_offset(-shift), self.damage) {
+        if self.cull
+            && !lnode.sticky
+            && !overlaps(lnode.ink.with_offset(-shift), self.damage)
+            && !self.engine.moving.contains(&node.key)
+        {
             return;
         }
         let canvas = self.canvas;
@@ -1950,20 +2546,51 @@ impl<'a> Painter<'a> {
             layout.size.height,
         );
 
-        let s = &node.style;
+        let motion = self.engine.motion.get(&node.key);
+        let animated;
+        let s = match motion.filter(|m| m.restyled()) {
+            Some(m) => {
+                animated = animated_style(&node.style, m);
+                &animated
+            }
+            None => &node.style,
+        };
         let st = self.engine.anim.get(&node.key).copied().unwrap_or_default();
 
         let save_count = canvas.save();
-        if s.opacity < 1.0 {
-            canvas.save_layer_alpha_f(None, s.opacity);
+        let (outer_moved, outer_cull) = (self.moved, self.cull);
+        // Caja que se dibuja (fondo, borde, sombra, anillo): la del layout o,
+        // mientras se desliza hacia ella, la que se muestra.
+        let mut deco = rect;
+        let mut alpha = s.opacity;
+        if let Some(m) = motion {
+            if m.layout.is_some() {
+                // Las cajas animadas van en coordenadas locales de la capa.
+                let local = rect.with_offset(shift);
+                let shown = shown_rect(m, local);
+                let d = Point::new(shown.left - local.left, shown.top - local.top);
+                canvas.translate(d - self.moved);
+                self.moved = d;
+                deco = Rect::from_xywh(rect.left, rect.top, shown.width(), shown.height());
+                self.cull = false;
+            }
+            if let Some(track) = &m.enter {
+                let v = track.value();
+                alpha *= v[0].clamp(0.0, 1.0);
+                apply_effect(canvas, deco, v);
+                self.cull = false;
+            }
+        }
+        if alpha < 1.0 {
+            canvas.save_layer_alpha_f(None, alpha);
         }
         if s.press_scale != 1.0 && st.press > 0.0 {
             let k = 1.0 + (s.press_scale - 1.0) * st.press;
-            let c = rect.center();
+            let c = deco.center();
             canvas.translate(c).scale((k, k)).translate(-c);
         }
 
-        let rrect = RRect::new_rect_xy(rect, s.radius, s.radius);
+        let rrect = RRect::new_rect_xy(deco, s.radius, s.radius);
 
         if let Some(sh) = s.shadow {
             let mut p = Paint::default();
@@ -1974,7 +2601,7 @@ impl<'a> Painter<'a> {
             canvas.draw_rrect(rrect.with_offset((sh.dx, sh.dy)), &p);
         }
 
-        if let Some(paint) = background_paint(s, rect, st) {
+        if let Some(paint) = background_paint(s, deco, st) {
             canvas.draw_rrect(rrect, &paint);
         }
 
@@ -2015,7 +2642,7 @@ impl<'a> Painter<'a> {
         {
             let half = s.border_width / 2.0;
             let inner = RRect::new_rect_xy(
-                rect.with_inset((half, half)),
+                deco.with_inset((half, half)),
                 s.radius - half,
                 s.radius - half,
             );
@@ -2071,13 +2698,14 @@ impl<'a> Painter<'a> {
         if st.focus > 0.0 {
             paint_focus_ring(
                 canvas,
-                rect,
+                deco,
                 s.radius,
                 node.text_props.focus_color,
                 st.focus,
             );
         }
         canvas.restore_to_count(save_count);
+        (self.moved, self.cull) = (outer_moved, outer_cull);
     }
 }
 

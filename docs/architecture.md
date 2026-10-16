@@ -266,6 +266,24 @@ Las transiciones de hover y pressed se interpolan en el núcleo con suavizado ex
 (`bg_hover`, `bg_pressed`, `press_scale`). Así una animación nunca compite con tu código Python
 por el GIL ni depende de su velocidad.
 
+Las **animaciones declarativas** (`transition`, `animate_layout`, `enter`, `exit`) siguen la misma
+idea. `motion.rs` tiene las curvas (muelle analítico o easing de CSS) y las pistas (`Track`: un
+valor de cuatro componentes que va de un origen a un destino y que, al cambiar de destino, parte
+del valor actual). El `Engine` guarda un `Motion` por key y las pone en marcha en dos momentos:
+
+- **Al reconstruir** (`restyle` → `animate_changes`): compara el estilo anterior y el nuevo de los
+  nodos con `transition`, y de cada nodo con `exit` que desaparece graba una **instantánea**
+  (`Picture`, con el layout anterior, que aún es el vigente) que se pinta encima de su capa
+  mientras dura la salida (`Ghost`). No toca el layout: los demás ocupan su hueco enseguida.
+- **Tras un layout** (`update` → `start_motions`): compara las regiones nuevas con las anteriores.
+  Un nodo con `animate_layout` cuya caja local cambió se pinta desplazado desde la caja que
+  mostraba (sus hijos se trasladan con él; un hijo animado solo añade la diferencia), y uno que
+  aparece con `enter` arranca desde su efecto.
+
+Los nodos transformados no pueden descartarse por su tinta (que es la de su caja final): ellos y
+sus ancestros van en `moving` y dentro de ellos el pintor no recorta; `motion_damage` repinta en
+cada frame la zona donde se pintaron y donde se pintan. El hit-testing usa siempre la caja final.
+
 ### Hit-testing con burbujeo y barreras
 
 Tras cada layout se registra una `HitRegion` por nodo (rectángulo e índice del padre), en orden

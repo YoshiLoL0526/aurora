@@ -380,6 +380,12 @@ impl Runtime {
         self.engine.tick(dt)
     }
 
+    /// Si hay animaciones declarativas en curso. Las de layout y entrada
+    /// empiezan al pintar (tras el layout), después de `tick`.
+    pub fn animating(&self) -> bool {
+        self.engine.animating()
+    }
+
     /// Avanza el reloj real (parpadeo del cursor), independiente de las transiciones.
     pub fn advance_clock(&mut self, elapsed: f32) {
         if let Some(state) = self.focused_input() {

@@ -12,6 +12,7 @@ use skia_safe::Color;
 
 use crate::color::parse_color;
 use crate::image::{Fit, Source};
+use crate::motion::{self, Effect, Timing};
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub struct Edges {
@@ -155,6 +156,15 @@ pub struct Style {
     // Imágenes
     pub src: Option<Source>,
     pub fit: Fit,
+    // Animaciones declarativas (ver `motion.rs`)
+    /// Curva con la que se animan los cambios de `bg`, `border_color`,
+    /// `opacity` y `radius` entre reconstrucciones.
+    pub transition: Option<Timing>,
+    /// Curva con la que el nodo se desliza a su nueva caja cuando el layout la cambia.
+    pub animate_layout: Option<Timing>,
+    /// Efecto con el que aparece y con el que desaparece de la vista.
+    pub enter: Option<Effect>,
+    pub exit: Option<Effect>,
 }
 
 /// Cursor del ratón. Lo eligen el runtime (según lo que hay bajo el puntero)
@@ -392,6 +402,9 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         }
         None => None,
     };
+    let transition = get(d, "transition")?
+        .map(|v| motion::parse_timing(&v))
+        .transpose()?;
     Ok(Style {
         row: str_of(d, "direction")?.as_deref() == Some("row"),
         gap: f32_of(d, "gap")?.unwrap_or(0.0),
@@ -479,6 +492,17 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
                 ))
             })?,
         },
+        animate_layout: match get(d, "animate_layout")? {
+            Some(v) => motion::parse_layout(&v, transition)?,
+            None => None,
+        },
+        enter: get(d, "enter")?
+            .map(|v| motion::parse_effect(&v, "enter"))
+            .transpose()?,
+        exit: get(d, "exit")?
+            .map(|v| motion::parse_effect(&v, "exit"))
+            .transpose()?,
+        transition,
     })
 }
 

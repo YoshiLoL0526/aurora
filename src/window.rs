@@ -113,6 +113,9 @@ impl App {
         if hover_changed {
             self.update_cursor();
         }
+        // Un layout puede haber puesto en marcha animaciones al pintar.
+        let animating = animating || self.rt.animating();
+        self.animating = animating;
         if animating || hover_changed {
             window.request_redraw();
         }

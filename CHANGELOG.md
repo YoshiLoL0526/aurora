@@ -10,6 +10,23 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **Animaciones declarativas** (`aurora.animate`), interpoladas en Rust sin llamar a Python en
+  cada frame. Cuatro propiedades de estilo nuevas:
+  - `transition=animate.spring()` o `animate.tween(0.2)`: los cambios de `bg`, `border_color`,
+    `opacity` y `radius` entre reconstrucciones se animan desde lo que se ve (cambiar de destino
+    a medias no da saltos).
+  - `animate_layout=True`: el elemento se desliza a su nueva caja cuando el layout lo mueve
+    (otros que aparecen, se van o se reordenan); fondo, borde y sombra cambian de tamaño con él.
+  - `enter=` y `exit=` con los efectos `animate.fade()`, `animate.slide(x, y)`,
+    `animate.zoom(scale)` y `animate.effect(...)` (opacidad, desplazamiento y escala). Lo que
+    sale se pinta como una instantánea que ya no ocupa sitio ni recibe eventos; si vuelve antes
+    de terminar, entra desde donde estaba. Las entradas no se reproducen en el primer frame.
+  - Curvas: muelle físico (`stiffness`, `damping`, `mass`) o interpolación con easing de CSS,
+    ambas con `delay` para escalonar.
+
+  Las animaciones se repintan por zonas como el resto (cada frame coincide con un repintado
+  completo) y `pilot.frame()`/`pilot.settle()` las esperan, salidas incluidas.
+
 - **`table(rows, columns, *, key, ...)`**: tabla de datos con cabecera fija, **ordenación** (clic
   en la cabecera: ascendente → descendente → original; vacíos al final, orden estable y
   memorizado), **columnas redimensionables** (arrastrando el borde de la cabecera, con

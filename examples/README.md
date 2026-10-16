@@ -10,6 +10,7 @@ sin abrir ventana, útil para ver el resultado en un servidor o en CI.
 | [`canvas.py`](canvas.py) | Dibujo inmediato con `canvas`: gráfico de líneas con rejilla y un indicador circular que se redibujan al cambiar los datos. | `uv run examples/canvas.py` |
 | [`charts.py`](charts.py) | Gráficos nativos con `chart`: línea de dos series (polars), área que se actualiza con datos mutados en sitio, barras por categoría, dispersión y una señal de un millón de puntos con zoom y pan. | `uv run examples/charts.py` |
 | [`table.py`](table.py) | Tabla de 100 000 clientes con `table`: ordenación por columna, columnas redimensionables arrastrando el borde de la cabecera, filas virtualizadas, celdas con `badge`, búsqueda y selección de fila. | `uv run examples/table.py` |
+| [`animate.py`](animate.py) | Animaciones declarativas: lista de tareas que se reordena, filas que entran, salen y cambian de color con suavidad, y un modal con entrada y salida. | `uv run examples/animate.py` |
 | [`brand.py`](brand.py) | Genera el banner y el logo del README con la propia librería. | `uv run examples/brand.py` |
 
 ```bash
