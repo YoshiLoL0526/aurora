@@ -53,6 +53,12 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
     ~1,5 ms y un frame ocioso de ~31 ms a menos de 1 ms.
   - Un `on_scroll` que reconstruye la vista (listas virtuales) ya no obliga a pintar dos veces el
     mismo frame.
+  - Un layout ya no repinta la ventana entera: se comparan por key las regiones nuevas con las
+    anteriores y solo se repintan los nodos que cambiaron de geometría, de aspecto o de orden de
+    pintura, más los que aparecen o desaparecen. Al escribir en el formulario de 500 filas, pintar
+    pasa de ~0,42 ms a ~0,16 ms. Un cambio de tamaño de la ventana, un cambio que afecta a más de
+    la mitad de los nodos o una zona dañada de más del 70 % de la ventana se siguen pintando
+    enteros.
 - **Incompatible:** un elemento sin `key` recibe la de su padre seguida de su posición
   (`"fila-7/0"`), no la ruta completa desde la raíz. Los hijos de un elemento con key conservan su
   identidad (hover, foco, scroll) aunque el padre cambie de sitio. Un test que buscara un nodo por

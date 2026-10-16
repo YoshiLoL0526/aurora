@@ -171,6 +171,10 @@ pub struct LayoutNode {
     /// desborda…), en coordenadas locales de su capa. Las capas superiores que
     /// contiene no cuentan: se pintan aparte.
     ink: Rect,
+    /// Lo que pinta el propio nodo, sin sus hijos (o todo el subárbol de un nodo
+    /// que se escala al pulsarlo, si está dentro de él): lo que hay que repintar
+    /// si cambia de geometría o de aspecto.
+    own: Rect,
     /// El pintor no puede saltarse el subárbol aunque quede fuera de la zona a
     /// repintar: contiene capas superiores (se encolan al recorrerlo) o campos de
     /// texto (su geometría se recalcula al pintarlos).
@@ -185,6 +189,9 @@ pub struct LayoutNode {
 /// que tendrían con todos los `scroll` en su origen): desplazar no rehace el
 /// layout ni las regiones, solo recoloca las capas.
 struct Layer {
+    /// Identidad de la capa entre layouts: vacía la raíz, `scroll:<key>` o
+    /// `overlay:<key>`.
+    owner: String,
     parent: Option<usize>,
     scroll: Option<ScrollLayer>,
     /// Capa superior: no la recortan los `scroll` que la contienen.
@@ -215,6 +222,8 @@ struct LayerPaint {
     extent: Rect,
     /// Visibilidad y arrastre de la barra.
     bar: (f32, bool),
+    /// Lo que se puede desplazar (el tamaño de la barra depende de ello).
+    max: Point,
 }
 
 /// Tooltip pintado en el último frame.
@@ -236,6 +245,8 @@ pub struct HitRegion {
     /// Rectángulo y tinta del subárbol en coordenadas locales de su capa.
     local: Rect,
     ink: Rect,
+    /// Lo que pinta el propio nodo (`LayoutNode::own`), en coordenadas locales.
+    own: Rect,
     layer: usize,
     pub interactive: bool,
     pub capture: bool,
@@ -324,6 +335,10 @@ pub struct Engine {
     scale: f32,
     /// Nodos que cambiaron solo de aspecto al reconstruir (fase de estilo).
     restyled: Vec<String>,
+    /// Nodos que cambiaron de aspecto en reconstrucciones que sí rehacen el
+    /// layout, desde el último layout. `None`: no se sabe (primer frame, una
+    /// imagen que cambió…) y el próximo layout lo repinta todo.
+    repainted: Option<HashSet<String>>,
     /// Nodos cuya transición (hover, pressed, foco) avanzó desde el último frame.
     animated: Vec<String>,
     /// Huella visual de cada campo de texto en el último frame (cursor, selección…).
@@ -400,6 +415,7 @@ impl Engine {
             layers: Vec::new(),
             scale: 0.0,
             restyled: Vec::new(),
+            repainted: None,
             animated: Vec::new(),
             inputs_painted: HashMap::new(),
             tip_painted: None,
@@ -507,25 +523,35 @@ impl Engine {
     /// layout y las regiones siguen valiendo y solo se repintan los nodos que
     /// cambiaron de aspecto; un texto que solo cambia de color se vuelve a
     /// "shapear" en su nodo, sin medirlo de nuevo.
+    ///
+    /// Si hay que rehacer el layout, se anotan además los nodos que cambiaron
+    /// de aspecto (`repainted`): tras el layout, `update` repinta solo esos y
+    /// los que cambiaron de geometría.
     pub fn restyle(&mut self, old: Option<&Node>, new: &Node) {
-        let (Some(old), false) = (old, self.tree_changed) else {
+        let Some(old) = old else {
             self.tree_changed = true;
+            self.repainted = None;
             return;
         };
-        let Some(mut cache) = self.layout_cache.take() else {
-            self.tree_changed = true;
-            return;
-        };
-        let mut changed = Vec::new();
-        let relayout = match &cache.root {
-            Some(lroot) => self.restyle_node(&mut cache.tree, old, new, lroot, &mut changed),
-            None => true,
-        };
-        self.layout_cache = Some(cache);
-        if relayout {
-            self.tree_changed = true;
-        } else {
-            self.restyled.extend(changed);
+        if !self.tree_changed
+            && let Some(mut cache) = self.layout_cache.take()
+        {
+            let mut changed = Vec::new();
+            let relayout = match &cache.root {
+                Some(lroot) => self.restyle_node(&mut cache.tree, old, new, lroot, &mut changed),
+                None => true,
+            };
+            self.layout_cache = Some(cache);
+            if !relayout {
+                self.restyled.extend(changed);
+                return;
+            }
+        }
+        // Con varias reconstrucciones antes del layout se acumula lo de cada una:
+        // un nodo distinto del último maquetado lo es en alguno de los pasos.
+        self.tree_changed = true;
+        if let Some(repainted) = &mut self.repainted {
+            repainted_nodes(old, new, repainted);
         }
     }
 
@@ -635,6 +661,8 @@ impl Engine {
                 .all(|(k, v)| self.images.get(k).is_some_and(|old| Rc::ptr_eq(old, v)));
         if !same {
             self.tree_changed = true;
+            // El archivo pudo cambiar sin que cambie el nodo: se repinta todo.
+            self.repainted = None;
         }
         self.images = images;
         Ok(())
@@ -788,6 +816,7 @@ impl Engine {
             key: node.key.clone(),
             children,
             ink: Rect::default(),
+            own: Rect::default(),
             sticky: false,
         }
     }
@@ -932,8 +961,10 @@ impl Engine {
     /// reconstruir, en `restyle`):
     ///
     /// 1. **Layout**, si cambió el árbol, el tamaño o el texto de los campos.
-    ///    Tras él se recalcula la geometría (regiones, capas y tinta) y el
-    ///    próximo `paint` repinta todo.
+    ///    Tras él se recalcula la geometría (regiones, capas y tinta) y se
+    ///    compara por key con la anterior: queda pendiente de repintar la tinta
+    ///    de los nodos que cambiaron (`relayout_damage`). Se repinta todo si
+    ///    cambió el tamaño o no se sabe qué nodos cambiaron de aspecto.
     /// 2. **Composición**: cada capa se recoloca según el desplazamiento de su
     ///    `scroll`; las regiones se mueven sin recalcularse y la zona de las
     ///    capas que se movieron queda pendiente de repintar.
@@ -950,7 +981,11 @@ impl Engine {
             && cache.width == width
             && cache.height == height
             && cache.inputs == inputs;
+        // Geometría anterior y nodos que cambiaron de aspecto, para comparar
+        // tras un layout incremental.
+        let mut previous = None;
         if !reuse {
+            let resized = cache.width != width || cache.height != height;
             self.update_layout(&mut cache, root, width, height);
             // Lo que no se reutilizó ya no corresponde a ningún nodo.
             self.recycled.borrow_mut().clear();
@@ -958,8 +993,11 @@ impl Engine {
             self.tree_changed = false;
             let lroot = cache.root.as_mut().expect("layout calculado");
             compute_ink(&cache.tree, root, lroot, Point::default());
-            self.geometry(&cache.tree, root, lroot);
-            self.full = true;
+            let old = self.geometry(&cache.tree, root, lroot);
+            match self.repainted.replace(HashSet::new()) {
+                Some(repainted) if !resized && !self.full => previous = Some((old, repainted)),
+                _ => self.full = true,
+            }
         }
         if scale != self.scale {
             self.scale = scale;
@@ -967,9 +1005,19 @@ impl Engine {
         }
         self.layout_cache = Some(cache);
         self.layout_cached = reuse;
-        self.layout_time = start.elapsed();
-        let moved = self.place_layers(scale, self.full);
+        // Tras un layout las regiones son nuevas: hay que colocarlas aunque no
+        // se mueva ninguna capa.
+        let moved = self.place_layers(scale, self.full || previous.is_some());
         self.pending = union(self.pending, moved);
+        if let Some(((regions, layers), repainted)) = previous
+            && !self.full
+        {
+            match self.relayout_damage(&regions, &layers, &repainted) {
+                Some(damage) => self.pending = union(self.pending, damage),
+                None => self.full = true,
+            }
+        }
+        self.layout_time = start.elapsed();
     }
 
     /// Fase de pintura: repinta solo la zona dañada (lo pendiente de `update`,
@@ -1010,10 +1058,14 @@ impl Engine {
             }
             self.tip_painted = tip_paint;
         }
-        if full {
+        let mut damage = damage.map(|d| intersect(d, screen));
+        // Si queda poco sin dañar, pintar directamente sale más barato que la
+        // superficie aparte de `paint_partial` y la copia.
+        let area = |r: Rect| r.width().max(0.0) * r.height().max(0.0);
+        if full || damage.is_some_and(|d| area(d) > FULL_PAINT_RATIO * area(screen)) {
             damage = Some(screen);
         }
-        let damage = damage.and_then(|d| pixel_align(intersect(d, screen), scale));
+        let damage = damage.and_then(|d| pixel_align(d, scale));
         self.damage = damage;
         let clip = damage?;
         // Sin `update` previo no hay nada que pintar.
@@ -1140,19 +1192,27 @@ impl Engine {
 
     /// Recalcula las regiones de hit-testing y las capas tras un layout. Las
     /// regiones quedan en orden de pintura: las capas superiores, al final.
-    fn geometry(&mut self, tree: &TaffyTree<Leaf>, root: &Node, lroot: &LayoutNode) {
+    /// Devuelve las regiones y capas anteriores; las capas que siguen existiendo
+    /// conservan lo que se pintó de ellas.
+    fn geometry(
+        &mut self,
+        tree: &TaffyTree<Leaf>,
+        root: &Node,
+        lroot: &LayoutNode,
+    ) -> (Vec<HitRegion>, Vec<Layer>) {
         let mut g = Geometry {
             tree,
             regions: Vec::new(),
-            layers: vec![Layer::new(None, None, false, no_clip())],
+            layers: vec![Layer::new(String::new(), None, None, false, no_clip())],
             overlays: Vec::new(),
         };
         g.collect(root, lroot, Point::default(), None, 0);
         let mut i = 0;
         while let Some(&(node, lnode, origin, parent, layer)) = g.overlays.get(i) {
             let own = g.layers.len();
+            let owner = format!("overlay:{}", node.key);
             g.layers
-                .push(Layer::new(Some(layer), None, true, lnode.ink));
+                .push(Layer::new(owner, Some(layer), None, true, lnode.ink));
             g.collect_node(node, lnode, origin, parent, own);
             i += 1;
         }
@@ -1162,8 +1222,88 @@ impl Engine {
             .filter_map(|l| l.scroll.as_ref().map(|s| s.key.as_str()))
             .collect();
         self.scroll.retain(|k, _| alive.contains(k.as_str()));
-        self.regions = g.regions;
-        self.layers = g.layers;
+        let painted: HashMap<&str, LayerPaint> = self
+            .layers
+            .iter()
+            .filter_map(|l| Some((l.owner.as_str(), l.painted?)))
+            .collect();
+        for layer in &mut g.layers {
+            layer.painted = painted.get(layer.owner.as_str()).copied();
+        }
+        drop(painted);
+        (
+            std::mem::replace(&mut self.regions, g.regions),
+            std::mem::replace(&mut self.layers, g.layers),
+        )
+    }
+
+    /// Zona dañada por un layout incremental: la tinta propia, vieja y nueva,
+    /// de los nodos que cambiaron de geometría, de capa o de aspecto, y la de
+    /// los que aparecen o desaparecen (lo que cambia en sus hijos lo cubren las
+    /// regiones de estos). Si un nodo cambia de padre o de hermano anterior,
+    /// puede quedar por encima o por debajo de otro: se repinta la tinta de todo
+    /// su subárbol. Las capas que se movieron ya las repinta `place_layers`.
+    /// Devuelve `None` si cambió tanto que sale más a cuenta repintarlo todo (o
+    /// si había keys repetidas y no se pueden emparejar los nodos anteriores).
+    fn relayout_damage(
+        &self,
+        old: &[HitRegion],
+        old_layers: &[Layer],
+        repainted: &HashSet<String>,
+    ) -> Option<Option<Rect>> {
+        let visible = |rect: Rect, r: &HitRegion, layers: &[Layer]| {
+            intersect(rect.with_offset(-layers[r.layer].offset), r.clip)
+        };
+        let mut before: HashMap<&str, usize> = HashMap::with_capacity(old.len());
+        for (i, r) in old.iter().enumerate() {
+            if before.insert(r.key.as_str(), i).is_some() {
+                return None;
+            }
+        }
+        let (old_order, new_order) = (sibling_order(old), sibling_order(&self.regions));
+        // Más de la mitad de los nodos: repintar todo cuesta lo mismo y no
+        // hace falta seguir comparando.
+        let limit = (old.len() + self.regions.len()) / 2;
+        let mut changed = 0;
+        let mut damage = None;
+        for (j, r) in self.regions.iter().enumerate() {
+            let now = visible(r.own, r, &self.layers);
+            // Una key repetida en el árbol nuevo empareja solo su primera
+            // aparición; las demás cuentan como nuevas.
+            let Some(i) = before.remove(r.key.as_str()) else {
+                changed += 1;
+                damage = union(damage, Some(now));
+                continue;
+            };
+            let o = &old[i];
+            let then = visible(o.own, o, old_layers);
+            if region_key(old, o.parent) != region_key(&self.regions, r.parent)
+                || region_key(old, old_order[i]) != region_key(&self.regions, new_order[j])
+            {
+                changed += 1;
+                damage = union(damage, Some(visible(o.ink, o, old_layers)));
+                damage = union(damage, Some(visible(r.ink, r, &self.layers)));
+            } else if o.local != r.local
+                || o.own != r.own
+                || then != now
+                || old_layers[o.layer].owner != self.layers[r.layer].owner
+                || repainted.contains(&r.key)
+            {
+                changed += 1;
+                damage = union(damage, Some(then));
+                damage = union(damage, Some(now));
+            }
+            if changed > limit {
+                return None;
+            }
+        }
+        for &i in before.values() {
+            damage = union(damage, Some(visible(old[i].own, &old[i], old_layers)));
+        }
+        if changed + before.len() > limit {
+            return None;
+        }
+        Some(damage)
     }
 
     /// Composición: coloca cada capa según el desplazamiento de su `scroll` (y
@@ -1186,18 +1326,21 @@ impl Engine {
             };
             let mut own = Point::default();
             let mut bar = (0.0, false);
+            let mut max = Point::default();
             if let Some(s) = &layer.scroll {
                 let viewport = s.viewport.with_offset(-base);
                 let state = self.scroll.entry(s.key.clone()).or_default();
                 state.set_limits(s.axis, s.max, viewport);
                 own = snap(state.offset, scale);
                 bar = (state.bar, state.dragging);
+                max = state.max;
                 clip = intersect(clip, viewport);
             }
             let painted = LayerPaint {
                 offset: base + own,
                 extent: layer.extent.with_offset(-base),
                 bar,
+                max,
             };
             if layer.painted != Some(painted) {
                 damage = union(damage, Some(painted.extent));
@@ -1320,6 +1463,10 @@ struct Frame<'a> {
     tip: Option<&'a Tooltip>,
 }
 
+/// Fracción de la ventana a partir de la cual una zona dañada se repinta
+/// entera, sin superficie aparte.
+const FULL_PAINT_RATIO: f32 = 0.7;
+
 /// Margen (píxeles lógicos) con el que se pinta una zona dañada antes de
 /// copiarla: el antialiasing de una figura cortada por el recorte solo cambia
 /// cerca del corte.
@@ -1357,12 +1504,14 @@ fn paint_tooltip(canvas: &Canvas, tip: &Tooltip) {
 
 impl Layer {
     fn new(
+        owner: String,
         parent: Option<usize>,
         scroll: Option<ScrollLayer>,
         unclipped: bool,
         extent: Rect,
     ) -> Self {
         Self {
+            owner,
             parent,
             scroll,
             unclipped,
@@ -1447,6 +1596,7 @@ fn compute_ink(tree: &TaffyTree<Leaf>, node: &Node, lnode: &mut LayoutNode, orig
     if node.is_focusable() {
         ink = join(ink, rect.with_outset((FOCUS_OUTSET, FOCUS_OUTSET)));
     }
+    let own = ink;
     let mut sticky = node.is_editable() || s.overlay;
     let child_origin = Point::new(rect.left, rect.top);
     for (child, lchild) in node.children.iter().zip(&mut lnode.children) {
@@ -1457,6 +1607,8 @@ fn compute_ink(tree: &TaffyTree<Leaf>, node: &Node, lnode: &mut LayoutNode, orig
             ink = join(ink, lchild.ink);
         }
     }
+    // Margen para el antialiasing.
+    lnode.own = own.with_outset((1.0, 1.0));
     if s.press_scale > 1.0 {
         let (c, k) = (rect.center(), s.press_scale);
         ink = Rect::new(
@@ -1465,10 +1617,87 @@ fn compute_ink(tree: &TaffyTree<Leaf>, node: &Node, lnode: &mut LayoutNode, orig
             c.x + (ink.right - c.x) * k,
             c.y + (ink.bottom - c.y) * k,
         );
+        // Al pulsarlo se escala con sus hijos: cualquier cambio en ellos puede
+        // pintar en toda la tinta escalada.
+        cover(node, lnode, ink.with_outset((1.0, 1.0)));
     }
-    // Margen para el antialiasing.
     lnode.ink = ink.with_outset((1.0, 1.0));
     lnode.sticky = sticky;
+}
+
+fn region_key(regions: &[HitRegion], i: Option<usize>) -> Option<&str> {
+    i.map(|i| regions[i].key.as_str())
+}
+
+/// Hermano anterior de cada región (en orden de pintura, entre las que tienen
+/// el mismo padre).
+fn sibling_order(regions: &[HitRegion]) -> Vec<Option<usize>> {
+    let mut last = vec![None; regions.len()];
+    let mut last_root = None;
+    regions
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let slot = match r.parent {
+                Some(p) => &mut last[p],
+                None => &mut last_root,
+            };
+            slot.replace(i)
+        })
+        .collect()
+}
+
+/// Amplía la tinta propia del nodo y de sus descendientes hasta `ink`, sin
+/// entrar en capas (`scroll` y capas superiores: tienen otras coordenadas).
+fn cover(node: &Node, lnode: &mut LayoutNode, ink: Rect) {
+    lnode.own = join(lnode.own, ink);
+    if node.style.scroll.is_some() {
+        return;
+    }
+    for (child, lchild) in node.children.iter().zip(&mut lnode.children) {
+        if !child.style.overlay {
+            cover(child, lchild, ink);
+        }
+    }
+}
+
+/// Añade a `out` los nodos de `new` que se pintan distinto que su pareja (por
+/// key) en `old`: otro tipo, estilo, texto o propiedades de texto. Los que no
+/// tienen pareja entre los hijos del mismo padre (nuevos o que cambiaron de
+/// padre) cuentan como cambiados, con todo su subárbol.
+fn repainted_nodes(old: &Node, new: &Node, out: &mut HashSet<String>) {
+    if old.kind != new.kind
+        || old.text != new.text
+        || old.style != new.style
+        || old.text_props != new.text_props
+    {
+        out.insert(new.key.clone());
+    }
+    let paired = old.children.len() == new.children.len()
+        && old
+            .children
+            .iter()
+            .zip(&new.children)
+            .all(|(a, b)| a.key == b.key);
+    if paired {
+        for (a, b) in old.children.iter().zip(&new.children) {
+            repainted_nodes(a, b, out);
+        }
+        return;
+    }
+    let by_key: HashMap<&str, &Node> = old.children.iter().map(|c| (c.key.as_str(), c)).collect();
+    for child in &new.children {
+        match by_key.get(child.key.as_str()) {
+            Some(before) => repainted_nodes(before, child, out),
+            None => {
+                let mut stack = vec![child];
+                while let Some(n) = stack.pop() {
+                    out.insert(n.key.clone());
+                    stack.extend(n.children.iter());
+                }
+            }
+        }
+    }
 }
 
 /// Nodo de la capa superior pendiente de recorrer: nodo, layout, origen local,
@@ -1522,6 +1751,7 @@ impl<'a> Geometry<'a> {
             clip: no_clip(),
             local: rect,
             ink: lnode.ink,
+            own: lnode.own,
             layer,
             interactive: node.is_interactive() || node.is_editable(),
             capture: node.style.capture,
@@ -1542,8 +1772,14 @@ impl<'a> Geometry<'a> {
                 viewport,
             };
             child_layer = self.layers.len();
-            self.layers
-                .push(Layer::new(Some(layer), Some(scroll), false, viewport));
+            let owner = format!("scroll:{}", node.key);
+            self.layers.push(Layer::new(
+                owner,
+                Some(layer),
+                Some(scroll),
+                false,
+                viewport,
+            ));
         }
         let child_origin = Point::new(rect.left, rect.top);
         for (child, lchild) in node.children.iter().zip(&lnode.children) {

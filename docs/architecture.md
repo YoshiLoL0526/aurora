@@ -182,8 +182,10 @@ no se repiten. Como en un navegador, lo caro es rehacer de más.
   layout, las regiones y la tinta siguen valiendo: solo se apuntan para repintar los nodos cuyo
   estilo cambió. Un texto que solo cambia de color se vuelve a "shapear" en su propio nodo de
   Taffy, con el mismo ancho y las mismas mediciones. Cualquier otro cambio rehace el layout (que
-  aun así es incremental, por key) y repinta la ventana entera. En la lista de 10 000 filas,
-  cambiar la selección ya no rehace el layout (~57 ms): la comparación cuesta ~12 ms.
+  aun así es incremental, por key), y la comparación sigue hasta el final para anotar qué nodos
+  cambiaron de aspecto (`repainted_nodes`: tipo, estilo, texto o propiedades de texto, emparejando
+  los hijos por key). En la lista de 10 000 filas, cambiar la selección ya no rehace el layout
+  (~57 ms): la comparación cuesta ~12 ms.
 - **Capas y regiones.** Tras un layout, `Engine::geometry` registra las regiones de hit-testing y
   las **capas**: la raíz, el contenido de cada `scroll` y cada capa superior (`overlay`, que se
   desplaza con sus ancestros pero escapa de su recorte). Las regiones guardan su rectángulo en
@@ -194,14 +196,31 @@ no se repiten. Como en un navegador, lo caro es rehacer de más.
 - **Tinta.** Cada nodo de layout guarda la **tinta** de su subárbol: hasta dónde puede pintar,
   contando la sombra (3 sigmas de difuminado), el anillo de foco, el texto que desborda su caja y
   `press_scale`. Los hijos de un `scroll` no cuentan (los recorta su caja) y las capas superiores
-  tampoco (se pintan aparte). Un subárbol es *sticky* si contiene una capa superior (hay que
+  tampoco (se pintan aparte). Aparte, cada nodo guarda su tinta **propia**, la que pinta él sin
+  sus hijos; la de los descendientes de un nodo con `press_scale > 1` es la del subárbol escalado,
+  porque al pulsarlo se escalan con él. Un subárbol es *sticky* si contiene una capa superior (hay que
   recorrerlo para encolarla) o un campo de texto (su geometría se recalcula al pintarlo).
-- **Daño.** La zona a repintar es la unión de: las capas que se movieron (su zona visible), los
-  nodos que cambiaron en la fase de estilo y aquellos cuya transición avanzó en `tick` (su tinta,
+- **Layout parcial.** Tras un layout, `geometry` devuelve las regiones y capas anteriores (las
+  capas que siguen existiendo, por identidad: la raíz, `scroll:<key>` u `overlay:<key>`,
+  conservan lo que se pintó de ellas) y `relayout_damage` las compara por key con las nuevas. Un
+  nodo daña su tinta propia, antes y después, si cambia su rectángulo, su tinta, su capa, su zona
+  visible o su aspecto; si cambia de padre o de hermano anterior (puede quedar por encima o por
+  debajo de otro), daña la tinta de todo su subárbol. Los nodos nuevos y los que desaparecen dañan
+  su tinta propia: un hijo que cambia lo cubre su propia región, no la de su padre. La barra de un
+  `scroll` cuyo contenido cambió de tamaño la repinta la composición (lo que se puede desplazar
+  forma parte de lo pintado de la capa). Se repinta la ventana entera si cambió su tamaño o la
+  escala, si no se sabe qué nodos cambiaron de aspecto (primer frame, una imagen que cambió en
+  disco), si cambió más de la mitad de los nodos (comparar ya no compensa) o si hay keys
+  repetidas. Escribir en el formulario de 500 filas pasa de pintar ~0,42 ms a ~0,16 ms, a cambio
+  de ~0,35 ms en la fase de estilo y ~0,15 ms de comparar regiones (en el banco de pruebas, con un
+  lienzo de 960 × 640 a escala 1: con más píxeles, pintar entero cuesta proporcionalmente más).
+- **Daño.** La zona a repintar es la unión de: las capas que se movieron (su zona visible), lo
+  que dañó un layout parcial, los nodos que cambiaron en la fase de estilo y aquellos cuya transición avanzó en `tick` (su tinta,
   recortada a lo visible), los campos de texto cuyo aspecto cambió (una huella de cursor,
   selección, composición, parpadeo y foco), el tooltip (su burbuja antes y después) y lo que el
   lienzo no tenga del frame anterior. Si no hay nada, el frame no pinta: un frame ocioso cuesta
-  lo que comparar unas huellas.
+  lo que comparar unas huellas. Si la zona dañada pasa del 70 % de la ventana
+  (`FULL_PAINT_RATIO`), se pinta entera: sale más barato que la superficie aparte y la copia.
 - **Pintura parcial.** El `Painter` se salta los subárboles no *sticky* cuya tinta no toca la zona
   dañada. Skia recorta las aristas de una figura al borde del recorte y su antialiasing cerca del
   corte sale algo distinto del de la figura entera, así que recortar justo a la zona dañada

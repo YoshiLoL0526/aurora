@@ -4,7 +4,19 @@ a pintar el frame entero."""
 
 from test_render import _png_rows
 
-from aurora import App, Signal, button, column, row, scroll, select, text, text_input, tooltip
+from aurora import (
+    App,
+    Signal,
+    button,
+    column,
+    row,
+    scroll,
+    select,
+    text,
+    text_input,
+    tooltip,
+    virtual_list,
+)
 
 SIZE = (480, 360)
 
@@ -84,15 +96,27 @@ def test_paint_only_rebuild_keeps_layout_and_repaints_what_changed():
     assert _height(pilot.stats["damage"]) <= 3 * h1
 
 
-def test_layout_change_repaints_the_whole_window():
+def test_layout_change_repaints_only_what_changed():
     width = Signal(100)
-    view = lambda: column(padding=10)[row(key="b", width=width(), height=20, bg="#F00")]
+    view = lambda: column(padding=10)[
+        row(key="b", width=width(), height=20, bg="#F00"),
+        row(key="c", width=50, height=20, bg="#0F0"),
+    ]
     pilot = App(view, size=SIZE).pilot()
     width.set(200)
     pilot.frame()
     assert pilot.stats["layout_cached"] is False
-    assert pilot.stats["damage"] == (0, 0, *SIZE)
     assert pilot.rect("b")[2] == 200
+    # La caja que creció (vieja y nueva), no la que sigue igual ni la ventana.
+    x, y, w, h = pilot.stats["damage"]
+    assert (x, y) <= (10, 10) and x + w >= 210 and y + h >= 30
+    assert y + h <= pilot.rect("c")[1] + 2
+
+
+def test_resize_repaints_the_whole_window():
+    pilot = App(lambda: column(padding=10)[text("Hola")], size=SIZE).pilot()
+    pilot.resize(400, 300)
+    assert pilot.stats["damage"] == (0, 0, 400, 300)
 
 
 def test_scroll_moves_regions_without_relayout():
@@ -159,19 +183,7 @@ def test_incremental_frames_match_a_full_repaint(tmp_path):
         ]
 
     pilot = App(view, size=SIZE).pilot()
-    step = 0
-
-    def check(name):
-        nonlocal step
-        pilot.settle()
-        mine, full = tmp_path / f"{step}-{name}.png", tmp_path / f"{step}-{name}-full.png"
-        pilot.png(str(mine))
-        # Una superficie nueva no tiene ningún frame: se pinta entera.
-        pilot.resize(*SIZE)
-        assert pilot.stats["damage"] == (0, 0, *SIZE)
-        pilot.png(str(full))
-        assert _max_difference(mine, full) <= 2, name
-        step += 1
+    check = _checker(pilot, tmp_path)
 
     pilot.move_to(*_center(pilot, "b1"))
     check("hover")
@@ -201,14 +213,138 @@ def test_incremental_frames_match_a_full_repaint(tmp_path):
     check("foco")
 
 
-def _max_difference(a, b):
-    """Mayor diferencia entre dos PNG en un canal. Skia puede redondear distinto el
-    antialiasing de una figura que el recorte de la zona dañada corta por la mitad:
-    se tolera ±1-2 niveles, invisible y sin acumularse (cada repintado parte de cero)."""
+def test_partial_layouts_match_a_full_repaint(tmp_path):
+    """Tras un layout incremental solo se repinta lo que cambió de geometría o de
+    aspecto: el resultado tiene que ser el mismo que pintando el frame entero."""
+    label = Signal("Uno")
+    caption = Signal("Botón")
+    count = Signal(30)
+    swapped = Signal(False)
+    value = Signal("")
+    selected = Signal(0)
+    choice = Signal("a")
+
+    def view():
+        boxes = [
+            row(key="caja-a", position="absolute", left=10, top=6, width=60, height=40, bg="#C0392B"),
+            row(key="caja-b", position="absolute", left=40, top=20, width=60, height=40, bg="#27AE60"),
+        ]
+        return column(padding=12, gap=8)[
+            row(gap=8, align="center")[
+                text(label(), key="etiqueta", size=16),
+                button(caption(), lambda: None, key="pulsar"),
+                text_input(value, key="campo", width=120),
+                select(choice, [("a", "Alfa"), ("b", "Beta")], key="sel", width=100),
+            ],
+            row(key="capas", height=70)[boxes[::-1] if swapped() else boxes],
+            scroll(key="lista", height=170, gap=2, border_width=1, border_color="#444", radius=8)[
+                [
+                    row(
+                        key=f"r{i}",
+                        padding=(6, 10),
+                        bg="#2A2F45" if i == selected() else None,
+                        shadow=(0, 2, 8, "#00000080"),
+                        on_click=lambda i=i: selected.set(i),
+                    )[text(f"Fila {i}" + (" (elegida)" if i == selected() else ""))]
+                    for i in range(count())
+                ]
+            ],
+        ]
+
+    pilot = App(view, size=SIZE).pilot()
+    check = _checker(pilot, tmp_path)
+    check("inicio")
+
+    label.set("Uno más")
+    pilot.frame()
+    assert pilot.stats["layout_cached"] is False
+    # Se mueve la fila de arriba, no hace falta repintar la lista.
+    assert _height(pilot.stats["damage"]) < pilot.rect("lista")[1]
+    check("etiqueta")
+    caption.set("Pulsa")
+    pilot.frame()
+    check("boton-escalable")
+    pilot.click("r2")
+    check("fila-crece")
+    count.set(45)
+    pilot.frame()
+    check("filas-nuevas")
+    pilot.wheel(400)
+    check("scroll")
+    count.set(6)
+    pilot.frame()
+    check("filas-quitadas")
+    swapped.set(True)
+    pilot.frame()
+    check("orden-de-pintura")
+    pilot.click("campo")
+    pilot.type("hola")
+    check("escribir")
+    pilot.click("sel")
+    check("desplegable")
+    pilot.press("escape")
+    check("cerrado")
+    label.set("Uno")
+    count.set(0)
+    pilot.frame()
+    check("vacia")
+
+
+def test_virtual_list_scroll_matches_a_full_repaint(tmp_path):
+    def view():
+        return column(padding=12, gap=8)[
+            text("Cabecera", key="cabecera", size=18),
+            virtual_list(
+                10_000,
+                lambda i: row(grow=1, padding=(4, 10), bg="#1E2233" if i % 2 else None)[
+                    text(f"Elemento {i}")
+                ],
+                item_height=28,
+                key="virtual",
+                height=260,
+            ),
+        ]
+
+    pilot = App(view, size=SIZE).pilot()
+    check = _checker(pilot, tmp_path)
+    check("inicio")
+    for i in range(4):
+        pilot.wheel(170)
+        check(f"scroll-{i}")
+    pilot.scroll("virtual", 50_000)
+    check("salto")
+
+
+def _checker(pilot, tmp_path):
+    """Compara el frame pintado por zonas con uno pintado entero."""
+    step = 0
+
+    def check(name):
+        nonlocal step
+        pilot.settle()
+        mine, full = tmp_path / f"{step}-{name}.png", tmp_path / f"{step}-{name}-full.png"
+        pilot.png(str(mine))
+        # Una superficie nueva no tiene ningún frame: se pinta entera.
+        pilot.resize(*SIZE)
+        assert pilot.stats["damage"] == (0, 0, *SIZE)
+        pilot.png(str(full))
+        assert _matches(mine, full), name
+        step += 1
+
+    return check
+
+
+def _matches(a, b):
+    """Dos frames iguales salvo por el antialiasing. Skia puede redondear distinto el
+    de una figura que el recorte de la zona dañada corta por la mitad (±1-2 niveles,
+    invisible y sin acumularse: cada repintado parte de cero), y el del borde de un
+    rectángulo redondeado según dónde cae dentro de la superficie aparte de
+    `paint_partial`: se toleran unos pocos píxeles de borde con hasta 10 niveles."""
     if a.read_bytes() == b.read_bytes():
-        return 0
+        return True
     (_, rows_a), (_, rows_b) = _png_rows(a), _png_rows(b)
-    return max(abs(x - y) for ra, rb in zip(rows_a, rows_b, strict=True) for x, y in zip(ra, rb, strict=True))
+    diffs = [abs(x - y) for ra, rb in zip(rows_a, rows_b, strict=True) for x, y in zip(ra, rb, strict=True)]
+    return max(diffs) <= 10 and sum(d > 2 for d in diffs) <= 12
 
 
 def _center(pilot, key):
