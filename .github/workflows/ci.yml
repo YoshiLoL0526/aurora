@@ -17,8 +17,8 @@ jobs:
     name: Lint (Python + Rust)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -44,8 +44,8 @@ jobs:
     name: Benchmarks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: "3.13"
       - uses: dtolnay/rust-toolchain@stable
@@ -59,7 +59,7 @@ jobs:
       - name: Ejecutar la suite
         run: uv run benchmarks/run.py --json bench.json --markdown >> "$GITHUB_STEP_SUMMARY"
       - name: Subir resultados
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmarks-${{ github.sha }}
           path: bench.json
@@ -73,8 +73,8 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: ${{ matrix.python }}
       - uses: dtolnay/rust-toolchain@stable
@@ -106,7 +106,7 @@ jobs:
           uv run examples/animate.py --png animate.png
       - name: Subir capturas
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: capturas-${{ matrix.os }}-py${{ matrix.python }}
           path: |
