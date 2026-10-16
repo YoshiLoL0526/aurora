@@ -14,6 +14,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Propiedades de estilo](#propiedades-de-estilo)
 - [Temas y tokens](#temas-y-tokens)
 - [Formatos de valores](#formatos-de-valores)
+- [Empaquetado: `aurora build`](#empaquetado-aurora-build)
 
 ---
 
@@ -193,6 +194,8 @@ image(png_bytes)
   cambia en disco, se vuelve a leer en la siguiente reconstrucción.
 - Un archivo que no existe lanza `FileNotFoundError`, y uno que no se puede decodificar,
   `ValueError`, ambos con la ruta en el mensaje.
+- Una ruta relativa se resuelve desde el directorio de trabajo. Para los recursos de tu app usa
+  [`resource()`](#resourcepath), que funciona igual con Python y en el ejecutable empaquetado.
 
 ### `canvas(draw, **estilo)`
 
@@ -834,3 +837,63 @@ de escritura se detecten enseguida.
 | Ángulo | Grados (`float`). |
 
 Un color mal escrito lanza `ValueError` con el valor problemático en el mensaje.
+
+## Empaquetado: `aurora build`
+
+```bash
+aurora build                 # empaqueta main.py (o app.py) en dist/
+aurora build app.py --name "Mi App" --icon assets/icon.ico --include assets
+```
+
+Convierte la app en un **ejecutable distribuible** que no necesita Python instalado: un solo
+archivo (`dist/main.exe` en Windows, `dist/main` en Linux) o, en macOS, una `dist/main.app`.
+Por debajo usa [PyInstaller](https://pyinstaller.org), que es una dependencia opcional:
+
+```bash
+uv add --dev "aurora-ui[build]"    # o: pip install "aurora-ui[build]"
+```
+
+Se empaqueta para el sistema en el que se ejecuta (para Windows, macOS y Linux hay que construir
+en cada uno; en CI, una matriz). También funciona como `python -m aurora build`.
+
+### Opciones
+
+Todas tienen su equivalente en `[tool.aurora.build]` de `pyproject.toml`; las de la línea de
+comandos tienen prioridad, salvo `--include`, que se suma a `include`.
+
+| Opción | `pyproject.toml` | Por defecto | Descripción |
+|---|---|---|---|
+| `script` | `script` | `main.py` o `app.py` | Script de la app. |
+| `--name` | `name` | nombre del script | Nombre del ejecutable. |
+| `--icon` | `icon` | — | Icono: `.ico` en Windows, `.icns` en macOS. Otros formatos (PNG) se convierten si está instalado Pillow. Linux no incrusta iconos en el ejecutable. |
+| `--include RUTA` | `include` (lista) | — | Archivo o carpeta que se copia con la app, con la misma ruta relativa al script (`assets/logo.png` sigue siendo `assets/logo.png`). Lo que está fuera de la carpeta del script va a la raíz. Repetible. |
+| `--onefile` / `--onedir` | `onefile` | `true` | Un solo archivo, o una carpeta con el ejecutable y sus bibliotecas, que arranca antes (no se descomprime en cada inicio). En macOS sin consola siempre se genera una `.app`. |
+| `--console` / `--windowed` | `console` | `false` | Mantener la ventana de consola (útil para ver `print` y errores mientras pruebas). |
+| `--dist` | `dist` | `dist` | Carpeta de salida. Los archivos intermedios van a `build/`. |
+| `--clean` | — | — | Borra la caché de PyInstaller antes de empaquetar. |
+
+```toml
+[tool.aurora.build]
+script = "app.py"
+name = "Monitor"
+icon = "assets/icon.ico"
+include = ["assets"]
+```
+
+Las rutas de `pyproject.toml` son relativas a ese archivo (que se busca desde el directorio
+actual hacia arriba); las de la línea de comandos, al directorio actual. Una clave desconocida,
+un tipo incorrecto o una ruta que no existe se informan antes de empaquetar.
+
+### `resource(path)`
+
+```python
+from aurora import image, resource
+
+image(resource("assets/logo.svg"), width=32)
+```
+
+Devuelve la ruta absoluta de un recurso de la app. Una ruta relativa se resuelve desde la
+**carpeta del script principal**, no desde el directorio de trabajo; dentro del ejecutable, desde
+donde quedan los archivos de `include`, que conservan su estructura. Así funciona igual con
+`python app.py`, con doble clic en el ejecutable o lanzándolo desde otra carpeta. Una ruta
+absoluta se devuelve tal cual.

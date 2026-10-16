@@ -33,6 +33,14 @@ Documentation = "https://github.com/<usuario>/aurora/tree/main/docs"
 Issues = "https://github.com/<usuario>/aurora/issues"
 Changelog = "https://github.com/<usuario>/aurora/blob/main/CHANGELOG.md"
 
+[project.scripts]
+aurora = "aurora.cli:main"
+
+[project.optional-dependencies]
+build = [
+    "pyinstaller>=6.10",
+]
+
 [tool.maturin]
 python-source = "python"
 module-name = "aurora._core"
@@ -43,6 +51,7 @@ dev = [
     "maturin>=1.7,<2",
     "numpy>=1.26",
     "polars>=1.0",
+    "pyinstaller>=6.10",
     "pytest>=8",
     "ruff>=0.6",
     "ty>=0.0.88",

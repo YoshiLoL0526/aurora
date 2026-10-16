@@ -10,6 +10,14 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **`aurora build`**: empaqueta una app en un ejecutable distribuible con un comando (un solo
+  archivo, una carpeta o una `.app` en macOS), sin consola, con icono y recursos incluidos.
+  Se configura con opciones o en `[tool.aurora.build]` de `pyproject.toml` y valida la
+  configuración antes de empezar. Usa PyInstaller, como dependencia opcional
+  (`aurora-ui[build]`). También como `python -m aurora build`.
+- `resource(path)`: ruta de un recurso de la app relativa al script principal, que funciona igual
+  con Python y dentro del ejecutable empaquetado.
+
 - **Animaciones declarativas** (`aurora.animate`), interpoladas en Rust sin llamar a Python en
   cada frame. Cuatro propiedades de estilo nuevas:
   - `transition=animate.spring()` o `animate.tween(0.2)`: los cambios de `bg`, `border_color`,

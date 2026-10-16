@@ -17,6 +17,7 @@ Cada paso es un programa completo que puedes ejecutar. Si algo no queda claro, l
 8. [Superposiciones: modales y toasts](#8-superposiciones-modales-y-toasts)
 9. [Tema claro y oscuro](#9-tema-claro-y-oscuro)
 10. [Tests sin pantalla](#10-tests-sin-pantalla)
+11. [Distribuir la app](#11-distribuir-la-app)
 
 ---
 
@@ -583,6 +584,40 @@ def test_modal_opens_and_closes():
     pilot.click_at(10, 10)  # clic en el fondo: cierra el modal
     assert selected() is None
 ```
+
+## 11. Distribuir la app
+
+Para que otros usen el monitor sin instalar Python, empaquétalo en un ejecutable. Primero instala
+el empaquetador (una dependencia opcional) y luego un solo comando:
+
+```bash
+uv add --dev "aurora-ui[build]"
+uv run aurora build monitor.py --name Monitor
+```
+
+El resultado queda en `dist/` (`Monitor.exe` en Windows, `Monitor.app` en macOS): un único archivo
+que puedes copiar a otro equipo con el mismo sistema.
+
+Si la app usa imágenes u otros archivos, inclúyelos y ábrelos con `resource()`, que los encuentra
+tanto al ejecutar con Python como dentro del ejecutable:
+
+```python
+from aurora import image, resource
+
+image(resource("assets/logo.svg"), width=28)
+```
+
+```toml
+# pyproject.toml: así basta con `aurora build`
+[tool.aurora.build]
+script = "monitor.py"
+name = "Monitor"
+icon = "assets/icon.ico"
+include = ["assets"]
+```
+
+Mientras pruebas el ejecutable, `--console` mantiene la consola para ver los errores. Todas las
+opciones están en la [referencia](reference.md#empaquetado-aurora-build).
 
 ---
 

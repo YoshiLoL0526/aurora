@@ -91,6 +91,13 @@ uv run examples/studio.py        # la demo completa
 
 ¿Prefieres pip? `pip install maturin && maturin develop --release`.
 
+Para repartir tu app, empaquétala en un ejecutable con un comando (requiere el extra
+`aurora-ui[build]`; ver [empaquetado](docs/reference.md#empaquetado-aurora-build)):
+
+```bash
+uv run aurora build app.py --icon assets/icon.ico --include assets
+```
+
 ## Un vistazo a la API
 
 ```python

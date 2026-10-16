@@ -91,6 +91,12 @@ jobs:
       - name: Tests de Rust (Windows)
         if: runner.os == 'Windows'
         run: uv run cargo test --release
+      # Empaqueta una app con recursos y la ejecuta desde otra carpeta (~30 s; una vez por SO).
+      - name: Empaquetado con aurora build
+        if: matrix.python == '3.13'
+        env:
+          AURORA_BUILD_TEST: "1"
+        run: uv run pytest tests/test_build.py -v -k packaged
       - name: Renderizar los ejemplos (smoke test visual)
         run: |
           uv run examples/hello.py --png hello.png

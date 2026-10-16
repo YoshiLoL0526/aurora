@@ -30,6 +30,7 @@ from .components import (
 )
 from .elements import Element, box, column, image, row, scroll, spacer, text
 from .reactive import component
+from .resources import resource
 from .signal import Signal
 from .table import Column, table
 from .theme import DAYLIGHT, MIDNIGHT, Theme
@@ -61,6 +62,7 @@ __all__ = [
     "component",
     "divider",
     "image",
+    "resource",
     "row",
     "scroll",
     "select",
