@@ -10,6 +10,18 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **Documentación publicada con ejemplos vivos** en <https://yoshilol0526.github.io/aurora/>
+  (MkDocs Material, desplegada en GitHub Pages en cada cambio de `main`):
+  - Los bloques ```` ```python live ```` se **ejecutan al construir** la documentación y debajo
+    se publica la captura que renderiza Aurora, en tema claro y oscuro según el del lector. Un
+    ejemplo que falla rompe la construcción y `tests/test_docs.py`, así que no pueden quedarse
+    desfasados.
+  - Admiten programas completos, fragmentos que terminan en un elemento, pasos que continúan el
+    programa anterior (`continue`), scripts de `examples/` (`file=`) y código oculto para
+    preparar un estado (`# oculto`).
+  - La guía, la referencia de componentes y una **galería** con los ejemplos del repositorio
+    usan ejemplos vivos.
+
 - **Hot reload que conserva el estado.** Con `aurora dev app.py`, `AURORA_RELOAD=1` o
   `App(view, reload=True)`, al guardar el script o un módulo local la ventana se actualiza con el
   código nuevo sin cerrarse:
@@ -266,6 +278,6 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
-[Sin publicar]: https://github.com/<usuario>/aurora/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/<usuario>/aurora/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/<usuario>/aurora/releases/tag/v0.1.0
+[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/YoshiLoL0526/aurora/releases/tag/v0.1.0

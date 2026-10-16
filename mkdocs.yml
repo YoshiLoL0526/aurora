@@ -1,0 +1,101 @@
+# Sitio de documentación: `uv run mkdocs serve` para verlo en local y
+# `uv run mkdocs build --strict` para construirlo (lo publica .github/workflows/docs.yml).
+# Los bloques ```python live``` se ejecutan al construir (ver docs/hooks/livedocs.py).
+
+site_name: Aurora
+site_description: Interfaces de escritorio profesionales en Python, con un núcleo nativo en Rust.
+site_url: https://yoshilol0526.github.io/aurora/
+repo_url: https://github.com/YoshiLoL0526/aurora
+repo_name: YoshiLoL0526/aurora
+edit_uri: edit/main/docs/
+copyright: MIT © Raidel y contribuidores de Aurora
+
+docs_dir: docs
+exclude_docs: |
+  /hooks/
+
+hooks:
+  - docs/hooks/mkdocs_hooks.py
+
+# `mkdocs serve` reconstruye también al cambiar la librería o los ejemplos: las capturas
+# vivas dependen de ellos.
+watch:
+  - python/aurora
+  - examples
+  - ROADMAP.md
+  - CHANGELOG.md
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Inicio: index.md
+  - Guía: guide.md
+  - Referencia: reference.md
+  - Galería: examples.md
+  - Arquitectura: architecture.md
+  - Proyecto:
+      - Roadmap: roadmap.md
+      - Cambios: changelog.md
+
+theme:
+  name: material
+  language: es
+  logo: assets/logo.svg
+  favicon: assets/logo.png
+  icon:
+    repo: fontawesome/brands/github
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Tema oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Tema claro
+  features:
+    - navigation.tabs
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      # Anclas como las de GitHub (con tildes), para que los enlaces sirvan en los dos sitios.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true

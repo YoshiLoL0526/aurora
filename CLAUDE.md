@@ -16,6 +16,8 @@ uv run pytest tests/test_render.py::test_name   # single test
 uv run examples/studio.py                 # full demo app (opens a window)
 uv run examples/studio.py --png studio-shots     # headless render of the demo (CI smoke test)
 uv run examples/hello.py --png hello.png
+uv run mkdocs serve                       # docs site at http://127.0.0.1:8000 (live reload)
+uv run mkdocs build --strict              # same as the docs CI: fails on broken links/examples
 ```
 
 Full lint, same as CI:
@@ -84,6 +86,11 @@ full rebuilds — every event currently rebuilds the whole view.
   makes a node paint outside its box or changes hit regions, also update `compute_ink` and
   `same_geometry` in `render.rs` (otherwise partial repaints miss it).
 - **New node type:** new `spec::Kind` variant + its layout measurement + its painting.
+- Docs: ```` ```python live ```` blocks in `docs/*.md` are executed at build time and their
+  rendered PNG (light + dark) is inserted below the code (`docs/hooks/livedocs.py`, wired into
+  MkDocs by `docs/hooks/mkdocs_hooks.py`; `tests/test_docs.py` runs them all). Prefer them for any
+  runnable example. Lines ending in `# oculto` (or between `# oculto: inicio`/`# oculto: fin`) run
+  but aren't shown. Ruff also formats the Python blocks inside the Markdown files.
 - Visual changes need a render test in `tests/test_render.py`; interaction changes need a `Pilot`
   test in `tests/test_pilot.py`. Public API changes must update
   `docs/reference.md`, `python/aurora/_core.pyi` stubs (if the native API changes), and the

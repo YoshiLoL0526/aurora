@@ -17,7 +17,7 @@ Necesitas Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust estable
 ([rustup](https://rustup.rs)). En Linux, además, `libfontconfig-dev` y `libfreetype-dev`.
 
 ```bash
-git clone https://github.com/<usuario>/aurora.git
+git clone https://github.com/YoshiLoL0526/aurora.git
 cd aurora
 uv sync                     # compila el núcleo e instala todo (incluye pytest, ruff y ty)
 uv run pytest               # tests
@@ -47,6 +47,38 @@ Y verifica a mano:
       [suite de benchmarks](benchmarks/README.md) antes y después (`--json` / `--compare`).
 - [ ] Si añades una **propiedad de estilo**, sigue los pasos de
       [Extender Aurora](docs/architecture.md#extender-aurora).
+- [ ] Si tocas la **documentación**, `uv run mkdocs serve` la muestra en local tal como se
+      publicará (ver abajo).
+
+## Documentación
+
+La documentación se publica en <https://yoshilol0526.github.io/aurora/> con
+[MkDocs Material](https://squidfunk.github.io/mkdocs-material/) cada vez que cambia `main`
+(`.github/workflows/docs.yml`).
+
+```bash
+uv run mkdocs serve           # en http://127.0.0.1:8000, se recarga al guardar
+uv run mkdocs build --strict  # lo mismo que la CI: falla con enlaces rotos o ejemplos que fallan
+```
+
+Los ejemplos de código marcados como ```` ```python live ```` son **ejemplos vivos**: se ejecutan
+al construir la documentación y debajo se publica la captura de lo que dibujan, en tema claro y
+oscuro. Úsalos para todo ejemplo que se pueda ejecutar: así nunca se quedan desfasados.
+
+````markdown
+```python live size=900x300
+from aurora import App, text
+
+App(lambda: text("Hola"), size=(900, 600)).run()
+```
+````
+
+Puede ser un programa completo (se renderiza la `App` que ejecuta) o un fragmento que termine en
+un elemento (`button("Guardar")`). Las líneas que terminan en `# oculto` (o entre
+`# oculto: inicio` y `# oculto: fin`) se ejecutan pero no se muestran, para preparar datos o un
+estado. El resto de opciones (`continue`, `size`, `align`, `file`, `theme`, `alt`) están
+documentadas en `docs/hooks/livedocs.py`, y `tests/test_docs.py` comprueba que todos los
+ejemplos vivos funcionan.
 
 ## Convenciones
 
@@ -79,7 +111,7 @@ src/             Núcleo nativo en Rust (módulo aurora._core)
 tests/           Tests (pytest), incluidos tests de render headless
 benchmarks/      Suite de rendimiento: coste por frame y por fase
 examples/        Apps de ejemplo; brand.py genera las imágenes del README
-docs/            Guía, referencia, arquitectura y recursos gráficos
+docs/            Guía, referencia, arquitectura y recursos gráficos (sitio en mkdocs.yml)
 ```
 
 El recorrido completo por el núcleo está en [docs/architecture.md](docs/architecture.md).

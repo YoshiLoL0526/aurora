@@ -27,11 +27,10 @@ classifiers = [
 ]
 
 [project.urls]
-# TODO: reemplazar <usuario> por tu cuenta u organización de GitHub.
-Homepage = "https://github.com/<usuario>/aurora"
-Documentation = "https://github.com/<usuario>/aurora/tree/main/docs"
-Issues = "https://github.com/<usuario>/aurora/issues"
-Changelog = "https://github.com/<usuario>/aurora/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/YoshiLoL0526/aurora"
+Documentation = "https://yoshilol0526.github.io/aurora/"
+Issues = "https://github.com/YoshiLoL0526/aurora/issues"
+Changelog = "https://github.com/YoshiLoL0526/aurora/blob/main/CHANGELOG.md"
 
 [project.scripts]
 aurora = "aurora.cli:main"
@@ -49,6 +48,8 @@ features = ["pyo3/extension-module"]
 [dependency-groups]
 dev = [
     "maturin>=1.7,<2",
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.7",
     "numpy>=1.26",
     "polars>=1.0",
     "pyinstaller>=6.10",
@@ -88,8 +89,9 @@ known-first-party = ["aurora"]
 [tool.ty.environment]
 python-version = "3.11"
 # `python/` permite comprobar sin instalar el paquete (el núcleo se resuelve con `_core.pyi`);
-# `benchmarks/`, porque tests/test_benchmarks.py importa la suite añadiéndola a sys.path.
-extra-paths = ["python", "benchmarks"]
+# `benchmarks/` y `docs/hooks/`, porque tests/test_benchmarks.py y tests/test_docs.py los importan
+# añadiéndolos a sys.path.
+extra-paths = ["python", "benchmarks", "docs/hooks"]
 
 # `Pilot.rect()` y compañía devuelven `None` si la clave no existe; en los tests se indexa
 # directamente: si faltara la clave, el test fallaría igual (TypeError) y con un mensaje claro.

@@ -236,7 +236,9 @@ herramienta de desarrollo: una app empaquetada con `aurora build` no debería ac
 
 Todas devuelven un `Element`. Los hijos se añaden con corchetes:
 
-```python
+```python live
+from aurora import column, text  # oculto
+
 column(gap=8)[text("a"), text("b")]
 ```
 
@@ -289,8 +291,10 @@ Lienzo de **dibujo inmediato**: `draw(c)` recibe un `Canvas` del tamaño de la c
 con comandos sueltos, como un `<canvas>` de HTML. Para gráficos, indicadores, diagramas o
 cualquier cosa que no sea una composición de cajas.
 
-```python
+```python live align=stretch size=480
 from aurora import Canvas, canvas
+
+values = [0.2, 0.35, 0.3, 0.9, 0.5, 0.7, 0.62, 0.55, 0.4]  # oculto
 
 
 def sparkline(c: Canvas):
@@ -400,6 +404,16 @@ chart(muestras, zoom=True)  # millones de puntos: rueda para acercar, arrastra p
   argumentos o algún `Signal` que lea.
 - Un dato no numérico (texto, complejos…), unas `labels` que no encajen con los puntos o una
   `kind` desconocida lanzan `ValueError` (`TypeError` si los datos no son ni números ni arrays).
+
+```python live align=stretch
+import numpy as np
+
+from aurora import chart
+
+rng = np.random.default_rng(7)
+precios = 100 + np.cumsum(rng.normal(0.15, 1, size=(250, 2)), axis=0)  # dos series, una por columna
+chart(precios, names=["Aurora", "Índice"], height=200)
+```
 
 Ejemplo completo en [`examples/charts.py`](../examples/charts.py).
 
@@ -539,20 +553,55 @@ plantilla para los tuyos. Todos aceptan propiedades de estilo extra, que sobresc
 Por defecto: `padding=(10, 18)`, `radius="$md"`, contenido centrado, `font_weight=600`,
 `press_scale=0.96`.
 
+```python live
+from aurora import button  # oculto
+
+[button("Guardar"), button("Cancelar", variant="soft"), button("Más opciones", variant="ghost")]
+```
+
 ### `card(**estilo)`
 
 Columna con superficie, borde sutil, sombra y esquinas grandes. Por defecto: `bg="$surface"`,
 `radius="$lg"`, `padding=20`, `gap=12`, `border_width=1`, `border_color="$border"`,
 `shadow=(0, 10, 30, "$shadow")`.
 
+```python live
+from aurora import card, text  # oculto
+
+card(width=320)[
+    text("Copias de seguridad", size=16, weight=600),
+    text("La última terminó hace 12 minutos sin errores.", color="$muted"),
+]
+```
+
 ### `badge(label, *, tone="accent")`
 
 Píldora compacta de texto. `tone` es el nombre de un token de color del tema.
+
+```python live
+from aurora import badge  # oculto
+
+[
+    badge("beta"),
+    badge("Estable", tone="success"),
+    badge("Caído", tone="danger"),
+    badge("v0.5", tone="primary"),
+]
+```
 
 ### `stat(label, value, delta=None, *, positive=True)`
 
 Tarjeta de métrica: etiqueta, valor grande y variación opcional en verde (`positive=True`) o rojo.
 Tiene `grow=1`, así que varias `stat` en una `row` se reparten el ancho.
+
+```python live align=stretch
+from aurora import row, stat  # oculto
+
+row(gap=16)[
+    stat("INGRESOS", "48.2k €", "+12%"),
+    stat("DEVOLUCIONES", "2,1%", "+0,4", positive=False),
+]
+```
 
 ### `divider(*, vertical=False, color="$border", **estilo)`
 
@@ -565,8 +614,13 @@ Círculo de `size` px. Con `src` (ruta o `bytes`) muestra la imagen recortada (`
 ella, las iniciales de `name` (hasta dos) sobre un color del tema que depende del nombre, así que
 una persona siempre tiene el mismo color.
 
+```python live
+from aurora import avatar  # oculto
+
+[avatar("Ada Lovelace"), avatar("Alan Turing", size=40), avatar("Grace Hopper", size=48)]
+```
+
 ```python
-avatar("Ada Lovelace")
 avatar("Ada Lovelace", src="ada.jpg", size=40, tooltip="Ada · Admin")
 ```
 
@@ -576,10 +630,17 @@ Casilla de verificación e interruptor. Con un `Signal[bool]` se enlazan solos: 
 Espacio con el foco) lo alterna. `on_change(valor)` se llama en cada cambio; con un `bool` fijo y
 `on_change`, gestionas el valor tú. Toda la fila (control y etiqueta) es la zona de clic.
 
-```python
+```python live
+from aurora import DAYLIGHT, MIDNIGHT, Signal, checkbox, column, switch  # oculto
+
+theme = Signal(MIDNIGHT)  # oculto
 dark = Signal(True)
-switch(dark, "Tema oscuro", on_change=lambda on: theme.set(MIDNIGHT if on else DAYLIGHT))
-checkbox(accepted, "Acepto las condiciones")
+accepted = Signal(False)
+
+column(gap=12)[
+    switch(dark, "Tema oscuro", on_change=lambda on: theme.set(MIDNIGHT if on else DAYLIGHT)),
+    checkbox(accepted, "Acepto las condiciones"),
+]
 ```
 
 ### `tabs(options, selected, *, key=None, **estilo)`
@@ -588,9 +649,11 @@ Pestañas con indicador bajo la activa. `options` es una lista de valores o de p
 `(valor, etiqueta)` y `selected` el `Signal` con el valor activo. Con una pestaña enfocada, ← y →
 cambian de pestaña. Cada pestaña tiene la key `f"{key}-{valor}"`.
 
-```python
+```python live
+from aurora import Signal, tabs  # oculto
+
 page = Signal("resumen")
-tabs([("resumen", "Resumen"), ("tablero", "Tablero")], page, key="nav")
+tabs([("resumen", "Resumen"), ("tablero", "Tablero"), ("equipo", "Equipo")], page, key="nav")
 ```
 
 ### `select(value, options, *, placeholder="Elegir…", key=None, **estilo)`
@@ -601,7 +664,9 @@ clic fuera, con Esc o con Enter. Con el desplegable enfocado, ↑ y ↓ cambian 
 Ancho mínimo de 160 px; los estilos extra (`width`, `grow`…) se aplican al contenedor. Las opciones
 tienen la key `f"{key}-opt-{índice}"`.
 
-```python
+```python live
+from aurora import Signal, select  # oculto
+
 lang = Signal("es")
 select(lang, [("es", "Español"), ("en", "English")], key="lang", width=220)
 ```
@@ -639,7 +704,31 @@ Tabla de datos con cabecera fija, **ordenación**, **columnas redimensionables**
 **virtualizadas**: solo se construyen las visibles, así que con 100 000 filas desplazarse cuesta
 lo mismo que con 20.
 
-```python
+```python live align=stretch
+# oculto: inicio
+from dataclasses import dataclass
+
+from aurora import Signal, badge
+
+
+@dataclass(frozen=True)
+class Pedido:
+    id: int
+    cliente: str
+    total: float
+    estado: str
+
+
+pedidos = Signal(
+    (
+        Pedido(1041, "Lucía Fernández", 1280.5, "pagado"),
+        Pedido(1042, "Marco Rossi", 89.9, "pendiente"),
+        Pedido(1043, "Aiko Tanaka", 342.0, "pagado"),
+        Pedido(1044, "Omar Haddad", 15.75, "devuelto"),
+    )
+)
+abierto = Signal(None)
+# oculto: fin
 from aurora import Column, table
 
 table(
@@ -652,6 +741,7 @@ table(
     ],
     key="pedidos",
     on_row_click=lambda p: abierto.set(p.id),
+    height=200,  # oculto
 )
 ```
 
@@ -707,7 +797,9 @@ Campo de texto de una línea. `value` es normalmente un `Signal[str]`, y entonce
 en los dos sentidos**: lo que se escribe actualiza el Signal y lo que asignes al Signal aparece en
 el campo (por ejemplo, vaciarlo al enviar).
 
-```python
+```python live
+from aurora import Signal, text_input  # oculto
+
 query = Signal("")
 text_input(query, placeholder="Buscar…", on_submit=lambda q: search(q))
 ```

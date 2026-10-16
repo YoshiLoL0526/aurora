@@ -1,0 +1,61 @@
+# Construye la documentación (ejecutando sus ejemplos vivos) y la publica en GitHub Pages.
+#
+# Requisito (una sola vez): en Settings → Pages del repositorio, elegir "GitHub Actions" como
+# origen. En los PR solo se construye, para detectar enlaces rotos o ejemplos que fallan.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  NO_MKDOCS_2_WARNING: "1"
+
+jobs:
+  build:
+    name: Construir
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # `fonts-inter`: la fuente de los temas incluidos; sin ella las capturas usarían otra.
+      - name: Dependencias del sistema
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype-dev fonts-inter
+      # Los ejemplos vivos se renderizan con el núcleo de esta misma revisión.
+      - name: Compilar e instalar
+        run: uv sync
+      - name: Construir el sitio
+        run: uv run mkdocs build --strict
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Publicar
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

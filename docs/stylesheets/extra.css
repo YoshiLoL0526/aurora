@@ -1,0 +1,68 @@
+/* Colores de Aurora: los mismos tokens que DAYLIGHT y MIDNIGHT. */
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #6847f5;
+  --md-primary-fg-color--light: #7a5cff;
+  --md-primary-fg-color--dark: #5636e0;
+  --md-accent-fg-color: #0fb89c;
+  --md-default-bg-color: #ffffff;
+  --live-bg: #f4f5f9;
+  --live-border: #e3e5ee;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #7c5cff;
+  --md-primary-fg-color--light: #8d72ff;
+  --md-primary-fg-color--dark: #6a48f5;
+  --md-accent-fg-color: #22d3b6;
+  --md-hue: 228;
+  --md-default-bg-color: #0b0d14;
+  --md-code-bg-color: #131722;
+  --live-bg: #0b0d14;
+  --live-border: #252b3b;
+}
+
+/* Capturas de los ejemplos vivos: pegadas al código que las genera. */
+.md-typeset img.live {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: -0.4em 0 1.2em;
+  border: 1px solid var(--live-border);
+  border-radius: 0 0 0.6rem 0.6rem;
+  background: var(--live-bg);
+}
+
+/* `display: block` pisa la regla de Material que oculta la captura del otro tema. */
+[data-md-color-scheme="slate"] .md-typeset img.live[src$="#only-light"],
+[data-md-color-scheme="default"] .md-typeset img.live[src$="#only-dark"] {
+  display: none;
+}
+
+.md-typeset .highlight + p:has(> img.live) {
+  margin-top: 0;
+}
+
+/* Portada */
+.md-typeset h1.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.aurora-hero {
+  text-align: center;
+  margin: 0 0 2rem;
+}
+
+.aurora-hero img {
+  border-radius: 0.8rem;
+}
+
+.aurora-hero .tagline {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 1.2rem 0 0.4rem;
+}

@@ -55,13 +55,13 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Downsampling (LTTB) en Rust para millones de puntos, zoom y pan
 - ✅ `table` con ordenación, columnas redimensionables y virtualización
 
-## v0.5 — Experiencia de desarrollo 🚧
+## v0.5 — Experiencia de desarrollo ✅
 
 - ✅ **Hot reload** que conserva el estado de los `Signal` (`aurora dev app.py`)
 - ✅ Inspector visual del árbol y profiler de frames
 - ✅ Animaciones declarativas (`animate.spring()`, transiciones de entrada/salida y de layout)
 - ✅ `aurora build`: empaquetado a ejecutable con un comando
-- ⏳ Documentación publicada con ejemplos vivos
+- ✅ Documentación publicada con ejemplos vivos
 
 ## Hacia la 1.0 ⏳
 

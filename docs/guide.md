@@ -26,7 +26,7 @@ Cada paso es un programa completo que puedes ejecutar. Si algo no queda claro, l
 Necesitas Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
 
 ```bash
-git clone https://github.com/<usuario>/aurora.git
+git clone https://github.com/YoshiLoL0526/aurora.git
 cd aurora
 uv sync
 ```
@@ -36,7 +36,7 @@ archivo en cualquier carpeta del proyecto y ejecútalo con `uv run mi_app.py`.
 
 ## 2. Una ventana
 
-```python
+```python live size=640x160
 from aurora import App, text
 
 
@@ -59,7 +59,7 @@ Tres ideas que se mantienen durante toda la guía:
 
 Los hijos se añaden con corchetes. `row` los coloca en horizontal y `column` en vertical:
 
-```python
+```python live size=900x200
 from aurora import App, column, row, spacer, text
 
 
@@ -87,7 +87,7 @@ App(view, title="Monitor", size=(900, 600)).run()
 Los colores del tema se usan con tokens que empiezan por `$`. Así la app cambia de aspecto
 completo al cambiar de tema, sin tocar la vista.
 
-```python
+```python live size=900x220
 from aurora import App, box, column, row, text
 
 
@@ -129,7 +129,7 @@ crean componentes en Aurora: sin clases, sin registros ni decoradores.
 Un `Signal` guarda un valor. Léelo llamándolo (`s()`) y cámbialo con `set` o `update`. Cualquier
 elemento con `on_click` se vuelve interactivo, con hover y pulsación animados de serie.
 
-```python
+```python live size=900x200
 from aurora import App, Signal, button, column, row, text
 
 checks = Signal(0)
@@ -157,7 +157,7 @@ Guarda los datos en un `Signal` y genera la lista con una comprensión normal de
 **inmutables** (tuplas, dataclasses congeladas) y reemplázalos al cambiar: es más fácil de razonar
 y evita errores sutiles.
 
-```python
+```python live size=900x380
 from dataclasses import dataclass, replace
 
 from aurora import App, Signal, box, column, row, text
@@ -244,7 +244,7 @@ Si la lista puede crecer más que la ventana, envuélvela en `scroll`. Recorta l
 desplaza con la rueda, el trackpad o arrastrando su barra, que aparece al desplazarse o al acercar
 el puntero al borde:
 
-```python
+```python live continue size=900x380
 from aurora import scroll
 
 
@@ -262,7 +262,7 @@ se reconstruya.
 Con miles de filas, construirlas todas para ver veinte es un desperdicio. Si todas miden lo mismo,
 usa `virtual_list`: solo construye las que están a la vista y las va cambiando al desplazarse.
 
-```python
+```python live continue size=900x380
 from aurora import virtual_list
 
 
@@ -280,7 +280,7 @@ dentro de la vista a partir de los `Signal`. Una sola fuente de verdad, cero sin
 
 Añade esto al programa del paso anterior:
 
-```python
+```python live continue size=900x540
 from aurora import row, stat
 
 show_down_only = Signal(False)
@@ -341,7 +341,8 @@ row(gap=12, align="center")[
 Para gráficos e indicadores que no son cajas, `canvas` te da un lienzo con comandos de dibujo.
 Tu función recibe el lienzo ya con su tamaño, y se vuelve a llamar cuando cambia el estado:
 
-```python
+```python live continue align=stretch
+ventas = Signal([12, 18, 9, 22, 30, 26, 34, 28])  # oculto
 from aurora import Canvas, canvas
 
 
@@ -390,7 +391,7 @@ Además de `button`, `card`, `badge` y `stat`, Aurora trae `checkbox`, `switch`,
 `avatar`, `divider` y `tooltip`. Los controles se enlazan a un `Signal` igual que los campos de
 texto:
 
-```python
+```python live continue
 from aurora import checkbox, select, switch, tabs
 
 notify = Signal(True)
@@ -409,7 +410,8 @@ column(gap=14)[
 `text_input` y `textarea` se enlazan directamente a un `Signal[str]`: no hace falta escribir
 manejadores para que el valor llegue a tu estado.
 
-```python
+```python live continue size=480
+from aurora import button, card  # oculto
 from aurora import text_input, textarea
 
 title = Signal("")
@@ -428,6 +430,10 @@ def form():
         textarea(notes, placeholder="Notas (Ctrl+Enter para guardar)", on_submit=save),
         button("Guardar", save, key="save"),
     ]
+
+
+title.set("Migración de la base de datos")  # oculto
+form()  # oculto
 ```
 
 En los tests, `pilot.click("…")` enfoca un campo y `pilot.type("hola\n")` escribe en él.
@@ -437,7 +443,7 @@ En los tests, `pilot.click("…")` enfoca un campo y `pilot.type("hola\n")` escr
 Para dibujar algo **encima** del resto, usa `position="absolute"` con desplazamientos. Un modal
 es un fondo semitransparente que cubre todo y, dentro, una tarjeta centrada:
 
-```python
+```python live continue size=900x480
 from aurora import box, button, card, row, text
 
 selected = Signal(None)  # nombre del servicio abierto, o None
@@ -468,6 +474,18 @@ def detail_modal():
             ],
         ]
     ]
+
+
+# oculto: inicio
+def view():
+    return box()[
+        column(padding=32, gap=10)[[service_row(s) for s in services()]],
+        detail_modal(),
+    ]
+
+
+selected.set("CDN")
+# oculto: fin
 ```
 
 Coloca el modal como **último hijo de la raíz** para que se pinte por encima de todo (o dale
@@ -543,7 +561,7 @@ transición clásica de duración fija. Todo lo demás está en la
 Pasa un `Signal[Theme]` a `App` y cámbialo cuando quieras. Como todo usa tokens, la interfaz
 completa se actualiza:
 
-```python
+```python live continue size=900x480
 from aurora import DAYLIGHT, MIDNIGHT
 
 theme = Signal(MIDNIGHT)
@@ -554,6 +572,8 @@ def toggle_theme():
 
 
 App(view, title="Monitor", size=(900, 600), theme=theme).run()
+selected.set(None)  # oculto
+toggle_theme()  # oculto
 ```
 
 Para crear tu propio tema, consulta [Temas y tokens](reference.md#temas-y-tokens).

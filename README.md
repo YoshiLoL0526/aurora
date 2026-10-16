@@ -8,6 +8,7 @@
 </p>
 
 <p align="center">
+  <a href="https://yoshilol0526.github.io/aurora/">Documentación</a> ·
   <a href="#inicio-rápido">Inicio rápido</a> ·
   <a href="docs/guide.md">Guía</a> ·
   <a href="docs/reference.md">Referencia</a> ·
@@ -79,7 +80,7 @@ App(view, title="Contador").run()
 En Linux también `libfontconfig-dev` y `libfreetype-dev`.
 
 ```bash
-git clone https://github.com/<usuario>/aurora.git
+git clone https://github.com/YoshiLoL0526/aurora.git
 cd aurora
 uv sync                          # compila el núcleo Rust (release) e instala en modo editable
 uv run examples/hello.py         # tu primera ventana
@@ -202,6 +203,9 @@ Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap]
 - Todavía sin accesibilidad ni multi-ventana.
 
 ## Documentación
+
+Publicada en **<https://yoshilol0526.github.io/aurora/>**, con buscador, tema claro/oscuro y
+ejemplos vivos: cada captura se genera ejecutando el código que la acompaña.
 
 - [**Guía**](docs/guide.md): de cero a una app completa, paso a paso.
 - [**Referencia**](docs/reference.md): todas las primitivas, componentes y propiedades de estilo.
