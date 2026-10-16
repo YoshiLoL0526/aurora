@@ -185,7 +185,7 @@ Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap]
 
 - **Vista completa por evento**: cada cambio vuelve a llamar a `view()`. Las ramas marcadas con
   `@component` que no cambiaron se reutilizan, pero el resto se reconstruye.
-- Todavía sin accesibilidad, multi-ventana ni tablas (`table`).
+- Todavía sin accesibilidad ni multi-ventana.
 
 ## Documentación
 

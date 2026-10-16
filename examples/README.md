@@ -9,6 +9,7 @@ sin abrir ventana, útil para ver el resultado en un servidor o en CI.
 | [`studio.py`](studio.py) | Una app completa: navegación entre vistas, kanban con búsqueda, gráfico interactivo, formulario de nueva tarea (Ctrl+N), ajustes con `tabs`/`switch`/`select`/`textarea`, modal con confirmación, toasts, tooltips y tema claro/oscuro. | `uv run examples/studio.py` |
 | [`canvas.py`](canvas.py) | Dibujo inmediato con `canvas`: gráfico de líneas con rejilla y un indicador circular que se redibujan al cambiar los datos. | `uv run examples/canvas.py` |
 | [`charts.py`](charts.py) | Gráficos nativos con `chart`: línea de dos series (polars), área que se actualiza con datos mutados en sitio, barras por categoría, dispersión y una señal de un millón de puntos con zoom y pan. | `uv run examples/charts.py` |
+| [`table.py`](table.py) | Tabla de 100 000 clientes con `table`: ordenación por columna, columnas redimensionables arrastrando el borde de la cabecera, filas virtualizadas, celdas con `badge`, búsqueda y selección de fila. | `uv run examples/table.py` |
 | [`brand.py`](brand.py) | Genera el banner y el logo del README con la propia librería. | `uv run examples/brand.py` |
 
 ```bash

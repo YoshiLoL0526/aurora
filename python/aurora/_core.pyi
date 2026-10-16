@@ -43,6 +43,16 @@ class ScrollEvent:
     width: float
     height: float
 
+class DragEvent:
+    """Evento que reciben los manejadores `on_drag`: posición del puntero, desplazamiento
+    desde donde se pulsó (px lógicos) y fase del gesto (`"start"`, `"move"` o `"end"`)."""
+
+    x: float
+    y: float
+    dx: float
+    dy: float
+    phase: str
+
 class Pilot:
     """Ejecuta una app sin ventana y simula el puntero frame a frame (para tests).
 
@@ -67,6 +77,12 @@ class Pilot:
     def mouse_down(self) -> None: ...
     def mouse_up(self) -> None: ...
     def click_at(self, x: float, y: float) -> None: ...
+    def drag(self, key: str, dx: float = 0.0, dy: float = 0.0, steps: int = 4) -> None:
+        """Arrastra desde el centro de `key` desplazando `(dx, dy)` en `steps` movimientos, y suelta."""
+    @property
+    def cursor(self) -> str:
+        """Cursor del ratón (`"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`,
+        `"col-resize"` o `"row-resize"`)."""
     def click(self, key: str) -> None:
         """Clic en el centro del nodo `key`. `LookupError` si no se pintó."""
     def rect(self, key: str) -> tuple[float, float, float, float] | None:

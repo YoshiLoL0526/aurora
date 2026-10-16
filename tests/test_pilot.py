@@ -273,3 +273,80 @@ def test_stats_report_phases_of_last_frame():
     count.set(1)
     pilot.frame()
     assert pilot.stats["rebuilt"] is True
+
+
+def test_drag_reports_phases_and_offset_from_the_press():
+    events = []
+    clicks = []
+    view = lambda: column()[
+        box(key="handle", width=40, height=40, on_drag=events.append, on_click=lambda: clicks.append(1))
+    ]
+    pilot = App(view, size=(200, 100)).pilot()
+    pilot.drag("handle", dx=30, dy=-10, steps=3)
+    assert [e.phase for e in events] == ["start", "move", "move", "move", "end"]
+    assert (events[0].x, events[0].y, events[0].dx) == (20, 20, 0)
+    assert (events[-1].dx, events[-1].dy) == (30, -10)
+    assert (events[-1].x, events[-1].y) == (50, 10)
+    # Un arrastre que se movió no es un clic; pulsar y soltar sin moverse, sí.
+    assert clicks == []
+    pilot.click("handle")
+    assert clicks == [1]
+    assert [e.phase for e in events[-2:]] == ["start", "end"]
+
+
+def test_drag_keeps_reporting_outside_the_node():
+    width = Signal(40.0)
+    start = {}
+
+    def resize(e):
+        if e.phase == "start":
+            start["w"] = width()
+        width.set(max(10.0, start["w"] + e.dx))
+
+    view = lambda: row()[
+        box(key="panel", width=width(), height=40),
+        box(key="grip", width=6, height=40, cursor="col-resize", on_drag=resize),
+    ]
+    pilot = App(view, size=(300, 100)).pilot()
+    pilot.drag("grip", dx=120, steps=6)
+    assert pilot.rect("panel") == (0, 0, 160, 40)
+    assert pilot.rect("grip")[0] == 160
+
+
+def test_drag_is_not_focusable_and_does_not_steal_focus():
+    view = lambda: column()[
+        button("OK", lambda: None, key="ok"),
+        box(key="grip", width=20, height=20, on_drag=lambda e: None),
+    ]
+    pilot = App(view, size=(200, 100)).pilot()
+    pilot.focus("ok")
+    pilot.drag("grip", dx=10)
+    assert pilot.focused == "ok"
+    pilot.press("tab")
+    assert pilot.focused == "ok"  # el único enfocable
+
+
+def test_cursor_style_applies_to_children_and_during_drag():
+    view = lambda: row()[
+        box(key="area", width=60, height=40, cursor="col-resize")[box(key="inner", width=20, height=20)],
+        box(key="link", width=60, height=40, on_click=lambda: None),
+        box(key="grip", width=10, height=40, cursor="row-resize", on_drag=lambda e: None),
+    ]
+    pilot = App(view, size=(300, 100)).pilot()
+    pilot.move_to(5, 5)  # sobre `inner`: hereda el cursor de `area`
+    assert pilot.cursor == "col-resize"
+    pilot.move_to(90, 20)
+    assert pilot.cursor == "pointer"
+    pilot.move_to(250, 20)
+    assert pilot.cursor == "default"
+    pilot.move_to(125, 20)
+    pilot.mouse_down()
+    pilot.move_to(250, 20)  # fuera del nodo: el arrastre conserva su cursor
+    assert pilot.cursor == "row-resize"
+    pilot.mouse_up()
+    assert pilot.cursor == "default"
+
+
+def test_invalid_cursor_raises(tmp_path):
+    with pytest.raises(ValueError, match="cursor"):
+        App(lambda: box(cursor="mano"), size=(10, 10)).render_png(str(tmp_path / "x.png"))

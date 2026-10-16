@@ -22,6 +22,8 @@ use crate::render::{Engine, TIP_DELAY, ancestors, hit_test, topmost};
 use crate::scroll::{LINE, ScrollEvent};
 use crate::spec::{self, Node};
 
+pub use crate::spec::Cursor as CursorKind;
+
 /// Lo activa `wake()` desde cualquier hilo; el siguiente frame lo consume y
 /// reconstruye la vista.
 static WAKE_PENDING: AtomicBool = AtomicBool::new(false);
@@ -80,6 +82,8 @@ pub struct Runtime {
     drag: Option<Drag>,
     /// Arrastre en curso de la ventana de un `chart` (zoom y pan).
     pan: Option<Pan>,
+    /// Arrastre en curso de un nodo con `on_drag`.
+    grip: Option<Grip>,
     /// Nodo pulsado con Espacio, que se activa al soltar la tecla.
     space_pressed: Option<String>,
     /// Nodos con `autofocus` de la vista anterior: solo toma el foco el que aparece.
@@ -112,18 +116,6 @@ pub struct Runtime {
     canvases: Canvases,
     /// Cuándo volver a grabar cada `chart`.
     charts: Charts,
-}
-
-/// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CursorKind {
-    Default,
-    Pointer,
-    Text,
-    /// Sobre un `chart` que se puede arrastrar (zoom y pan).
-    Grab,
-    /// Arrastrando la ventana de un `chart`.
-    Grabbing,
 }
 
 /// Portapapeles del sistema (ventana) o en memoria (piloto, tests deterministas).
@@ -181,6 +173,41 @@ struct Pan {
     moved: bool,
 }
 
+/// Arrastre de un nodo con `on_drag`: empieza al pulsar sobre él y le llegan
+/// todos los movimientos hasta soltar, aunque el puntero salga de su caja.
+struct Grip {
+    key: String,
+    /// Dónde se pulsó.
+    start: (f32, f32),
+    /// Última posición entregada.
+    last: (f32, f32),
+    /// Si llegó a moverse (un arrastre no completa el clic).
+    moved: bool,
+}
+
+/// Lo que recibe un manejador `on_drag`: posición del puntero y desplazamiento
+/// desde donde se pulsó (píxeles lógicos), y la fase del gesto.
+#[pyclass(frozen, get_all, module = "aurora._core", name = "DragEvent")]
+#[derive(Clone, Debug)]
+pub struct DragEvent {
+    pub x: f32,
+    pub y: f32,
+    pub dx: f32,
+    pub dy: f32,
+    /// `"start"` al pulsar, `"move"` en cada movimiento y `"end"` al soltar.
+    pub phase: String,
+}
+
+#[pymethods]
+impl DragEvent {
+    fn __repr__(&self) -> String {
+        format!(
+            "DragEvent(phase={:?}, x={}, y={}, dx={}, dy={})",
+            self.phase, self.x, self.y, self.dx, self.dy
+        )
+    }
+}
+
 impl Runtime {
     pub fn new(build: Py<PyAny>, clipboard: Clipboard) -> Self {
         Self {
@@ -191,6 +218,7 @@ impl Runtime {
             pointer: None,
             drag: None,
             pan: None,
+            grip: None,
             space_pressed: None,
             autofocus_seen: HashSet::new(),
             reveal_focus: false,
@@ -378,7 +406,7 @@ impl Runtime {
     }
 
     /// Devuelve `true` si hace falta pintar otro frame.
-    pub fn pointer_move(&mut self, x: f32, y: f32) -> bool {
+    pub fn pointer_move(&mut self, x: f32, y: f32) -> PyResult<bool> {
         self.pointer = Some((x, y));
         if let Some(key) = &self.selecting
             && let Some(state) = self.engine.inputs.get_mut(key)
@@ -387,21 +415,31 @@ impl Runtime {
                 state.editor.move_to(pos, true);
                 state.blink = 0.0;
             }
-            return true;
+            return Ok(true);
         }
         if let Some(drag) = &self.drag {
             if let Some(state) = self.engine.scroll.get_mut(&drag.key) {
                 let pos = if drag.vertical { y } else { x };
                 state.drag_thumb_to(drag.vertical, pos - drag.grab);
             }
-            return true;
+            return Ok(true);
+        }
+        // Arrastre de un nodo con `on_drag`: cada movimiento llega a su manejador.
+        if let Some(grip) = &mut self.grip {
+            if grip.last == (x, y) {
+                return Ok(false);
+            }
+            grip.last = (x, y);
+            grip.moved = true;
+            self.send_drag("move")?;
+            return Ok(true);
         }
         // Arrastre de la ventana de un `chart`: el eje x sigue al puntero.
         if let Some(pan) = &mut self.pan {
             let dx = x - pan.last.0;
             pan.last = (x, y);
             pan.moved |= dx != 0.0;
-            return dx != 0.0 && self.charts.pan(&pan.key, dx);
+            return Ok(dx != 0.0 && self.charts.pan(&pan.key, dx));
         }
         let bar_changed = self.hover_scrollbar();
         let hover_changed = self.refresh_hover();
@@ -409,7 +447,25 @@ impl Runtime {
         let grab = self.zoom_at().is_some();
         let grab_changed = self.zoom_hover != grab;
         self.zoom_hover = grab;
-        hover_changed || bar_changed || grab_changed
+        Ok(hover_changed || bar_changed || grab_changed)
+    }
+
+    /// Entrega la posición actual del arrastre a su `on_drag`.
+    fn send_drag(&mut self, phase: &str) -> PyResult<()> {
+        let Some(grip) = &self.grip else {
+            return Ok(());
+        };
+        let (x, y) = grip.last;
+        let key = grip.key.clone();
+        let event = DragEvent {
+            x,
+            y,
+            dx: x - grip.start.0,
+            dy: y - grip.start.1,
+            phase: phase.to_owned(),
+        };
+        let arg = Python::attach(|py| Py::new(py, event).map(|e| e.into_any()))?;
+        self.dispatch(&key, "drag", Some(arg)).map(drop)
     }
 
     pub fn pointer_leave(&mut self) {
@@ -430,6 +486,22 @@ impl Runtime {
         self.engine.pressed = self.engine.hovered.clone();
         self.engine.tip.suppressed = true;
         self.engine.focus_visible = false;
+        // Un nodo con `on_drag` bajo el puntero se lleva el gesto (sin tocar el foco).
+        if let (Some(key), Some(at)) = (self.engine.hovered.clone(), self.pointer)
+            && self
+                .tree
+                .as_ref()
+                .and_then(|t| t.find(&key))
+                .is_some_and(Node::is_draggable)
+        {
+            self.grip = Some(Grip {
+                key,
+                start: at,
+                last: at,
+                moved: false,
+            });
+            return self.send_drag("start");
+        }
         // Un `chart` con zoom bajo el puntero: el arrastre mueve su ventana y el
         // doble clic vuelve a la vista completa.
         if let (Some((key, _)), Some((x, y))) = (self.zoom_at(), self.pointer) {
@@ -496,11 +568,24 @@ impl Runtime {
         if self.selecting.is_some() {
             return CursorKind::Text;
         }
+        // Mientras dura un arrastre manda el cursor del nodo arrastrado.
+        if let Some(grip) = &self.grip {
+            let own = self.engine.regions.iter().find(|r| r.key == grip.key);
+            return own.and_then(|r| r.cursor).unwrap_or(CursorKind::Grabbing);
+        }
         if self.pan.as_ref().is_some_and(|p| p.moved) {
             return CursorKind::Grabbing;
         }
         if self.zoom_at().is_some() {
             return CursorKind::Grab;
+        }
+        // La propiedad `cursor` del nodo bajo el puntero (o de un ancestro).
+        if let Some((x, y)) = self.pointer
+            && let Some(cursor) =
+                ancestors(&self.engine.regions, topmost(&self.engine.regions, x, y))
+                    .find_map(|r| r.cursor)
+        {
+            return cursor;
         }
         match self.engine.hovered.as_ref() {
             Some(key)
@@ -530,6 +615,15 @@ impl Runtime {
         // Un arrastre movió la ventana del gráfico: el gesto no completa el clic.
         if self.pan.take().is_some_and(|pan| pan.moved) {
             self.engine.pressed = None;
+        }
+        // Igual con un `on_drag` que llegó a moverse; si no se movió, es un clic.
+        if let Some(grip) = &self.grip {
+            if grip.moved {
+                self.engine.pressed = None;
+            }
+            let result = self.send_drag("end");
+            self.grip = None;
+            result?;
         }
         if let Some(key) = self.engine.pressed.take()
             && self.engine.hovered.as_deref() == Some(key.as_str())

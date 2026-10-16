@@ -29,7 +29,7 @@ use crate::color::lerp;
 use crate::image::{Decoded, Fit, ImageCache, ImageError, Loaded};
 use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
 use crate::scroll::{BAR_WIDTH, ScrollState};
-use crate::spec::{Axis, Kind, Len, Node, Style, TextProps};
+use crate::spec::{Axis, Cursor, Kind, Len, Node, Style, TextProps};
 
 /// Contexto de las hojas del árbol de layout.
 pub enum Leaf {
@@ -255,6 +255,8 @@ pub struct HitRegion {
     pub editable: bool,
     /// Tiene `tooltip`.
     pub tooltip: bool,
+    /// Propiedad `cursor` del nodo.
+    pub cursor: Option<Cursor>,
     pub scroll: Option<Axis>,
     /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
     pub parent: Option<usize>,
@@ -1811,11 +1813,12 @@ impl<'a> Geometry<'a> {
             ink: lnode.ink,
             own: lnode.own,
             layer,
-            interactive: node.is_interactive() || node.is_editable(),
+            interactive: node.is_interactive() || node.is_draggable() || node.is_editable(),
             capture: node.style.capture,
             focusable: node.is_focusable(),
             editable: node.is_editable(),
             tooltip: node.style.tooltip.is_some(),
+            cursor: node.style.cursor,
             scroll: node.style.scroll,
             parent,
         });

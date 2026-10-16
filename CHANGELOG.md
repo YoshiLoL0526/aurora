@@ -10,6 +10,22 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **`table(rows, columns, *, key, ...)`**: tabla de datos con cabecera fija, **ordenación** (clic
+  en la cabecera: ascendente → descendente → original; vacíos al final, orden estable y
+  memorizado), **columnas redimensionables** (arrastrando el borde de la cabecera, con
+  `min_width` y desplazamiento horizontal si no caben) y filas **virtualizadas** sobre
+  `virtual_list` (100 000 filas sin coste al desplazarse). Las filas pueden ser dicts, tuplas u
+  objetos; `Column` define título, ancho, alineación, `value`, `format`, `cell` (cualquier
+  elemento) y si ordena o se redimensiona. Orden y anchos se guardan por `key` o en `Signal`
+  propios (`sort`, `widths`); `on_row_click(fila)` hace las filas pulsables. Ejemplo en
+  `examples/table.py`.
+- `on_drag` en cualquier elemento, con `DragEvent` (`phase`: `"start"`, `"move"`, `"end"`; `x`,
+  `y`; `dx`, `dy` desde donde se pulsó): el elemento recibe el arrastre hasta soltar aunque el
+  puntero salga de su caja, y un arrastre no completa el clic.
+- Propiedad de estilo `cursor` (`"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`,
+  `"row-resize"`, `"default"`).
+- `Pilot.drag(key, dx, dy, steps=4)` y `Pilot.cursor`.
+
 - **Downsampling (LTTB) en Rust:** los `chart` reducen cada serie a ~2 puntos por píxel al
   grabarla (*Largest-Triangle-Three-Buckets*), tramo a tramo (los `NaN` cortan la línea) y con
   presupuesto por ancho en pantalla, así que los picos se conservan (con x desordenada, como una

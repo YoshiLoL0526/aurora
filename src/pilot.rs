@@ -99,8 +99,39 @@ impl Pilot {
     }
 
     fn move_to(&mut self, x: f32, y: f32) -> PyResult<()> {
-        self.rt.pointer_move(x, y);
-        self.step(FRAME).map(|_| ())
+        let result = self.rt.pointer_move(x, y);
+        self.step(FRAME)?;
+        result.map(drop)
+    }
+
+    /// Arrastra desde el centro de `key` desplazando `(dx, dy)` en `steps`
+    /// movimientos, y suelta.
+    #[pyo3(signature = (key, dx = 0.0, dy = 0.0, steps = 4))]
+    fn drag(&mut self, key: &str, dx: f32, dy: f32, steps: u32) -> PyResult<()> {
+        let from = self.center(key)?;
+        self.move_to(from.x, from.y)?;
+        self.mouse_down()?;
+        let steps = steps.max(1);
+        for i in 1..=steps {
+            let t = i as f32 / steps as f32;
+            self.move_to(from.x + dx * t, from.y + dy * t)?;
+        }
+        self.mouse_up()
+    }
+
+    /// Cursor del ratón en el último frame (`"default"`, `"pointer"`, `"col-resize"`…).
+    #[getter]
+    fn cursor(&self) -> &'static str {
+        use crate::runtime::CursorKind as C;
+        match self.rt.cursor() {
+            C::Default => "default",
+            C::Pointer => "pointer",
+            C::Text => "text",
+            C::Grab => "grab",
+            C::Grabbing => "grabbing",
+            C::ColResize => "col-resize",
+            C::RowResize => "row-resize",
+        }
     }
 
     fn leave(&mut self) -> PyResult<()> {

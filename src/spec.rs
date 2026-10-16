@@ -150,9 +150,43 @@ pub struct Style {
     pub rows: usize,
     /// Texto de ayuda que aparece al dejar el puntero un momento encima.
     pub tooltip: Option<String>,
+    /// Cursor del ratón sobre el nodo (y sus hijos, salvo que fijen otro).
+    pub cursor: Option<Cursor>,
     // Imágenes
     pub src: Option<Source>,
     pub fit: Fit,
+}
+
+/// Cursor del ratón. Lo eligen el runtime (según lo que hay bajo el puntero)
+/// o la propiedad `cursor` de un nodo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cursor {
+    Default,
+    Pointer,
+    Text,
+    /// Sobre algo que se puede arrastrar (un `chart` con zoom).
+    Grab,
+    /// Arrastrando la ventana de un `chart`.
+    Grabbing,
+    /// Redimensionar en horizontal (bordes de columna).
+    ColResize,
+    /// Redimensionar en vertical.
+    RowResize,
+}
+
+impl Cursor {
+    fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "default" => Cursor::Default,
+            "pointer" => Cursor::Pointer,
+            "text" => Cursor::Text,
+            "grab" => Cursor::Grab,
+            "grabbing" => Cursor::Grabbing,
+            "col-resize" => Cursor::ColResize,
+            "row-resize" => Cursor::RowResize,
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +257,11 @@ impl Node {
 
     pub fn is_interactive(&self) -> bool {
         self.handlers.contains_key("click")
+    }
+
+    /// Tiene `on_drag`: recibe el arrastre que empieza sobre él.
+    pub fn is_draggable(&self) -> bool {
+        self.handlers.contains_key("drag")
     }
 
     pub fn is_editable(&self) -> bool {
@@ -417,6 +456,14 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         selection_color: color_of(d, "selection_color")?,
         rows: f32_of(d, "rows")?.map_or(1, |n| n.max(1.0) as usize),
         tooltip: str_of(d, "tooltip")?.filter(|t| !t.is_empty()),
+        cursor: match str_of(d, "cursor")? {
+            None => None,
+            Some(c) => Some(Cursor::parse(&c).ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "cursor inválido: {c:?} (usa \"default\", \"pointer\", \"text\", \"grab\", \"grabbing\", \"col-resize\" o \"row-resize\")"
+                ))
+            })?),
+        },
         src: match get(d, "src")? {
             Some(v) if v.is_instance_of::<PyBytes>() => Some(Source::Bytes(v.extract()?)),
             Some(v) => Some(Source::Path(v.extract::<String>().map_err(|_| {

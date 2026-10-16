@@ -9,7 +9,7 @@ from concurrent.futures import Future
 from typing import Any, Literal, TypeVar
 
 from . import _core, reactive
-from ._core import KeyEvent, Pilot, ScrollEvent
+from ._core import DragEvent, KeyEvent, Pilot, ScrollEvent
 from .canvas import Canvas, Path, canvas
 from .charts import chart
 from .components import (
@@ -31,6 +31,7 @@ from .components import (
 from .elements import Element, box, column, image, row, scroll, spacer, text
 from .reactive import component
 from .signal import Signal
+from .table import Column, table
 from .theme import DAYLIGHT, MIDNIGHT, Theme
 
 __all__ = [
@@ -38,6 +39,8 @@ __all__ = [
     "MIDNIGHT",
     "App",
     "Canvas",
+    "Column",
+    "DragEvent",
     "Element",
     "KeyEvent",
     "Path",
@@ -63,6 +66,7 @@ __all__ = [
     "spacer",
     "stat",
     "switch",
+    "table",
     "tabs",
     "text",
     "text_input",

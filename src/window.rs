@@ -155,6 +155,8 @@ impl App {
                 CursorKind::Text => CursorIcon::Text,
                 CursorKind::Grab => CursorIcon::Grab,
                 CursorKind::Grabbing => CursorIcon::Grabbing,
+                CursorKind::ColResize => CursorIcon::ColResize,
+                CursorKind::RowResize => CursorIcon::RowResize,
                 CursorKind::Default => CursorIcon::Default,
             });
         }
@@ -242,7 +244,11 @@ impl ApplicationHandler<Wake> for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let p = position.to_logical::<f32>(window.scale_factor());
-                if self.rt.pointer_move(p.x, p.y) {
+                let changed = self.rt.pointer_move(p.x, p.y).unwrap_or_else(|err| {
+                    report(Err(err));
+                    true
+                });
+                if changed {
                     self.update_cursor();
                     window.request_redraw();
                 }

@@ -116,6 +116,8 @@ def test_counter():
 |---|---|
 | `click(key)` | Clic en el centro del nodo `key`, como una persona: si otro nodo lo tapa, el clic llega a ese otro. `LookupError` si el nodo no se pintó. |
 | `click_at(x, y)` | Mueve el puntero, pulsa y suelta. |
+| `drag(key, dx=0, dy=0, steps=4)` | Pulsa en el centro de `key`, mueve el puntero `(dx, dy)` en `steps` pasos y suelta. |
+| `cursor` | Cursor del ratón en el último frame: `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"` o `"row-resize"`. |
 | `move_to(x, y)` / `leave()` | Mueve el puntero / lo saca de la ventana. |
 | `mouse_down()` / `mouse_up()` | Pulsa / suelta el botón izquierdo por separado. |
 | `wheel(dy=0, dx=0, *, lines=False)` | Rueda bajo el puntero; positivo = hacia el final del contenido. En píxeles (trackpad, inmediato) o, con `lines=True`, en pasos de rueda (animado). |
@@ -346,12 +348,40 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 |---|---|
 | `on_scroll` | En un `scroll`: callable que recibe un `ScrollEvent` cuando cambian el desplazamiento o la zona visible. Ver [`scroll`](#scroll-axisy-estilo). |
 | `on_click` | Callable sin argumentos. Hace al elemento interactivo: cursor de mano, estados hover/pressed y clics. |
+| `on_drag` | Callable que recibe un [`DragEvent`](#dragevent). Pulsar sobre el elemento empieza un arrastre: le llegan todos los movimientos hasta soltar, aunque el puntero salga de su caja. Si el puntero llega a moverse, el gesto no cuenta como clic. Hace al elemento interactivo (hover/pressed) pero no enfocable. |
 | `on_key` | Callable que recibe un [`KeyEvent`](#keyevent). Recibe las teclas cuando el foco está en el elemento o en uno de sus descendientes (la raíz las recibe siempre). Devuelve `True` para darla por atendida. |
 | `on_focus` / `on_blur` | Callables sin argumentos: el elemento gana / pierde el foco. |
 | `on_<evento>` | Todo argumento que empiece por `on_` se trata como manejador, no como estilo. |
 | `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`. |
 | `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
 | `key` | Identidad estable. Conserva el estado de animación aunque el elemento cambie de posición en el árbol. Recomendado en listas dinámicas. Un elemento sin `key` recibe la de su padre seguida de su posición (`"fila-7/0"`, `"fila-7/1"`…), así que los hijos siguen a su padre si este se mueve. |
+
+### `DragEvent`
+
+Lo que reciben los manejadores `on_drag`, en píxeles lógicos:
+
+| Atributo | Descripción |
+|---|---|
+| `phase` | `"start"` al pulsar, `"move"` en cada movimiento y `"end"` al soltar. |
+| `x`, `y` | Posición actual del puntero en la ventana. |
+| `dx`, `dy` | Desplazamiento desde donde se pulsó (no desde el último evento). |
+
+```python
+ancho = Signal(240.0)
+inicio = {}
+
+
+def redimensionar(e: DragEvent):
+    if e.phase == "start":
+        inicio["ancho"] = ancho()
+    ancho.set(max(120, inicio["ancho"] + e.dx))
+
+
+row()[
+    column(width=ancho())[...],
+    box(width=6, cursor="col-resize", bg_hover="$border", on_drag=redimensionar),
+]
+```
 
 ## Teclado y foco
 
@@ -513,6 +543,60 @@ virtual_list(len(tareas()), lambda i: fila(i, i == elegida()), item_height=36, k
 - Solo las filas construidas existen en el árbol: Tab recorre las visibles, y `Pilot.rect` de una
   fila fuera de la zona visible devuelve `None`.
 
+### `table(rows, columns, *, key, sort=None, widths=None, on_row_click=None, row_height=36, header_height=40, striped=True, empty="Sin datos", overscan=4, **estilo)`
+
+Tabla de datos con cabecera fija, **ordenación**, **columnas redimensionables** y filas
+**virtualizadas**: solo se construyen las visibles, así que con 100 000 filas desplazarse cuesta
+lo mismo que con 20.
+
+```python
+from aurora import Column, table
+
+table(
+    pedidos(),
+    [
+        Column("id", "Nº", width=80, align="end"),
+        Column("cliente", "Cliente", width=220),
+        Column("total", "Total", align="end", format=lambda v: f"{v:,.2f} €"),
+        Column("estado", "Estado", cell=lambda p: badge(p.estado), sortable=False),
+    ],
+    key="pedidos",
+    on_row_click=lambda p: abierto.set(p.id),
+)
+```
+
+- `rows` es cualquier secuencia: dicts, tuplas, dataclasses u otros objetos. `columns` son
+  objetos `Column` o simplemente keys (`["id", "nombre"]`).
+- **Ordenar:** pulsar una cabecera ordena por esa columna, ascendente → descendente → orden
+  original. Los textos se comparan sin distinguir mayúsculas, los vacíos (`None`) van siempre al
+  final y los empates conservan el orden original. El orden se calcula una vez y se memoriza
+  mientras `rows` sea el mismo objeto y no cambie de longitud: si cambian los datos, pasa una
+  secuencia nueva en vez de modificarla en su sitio.
+- **Redimensionar:** arrastrar el borde derecho de una cabecera cambia el ancho de su columna (sin
+  bajar de `min_width`). Si las columnas no caben, la tabla se desplaza en horizontal.
+- El orden y los anchos se guardan por `key`. Para leerlos o fijarlos desde fuera, pasa tus
+  `Signal`: `sort` con `(key_de_columna, descendente)` o `None`, y `widths` con
+  `{key_de_columna: ancho}` (las que falten usan `Column.width`).
+- `on_row_click(fila)` hace las filas pulsables. `striped` alterna el fondo de las filas y `empty`
+  es el texto que se muestra sin filas.
+- Sin `height` ni `max_height`, ocupa el espacio libre (`grow=1`), como un `scroll`.
+- En los tests, las cabeceras tienen key `"{key}/h/{columna}"`, los bordes
+  `"{key}/resize/{columna}"`, las filas `"{key}/row/{índice en rows}"` y el cuerpo desplazable
+  `"{key}/body"`.
+
+#### `Column(key, title=None, *, width=160, min_width=48, align="start", value=None, format=None, cell=None, sortable=True, resizable=True)`
+
+| Campo | Descripción |
+|---|---|
+| `key` | Identifica la columna. Sin `value`, el valor de cada celda es `fila[key]` en un dict, `getattr(fila, key)` en un objeto o la posición de la columna en una tupla o lista. |
+| `title` | Texto de la cabecera. Por defecto, la `key`. |
+| `width` / `min_width` | Ancho inicial y mínimo al redimensionar, en píxeles. |
+| `align` | `"start"`, `"center"` o `"end"` (números). |
+| `value` | `value(fila)`: valor de la celda, que es lo que se ordena. |
+| `format` | `format(valor)`: texto que se muestra. Por defecto, `str(valor)` (`None` se muestra vacío). |
+| `cell` | `cell(fila)`: elemento que sustituye al texto (badges, avatares, botones). La ordenación sigue usando el valor. |
+| `sortable` / `resizable` | Si la cabecera ordena al pulsarla / si su borde se puede arrastrar. |
+
 ### `tooltip(child, tip)`
 
 Muestra `tip` en una burbuja al dejar el puntero **medio segundo** sobre `child`. Aparece debajo
@@ -598,7 +682,7 @@ contenedores (como en CSS).
 | Propiedad | Valores | Descripción |
 |---|---|---|
 | `bg` | color | Color de fondo. |
-| `bg_hover` | color | Fondo con el cursor encima (requiere `on_click`). Transición animada. |
+| `bg_hover` | color | Fondo con el cursor encima (requiere `on_click` u `on_drag`). Transición animada. |
 | `bg_pressed` | color | Fondo mientras se mantiene pulsado. Transición animada. |
 | `gradient` | `(desde, hasta, ángulo)` | Gradiente lineal. Ángulo en grados: `0` = izquierda→derecha, `90` = arriba→abajo. Reemplaza a `bg`. |
 | `radius` | número | Radio de las esquinas. Usa `999` (o `"$full"`) para píldoras y círculos. |
@@ -611,6 +695,7 @@ contenedores (como en CSS).
 | `placeholder_color` | color | Color del placeholder de un campo de texto. Por defecto, el color del texto al 45 %. |
 | `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |
 | `tooltip` | texto | Texto de ayuda que aparece al dejar el puntero encima. Ver [`tooltip`](#tooltipchild-tip). |
+| `cursor` | `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"` | Cursor del ratón sobre el elemento y sus hijos (salvo que un hijo fije otro). Durante un `on_drag` se mantiene el del elemento arrastrado. |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
 | `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |
 
