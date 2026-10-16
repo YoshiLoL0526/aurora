@@ -91,6 +91,13 @@ uv run examples/studio.py        # la demo completa
 
 ¿Prefieres pip? `pip install maturin && maturin develop --release`.
 
+Mientras desarrollas, arranca la app con **hot reload**: al guardar, la ventana se actualiza con
+el código nuevo sin perder el estado (ver [hot reload](docs/reference.md#hot-reload)):
+
+```bash
+uv run aurora dev examples/hello.py
+```
+
 Para repartir tu app, empaquétala en un ejecutable con un comando (requiere el extra
 `aurora-ui[build]`; ver [empaquetado](docs/reference.md#empaquetado-aurora-build)):
 

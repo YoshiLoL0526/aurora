@@ -8,6 +8,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [component](#component)
 - [Pilot (tests de interacción)](#pilot-tests-de-interacción)
 - [Inspector y profiler de frames](#inspector-y-profiler-de-frames)
+- [Hot reload](#hot-reload)
 - [Primitivas](#primitivas)
 - [Teclado y foco](#teclado-y-foco)
 - [Componentes](#componentes)
@@ -22,7 +23,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 ## App
 
 ```python
-App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None)
+App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, reload=None)
 ```
 
 | Parámetro | Tipo | Descripción |
@@ -32,12 +33,14 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None)
 | `size` | `tuple[float, float]` | Tamaño inicial en píxeles lógicos (independientes del DPI). |
 | `theme` | `Theme \| Callable[[], Theme]` | Tema fijo, o un `Signal[Theme]` para cambiarlo en caliente. |
 | `inspector` | `bool \| None` | Permite abrir con F12 el [inspector y profiler de frames](#inspector-y-profiler-de-frames). Con `None` (por defecto) lo decide la variable de entorno `AURORA_INSPECTOR` (`1`, `true`, `yes` u `on` lo activan). |
+| `reload` | `bool \| None` | Activa el [hot reload](#hot-reload) en `run()`. Con `None` (por defecto) lo decide la variable de entorno `AURORA_RELOAD`, como `inspector`. |
 
 | Método | Descripción |
 |---|---|
 | `run(*, backend="auto")` | Abre la ventana y bloquea hasta que se cierra. `backend` elige dónde se pinta: `"gpu"` (Vulkan en Windows y Linux, Metal en macOS), `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de entorno `AURORA_BACKEND` (`gpu`/`cpu`) lo fuerza. `"gpu"` sin GPU disponible lanza `RuntimeError`; un valor desconocido, `ValueError`. |
 | `render_png(path, *, size=None, scale=2.0)` | Renderiza la vista a PNG sin abrir ventana. `scale` es la densidad de píxeles (2.0 ≈ pantalla Retina). |
 | `pilot(*, size=None, scale=1.0, inspector=False)` | Ejecuta la app sin ventana y devuelve un [`Pilot`](#pilot-tests-de-interacción) para simular interacción en tests. Con `inspector=True`, el inspector se abre con `pilot.press("f12")` como en la ventana. |
+| `watch(main=None)` | Activa el [hot reload](#hot-reload) del módulo `main` (por defecto, `__main__`) sin vigilar los archivos y devuelve su `Reloader`. Para probarlo con `pilot()`: `reloader.check()` detecta lo guardado y el siguiente frame lo aplica. |
 | `spawn(coro)` | Ejecuta una corrutina en un bucle `asyncio` en segundo plano (un hilo propio, creado la primera vez). Devuelve un `concurrent.futures.Future` con su resultado. |
 
 El elemento raíz siempre ocupa la ventana completa. Si no defines `bg`, `color` o `font_family`
@@ -186,6 +189,48 @@ El panel se construye con las mismas primitivas que la app, así que su coste ap
 frames mientras está abierto (con la vista cerrada no hay ninguno). Con el panel abierto, la raíz
 de la app pasa a ser hija de una fila: las keys por ruta llevan delante `0/` (`"0/0/1"` en vez de
 `"0/1"`); las explícitas no cambian.
+
+## Hot reload
+
+Con el hot reload activado, **al guardar** el script de la app o cualquier módulo suyo, la ventana
+se actualiza con el código nuevo en menos de medio segundo, **sin cerrarse y sin perder el estado**
+de los `Signal`:
+
+```bash
+aurora dev app.py                 # o: AURORA_RELOAD=1 uv run app.py
+aurora dev --inspector app.py     # también con el inspector (F12)
+```
+
+`aurora dev script [args...]` ejecuta el script como `python script` (con `__name__ == "__main__"`
+y los argumentos que sigan) y activa el hot reload; las opciones de `aurora dev` van antes del
+script. También se activa con `App(view, reload=True)`.
+
+**Qué se recarga.** Se vigila el script principal y los módulos que importa desde su carpeta (y
+subcarpetas), salvo los instalados (`site-packages`, el entorno virtual) y Aurora. Al cambiar uno,
+se vuelven a ejecutar ese módulo, los módulos de la app que usan algo suyo (una función, una clase,
+un objeto) y el script principal. Ahí `App(...)` y `app.run()` no abren otra ventana: la app en
+marcha pasa a usar la `view` y el `theme` nuevos. El título y el tamaño no cambian.
+
+**Qué se conserva.** Cada `Signal` del código nuevo que esté en el mismo sitio que uno del anterior
+—una variable global, o un atributo o elemento (hasta 4 niveles) de un objeto de una clase de la
+app, un dict o una lista— se sustituye por el antiguo: conserva su valor **y su identidad**, así
+que los hilos, las corrutinas de `app.spawn` y los módulos que lo tenían guardado siguen usando el
+mismo. Se queda con las suscripciones (`subscribe`) del código nuevo. Si el valor ya no es del
+tipo del valor inicial nuevo (pasaste de `Signal(0)` a `Signal("")`), gana el nuevo. Cambiar solo
+el valor inicial no reinicia el estado. También se conservan el foco, el scroll y las animaciones
+de los nodos cuya key no cambie, como en cualquier reconstrucción.
+
+**Qué no se conserva.** Los `Signal` locales (creados dentro de una función), el estado mutable
+que no esté en un `Signal` y las instancias de clases redefinidas que guarde un `Signal` (siguen
+siendo de la clase anterior: `isinstance` con la nueva da `False`).
+
+**Errores.** Si el código nuevo no compila o falla al ejecutarse, los módulos vuelven a como
+estaban y la ventana muestra el traceback (también se imprime en la consola). Con el hot reload
+activado, una excepción en `view()` se muestra igual en vez de cerrar la app. Al guardar de nuevo
+se reintenta. Los manejadores de eventos que fallan se imprimen, como siempre.
+
+Desactivado no cuesta nada; activado, un hilo mira las fechas de modificación cada 300 ms. Es una
+herramienta de desarrollo: una app empaquetada con `aurora build` no debería activarlo.
 
 ## Primitivas
 

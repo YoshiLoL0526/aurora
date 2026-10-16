@@ -10,6 +10,20 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **Hot reload que conserva el estado.** Con `aurora dev app.py`, `AURORA_RELOAD=1` o
+  `App(view, reload=True)`, al guardar el script o un módulo local la ventana se actualiza con el
+  código nuevo sin cerrarse:
+  - Se vuelven a ejecutar el módulo cambiado, los módulos de la app que usan algo suyo y el
+    script principal; la app en marcha adopta la `view` y el `theme` nuevos.
+  - Los `Signal` que siguen en el mismo sitio (global, atributo de un objeto de la app, dict o
+    lista) conservan su valor y su identidad: hilos, corrutinas y otros módulos no notan nada.
+  - Si el código nuevo no compila o falla, los módulos vuelven a como estaban y la ventana
+    muestra el traceback hasta que se guarda una versión que funciona; una excepción en `view()`
+    también se muestra en vez de cerrar la app.
+
+  Para tests, `app.watch(module)` devuelve el `Reloader` sin hilo vigilante
+  (`reloader.check()` y el siguiente frame del piloto aplica los cambios).
+
 - **Inspector visual del árbol y profiler de frames.** Con `App(view, inspector=True)` o la
   variable de entorno `AURORA_INSPECTOR=1`, F12 acopla un panel a la derecha de la ventana:
   - **Árbol** navegable (virtual, con ramas plegables) con tipo, key y texto de cada nodo; al

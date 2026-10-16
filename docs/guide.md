@@ -591,6 +591,17 @@ Arranca la app con `AURORA_INSPECTOR=1` (o `App(view, inspector=True)`) y pulsa 
 Ctrl+Mayús+C eliges un nodo señalándolo en la interfaz. Los detalles están en la
 [referencia](reference.md#inspector-y-profiler-de-frames).
 
+Para iterar sobre el diseño sin reiniciar, arranca la app con **hot reload**:
+
+```bash
+aurora dev monitor.py
+```
+
+Cada vez que guardes, la ventana se actualiza con el código nuevo y conserva el estado: si tenías
+un servicio seleccionado y el modal abierto, siguen así. Si algo falla, verás el error en la
+ventana; corrígelo, guarda y sigue. Los detalles están en la
+[referencia](reference.md#hot-reload).
+
 ## 11. Distribuir la app
 
 Para que otros usen el monitor sin instalar Python, empaquétalo en un ejecutable. Primero instala

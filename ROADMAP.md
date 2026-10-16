@@ -57,7 +57,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 ## v0.5 — Experiencia de desarrollo 🚧
 
-- ⏳ **Hot reload** que conserva el estado de los `Signal`
+- ✅ **Hot reload** que conserva el estado de los `Signal` (`aurora dev app.py`)
 - ✅ Inspector visual del árbol y profiler de frames
 - ✅ Animaciones declarativas (`animate.spring()`, transiciones de entrada/salida y de layout)
 - ✅ `aurora build`: empaquetado a ejecutable con un comando
