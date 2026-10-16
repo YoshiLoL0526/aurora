@@ -97,8 +97,9 @@ class Pilot:
         """Key del nodo enfocado."""
     @property
     def stats(self) -> dict[str, Any]:
-        """Coste del último frame en ms (`build`, `parse`, `layout`, `paint`), `nodes`, `rebuilt`
-        y `layout_cached` (si se reutilizó el layout del frame anterior)."""
+        """Coste del último frame en ms (`build`, `parse`, `style`, `layout`, `paint`), `nodes`,
+        `rebuilt`, `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`
+        (zona repintada `(x, y, ancho, alto)`, o `None` si no se pintó nada)."""
     @property
     def hovered(self) -> str | None:
         """Key del nodo interactivo bajo el puntero."""

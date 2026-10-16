@@ -25,6 +25,8 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   aparecen en el mismo frame del desplazamiento.
 - `on_scroll` en los contenedores `scroll`, con `ScrollEvent` (`x`, `y`, `width`, `height`): se
   llama cuando cambian el desplazamiento o la zona visible, sin reconstruir la vista por sí solo.
+- `Pilot.stats["style"]` (coste de la fase de estilo) y `Pilot.stats["damage"]` (zona repintada en
+  el último frame, o `None`). La suite de benchmarks muestra la fase `style`.
 
 ### Cambiado
 
@@ -38,6 +40,19 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   las ramas cuyo estilo de layout, texto, imagen o hijos cambiaron. Un cambio que solo afecta a la
   pintura (fondo, color de borde, sombra…) no rehace el layout. En la lista de 10 000 filas el
   layout al reconstruir baja a ~60 ms, y en el formulario de 500 filas a ~2 ms por tecla.
+- Invalidación por fases (estilo → layout → composición → pintura): cada cambio rehace solo las
+  fases que le afectan.
+  - Al reconstruir, el árbol nuevo se compara con el anterior: si nada afecta a la geometría
+    (colores, fondos, opacidad, color de un texto…), no se rehace el layout y solo se repintan
+    esos nodos. Cambiar la selección en la lista de 10 000 filas ya no hace layout (~57 ms): la
+    comparación cuesta ~12 ms.
+  - Desplazar un `scroll` solo recoloca su capa: no rehace el layout ni las regiones.
+  - Solo se repinta la zona que cambió (hover, transiciones, cursor, tooltip, capas movidas),
+    sin recorrer lo que queda fuera, y la ventana solo presenta esa zona. Un frame sin cambios no
+    pinta nada. En la lista de 10 000 filas, hover pasa de ~30 ms a ~1 ms, desplazar de ~36 ms a
+    ~1,5 ms y un frame ocioso de ~31 ms a menos de 1 ms.
+  - Un `on_scroll` que reconstruye la vista (listas virtuales) ya no obliga a pintar dos veces el
+    mismo frame.
 - **Incompatible:** un elemento sin `key` recibe la de su padre seguida de su posición
   (`"fila-7/0"`), no la ruta completa desde la raíz. Los hijos de un elemento con key conservan su
   identidad (hover, foco, scroll) aunque el padre cambie de sitio. Un test que buscara un nodo por

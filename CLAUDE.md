@@ -48,10 +48,14 @@ Frame lifecycle:
 2. `spec::parse` (`src/spec.rs`) is the **only** place in Rust that knows the shape of the Python
    data: dicts → typed `Node`. Text style inheritance (`color`, `font_size`, `font_weight`,
    `font_family`, `line_height`, `letter_spacing`) is resolved here once, CSS-style.
-3. `render.rs` `Engine`: builds a parallel Taffy tree (text nodes carry a shaped Skia `Paragraph`,
-   reused for both measuring and painting), ticks hover/pressed transitions (exponential smoothing,
-   τ = 70 ms, real `dt`), and `Painter` paints shadow → bg → border → text → children while
-   recording `HitRegion`s in paint order.
+3. `render.rs` `Engine` runs phased invalidation (style → layout → composite → paint):
+   `restyle` diffs the new tree against the old one and only relayouts if something
+   geometry-relevant changed; `update` keeps a parallel Taffy tree (text nodes carry a shaped Skia
+   `Paragraph`, reused for both measuring and painting), recomputes `HitRegion`s and layers (one
+   per `scroll` / overlay) after a layout, and positions layers by scroll offset; `paint` repaints
+   only the damaged rect (changed nodes, transitions, inputs, tooltip, moved layers), skipping
+   subtrees whose ink is outside it. `tick` advances hover/pressed transitions (exponential
+   smoothing, τ = 70 ms, real `dt`).
 4. `runtime.rs` `Runtime`: window-independent app state (tree, hit regions, pointer, event
    dispatch by handler name via `dispatch(key, event, arg)`). Two drivers share it: `window.rs`
    (winit loop, runs with the GIL released via `py.detach`; the GIL is taken only to run a handler or
@@ -76,7 +80,9 @@ full rebuilds — every event currently rebuilds the whole view.
 - **New component:** compose primitives in `components.py` in pure Python whenever possible. Only
   push to Rust what can't be expressed otherwise (new node kinds, render effects, layout).
 - **New style property:** add the field to `spec::Style` and its parsing, its effect in
-  `taffy_style` (layout) or `Painter::paint` (paint), and document it in `docs/reference.md`.
+  `taffy_style` (layout) or `Painter::paint` (paint), and document it in `docs/reference.md`. If it
+  makes a node paint outside its box or changes hit regions, also update `compute_ink` and
+  `same_geometry` in `render.rs` (otherwise partial repaints miss it).
 - **New node type:** new `spec::Kind` variant + its layout measurement + its painting.
 - Visual changes need a render test in `tests/test_render.py`; interaction changes need a `Pilot`
   test in `tests/test_pilot.py`. Public API changes must update

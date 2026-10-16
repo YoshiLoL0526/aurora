@@ -22,6 +22,8 @@ pub struct Pilot {
     height: f32,
     scale: f32,
     surface: Surface,
+    /// La superficie es nueva (aún no tiene ningún frame): se pinta entera.
+    fresh: bool,
 }
 
 impl Pilot {
@@ -36,9 +38,15 @@ impl Pilot {
         let animating = self.rt.tick(dt);
         self.rt.advance_clock(dt);
         let canvas = self.surface.canvas();
-        let hover_changed = self
-            .rt
-            .draw_frame(canvas, self.width, self.height, self.scale)?;
+        // La superficie conserva el último frame: solo se repinta lo que cambió.
+        let age = if std::mem::take(&mut self.fresh) {
+            0
+        } else {
+            1
+        };
+        let (hover_changed, _) =
+            self.rt
+                .draw_frame(canvas, self.width, self.height, self.scale, age)?;
         // Un `on_scroll` puede haber vuelto a cambiar un `Signal`: queda otro frame.
         Ok(animating || hover_changed || self.rt.needs_sync())
     }
@@ -64,6 +72,7 @@ impl Pilot {
             height,
             scale,
             surface: new_surface(width, height, scale)?,
+            fresh: true,
         };
         pilot.step(FRAME)?;
         Ok(pilot)
@@ -252,7 +261,9 @@ impl Pilot {
     }
 
     /// Coste por fases del último frame, en milisegundos: `build` (Python),
-    /// `parse`, `layout` y `paint`; además `nodes`, `rebuilt` y `layout_cached`.
+    /// `parse`, `style`, `layout` y `paint`; además `nodes`, `rebuilt`,
+    /// `layout_cached` y `damage`, la zona repintada `(x, y, ancho, alto)` o
+    /// `None` si no se pintó nada.
     #[getter]
     fn stats<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let s = self.rt.stats;
@@ -260,11 +271,16 @@ impl Pilot {
         let out = PyDict::new(py);
         out.set_item("build", ms(s.build))?;
         out.set_item("parse", ms(s.parse))?;
+        out.set_item("style", ms(s.style))?;
         out.set_item("layout", ms(s.layout))?;
         out.set_item("paint", ms(s.paint))?;
         out.set_item("nodes", s.nodes)?;
         out.set_item("rebuilt", s.rebuilt)?;
         out.set_item("layout_cached", s.layout_cached)?;
+        out.set_item(
+            "damage",
+            s.damage.map(|r| (r.left, r.top, r.width(), r.height())),
+        )?;
         Ok(out)
     }
 
@@ -275,6 +291,7 @@ impl Pilot {
 
     fn resize(&mut self, width: f32, height: f32) -> PyResult<()> {
         self.surface = new_surface(width, height, self.scale)?;
+        self.fresh = true;
         self.width = width;
         self.height = height;
         self.step(FRAME).map(|_| ())

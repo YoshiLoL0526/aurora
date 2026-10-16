@@ -22,7 +22,7 @@ const KEEP_UNUSED: usize = 32;
 const SVG_DEFAULT: f32 = 150.0;
 
 /// De dónde sale la imagen.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Source {
     Path(String),
     Bytes(Vec<u8>),

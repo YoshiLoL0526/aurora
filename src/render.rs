@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use skia_safe::{
     BlurStyle, Canvas, ClipOp, Color, Color4f, EncodedImageFormat, FilterMode, FontMgr, FontStyle,
-    MaskFilter, MipmapMode, Paint, PaintStyle, Point, RRect, Rect, SamplingOptions, Surface,
+    IRect, MaskFilter, MipmapMode, Paint, PaintStyle, Point, RRect, Rect, SamplingOptions, Surface,
     TileMode,
     font_style::{Slant, Weight, Width},
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
@@ -167,14 +167,76 @@ pub struct LayoutNode {
     /// Key del nodo: identifica su nodo de Taffy al reconciliar el siguiente árbol.
     key: String,
     children: Vec<LayoutNode>,
+    /// Hasta dónde puede pintar el subárbol (sombras, anillo de foco, texto que
+    /// desborda…), en coordenadas locales de su capa. Las capas superiores que
+    /// contiene no cuentan: se pintan aparte.
+    ink: Rect,
+    /// El pintor no puede saltarse el subárbol aunque quede fuera de la zona a
+    /// repintar: contiene capas superiores (se encolan al recorrerlo) o campos de
+    /// texto (su geometría se recalcula al pintarlos).
+    sticky: bool,
+}
+
+/// Capa de composición: lo que se desplaza junto. La raíz es la capa 0, cada
+/// `scroll` abre una para su contenido y cada capa superior (`overlay`) otra,
+/// que se desplaza con sus ancestros pero escapa de su recorte.
+///
+/// Las regiones y la tinta se guardan en coordenadas locales de su capa (las
+/// que tendrían con todos los `scroll` en su origen): desplazar no rehace el
+/// layout ni las regiones, solo recoloca las capas.
+struct Layer {
+    parent: Option<usize>,
+    scroll: Option<ScrollLayer>,
+    /// Capa superior: no la recortan los `scroll` que la contienen.
+    unclipped: bool,
+    /// Lo que puede pintar la capa, en coordenadas locales de su padre: la zona
+    /// visible de un `scroll` o la tinta de una capa superior.
+    extent: Rect,
+    /// Calculado en cada frame: desplazamiento acumulado, recorte absoluto y
+    /// cómo se pintó (para saber si hay que repintar su zona).
+    offset: Point,
+    clip: Rect,
+    painted: Option<LayerPaint>,
+}
+
+/// Contenedor `scroll` que desplaza una capa.
+struct ScrollLayer {
+    key: String,
+    axis: Axis,
+    max: Point,
+    /// Caja de relleno del `scroll`, en coordenadas locales de la capa padre.
+    viewport: Rect,
+}
+
+/// Lo que se pintó de una capa en el último frame.
+#[derive(Clone, Copy, PartialEq)]
+struct LayerPaint {
+    offset: Point,
+    extent: Rect,
+    /// Visibilidad y arrastre de la barra.
+    bar: (f32, bool),
+}
+
+/// Tooltip pintado en el último frame.
+#[derive(Clone, PartialEq)]
+struct TipPaint {
+    ink: Rect,
+    alpha: f32,
+    text: String,
+    colors: (Color, Color),
 }
 
 /// Rectángulo absoluto de cada nodo, en orden de pintura (para hit-testing).
 pub struct HitRegion {
     pub key: String,
+    /// Rectángulo absoluto, ya desplazado por los `scroll` que lo contienen.
     pub rect: Rect,
     /// Zona visible: la intersección de los contenedores `scroll` que lo recortan.
     pub clip: Rect,
+    /// Rectángulo y tinta del subárbol en coordenadas locales de su capa.
+    local: Rect,
+    ink: Rect,
+    layer: usize,
     pub interactive: bool,
     pub capture: bool,
     pub focusable: bool,
@@ -245,16 +307,35 @@ pub struct Engine {
     /// `:focus-visible` en CSS): un clic enfoca sin dibujar el anillo.
     pub focus_visible: bool,
     pub tip: Tip,
-    /// Lo que tardó el layout del último `draw` (para las estadísticas del frame).
+    /// Lo que tardó el layout del último `update` (para las estadísticas del frame).
     pub layout_time: Duration,
-    /// Si el último `draw` reutilizó el layout del frame anterior.
+    /// Si el último `update` reutilizó el layout del frame anterior.
     pub layout_cached: bool,
     layout_cache: Option<LayoutCache>,
-    /// El árbol cambió desde el último layout (`invalidate_layout`).
+    /// El árbol cambió desde el último layout (lo decide `restyle`).
     tree_changed: bool,
     /// Párrafos del layout anterior, por contenido, a la espera de reutilizarse
     /// mientras se construye el siguiente.
     recycled: RefCell<HashMap<ParagraphKey, Vec<TextCtx>>>,
+    /// Regiones de hit-testing del layout actual, en orden de pintura.
+    pub regions: Vec<HitRegion>,
+    layers: Vec<Layer>,
+    /// Escala con la que se pintó el último frame.
+    scale: f32,
+    /// Nodos que cambiaron solo de aspecto al reconstruir (fase de estilo).
+    restyled: Vec<String>,
+    /// Nodos cuya transición (hover, pressed, foco) avanzó desde el último frame.
+    animated: Vec<String>,
+    /// Huella visual de cada campo de texto en el último frame (cursor, selección…).
+    inputs_painted: HashMap<String, u64>,
+    tip_painted: Option<TipPaint>,
+    /// Zona repintada en el último `paint` (`None`: nada).
+    pub damage: Option<Rect>,
+    /// Lo que `update` deja pendiente para el próximo `paint`: repintarlo
+    /// todo (tras un layout o un cambio de escala) o la zona de las capas que
+    /// se movieron.
+    full: bool,
+    pending: Option<Rect>,
 }
 
 /// Retardo antes de mostrar un tooltip (segundos).
@@ -315,6 +396,16 @@ impl Engine {
             layout_cache: None,
             tree_changed: true,
             recycled: RefCell::default(),
+            regions: Vec::new(),
+            layers: Vec::new(),
+            scale: 0.0,
+            restyled: Vec::new(),
+            animated: Vec::new(),
+            inputs_painted: HashMap::new(),
+            tip_painted: None,
+            damage: None,
+            full: true,
+            pending: None,
         }
     }
 
@@ -409,9 +500,84 @@ impl Engine {
         })
     }
 
-    /// El árbol de nodos cambió: el próximo `draw` rehace el layout.
-    pub fn invalidate_layout(&mut self) {
-        self.tree_changed = true;
+    /// Fase de estilo: compara el árbol nuevo con el anterior y decide en qué
+    /// fase entra cada cambio. Si algún nodo cambia algo que afecta al layout
+    /// o a la geometría (estructura, keys, estilo de Taffy, texto, métricas de
+    /// fuente, manejadores, capas, sombra…), se rehace el layout. Si no, el
+    /// layout y las regiones siguen valiendo y solo se repintan los nodos que
+    /// cambiaron de aspecto; un texto que solo cambia de color se vuelve a
+    /// "shapear" en su nodo, sin medirlo de nuevo.
+    pub fn restyle(&mut self, old: Option<&Node>, new: &Node) {
+        let (Some(old), false) = (old, self.tree_changed) else {
+            self.tree_changed = true;
+            return;
+        };
+        let Some(mut cache) = self.layout_cache.take() else {
+            self.tree_changed = true;
+            return;
+        };
+        let mut changed = Vec::new();
+        let relayout = match &cache.root {
+            Some(lroot) => self.restyle_node(&mut cache.tree, old, new, lroot, &mut changed),
+            None => true,
+        };
+        self.layout_cache = Some(cache);
+        if relayout {
+            self.tree_changed = true;
+        } else {
+            self.restyled.extend(changed);
+        }
+    }
+
+    /// Devuelve `true` si el cambio de `old` a `new` necesita rehacer el layout.
+    fn restyle_node(
+        &self,
+        tree: &mut TaffyTree<Leaf>,
+        old: &Node,
+        new: &Node,
+        lnode: &LayoutNode,
+        changed: &mut Vec<String>,
+    ) -> bool {
+        if !same_shape(old, new) {
+            return true;
+        }
+        // Lo habitual es que el nodo no cambie: solo se mira qué cambió si el estilo difiere.
+        if old.style != new.style || old.text_props != new.text_props {
+            if !same_geometry(old, new) {
+                return true;
+            }
+            if new.kind == Kind::Text && !self.recolor(tree, new, lnode.id) {
+                return true;
+            }
+            changed.push(new.key.clone());
+        }
+        old.children
+            .iter()
+            .zip(&new.children)
+            .zip(&lnode.children)
+            .any(|((a, b), l)| self.restyle_node(tree, a, b, l, changed))
+    }
+
+    /// Rehace el párrafo de un texto cuyas métricas no cambiaron (solo su
+    /// color): mismo ancho de maquetado y mismas mediciones. Devuelve `false`
+    /// si no se puede y hay que rehacer el layout.
+    fn recolor(&self, tree: &mut TaffyTree<Leaf>, node: &Node, id: NodeId) -> bool {
+        let Some(Leaf::Text(ctx)) = tree.get_node_context_mut(id) else {
+            return false;
+        };
+        let text = node.text.as_deref().unwrap_or("");
+        let key = ParagraphKey::new(text, &node.text_props, &node.style);
+        if ctx.key == key {
+            return true;
+        }
+        let Some(width) = ctx.laid_out else {
+            return false;
+        };
+        let mut paragraph = self.paragraph(text, &node.text_props, &node.style);
+        paragraph.layout(width);
+        ctx.paragraph = paragraph;
+        ctx.key = key;
+        true
     }
 
     /// Deja el párrafo de una hoja que cambia en la reserva, para que otro nodo
@@ -461,6 +627,15 @@ impl Engine {
             stack.extend(node.children.iter());
         }
         self.image_cache.trim(images.len());
+        // Una imagen que cambió (otro archivo, o el mismo modificado) puede tener
+        // otro tamaño natural: se rehace el layout.
+        let same = images.len() == self.images.len()
+            && images
+                .iter()
+                .all(|(k, v)| self.images.get(k).is_some_and(|old| Rc::ptr_eq(old, v)));
+        if !same {
+            self.tree_changed = true;
+        }
         self.images = images;
         Ok(())
     }
@@ -612,6 +787,8 @@ impl Engine {
             id,
             key: node.key.clone(),
             children,
+            ink: Rect::default(),
+            sticky: false,
         }
     }
 
@@ -716,16 +893,23 @@ impl Engine {
             self.pressed.as_deref(),
             ring.as_deref(),
         );
+        let animated = &mut self.animated;
         self.anim.retain(|key, s| {
             let on = |k: Option<&str>| if k == Some(key.as_str()) { 1.0 } else { 0.0 };
             let (th, tp, tf) = (on(hovered), on(pressed), on(ring));
+            let mut moved = false;
             for (v, t) in [(&mut s.hover, th), (&mut s.press, tp), (&mut s.focus, tf)] {
+                let before = *v;
                 *v += (t - *v) * k;
                 if (*v - t).abs() < 0.004 {
                     *v = t;
                 } else {
                     animating = true;
                 }
+                moved |= *v != before;
+            }
+            if moved {
+                animated.push(key.clone());
             }
             s.hover > 0.0 || s.press > 0.0 || s.focus > 0.0 || th + tp + tf > 0.0
         });
@@ -744,15 +928,20 @@ impl Engine {
 
     // ---------------------------------------------------------------- pintura
 
-    /// Dibuja el árbol completo. `width`/`height` en píxeles lógicos.
-    pub fn draw(
-        &mut self,
-        canvas: &Canvas,
-        root: &Node,
-        width: f32,
-        height: f32,
-        scale: f32,
-    ) -> Vec<HitRegion> {
+    /// Fases de layout y composición de un frame (la de estilo ya ocurrió al
+    /// reconstruir, en `restyle`):
+    ///
+    /// 1. **Layout**, si cambió el árbol, el tamaño o el texto de los campos.
+    ///    Tras él se recalcula la geometría (regiones, capas y tinta) y el
+    ///    próximo `paint` repinta todo.
+    /// 2. **Composición**: cada capa se recoloca según el desplazamiento de su
+    ///    `scroll`; las regiones se mueven sin recalcularse y la zona de las
+    ///    capas que se movieron queda pendiente de repintar.
+    ///
+    /// Se puede llamar más de una vez antes de pintar (p. ej. si un `on_scroll`
+    /// reconstruye la vista): lo pendiente se acumula. `width`/`height` en
+    /// píxeles lógicos.
+    pub fn update(&mut self, root: &Node, width: f32, height: f32, scale: f32) {
         let start = Instant::now();
         let inputs = self.inputs_signature();
         let mut cache = self.layout_cache.take().unwrap_or_default();
@@ -767,79 +956,604 @@ impl Engine {
             self.recycled.borrow_mut().clear();
             (cache.width, cache.height, cache.inputs) = (width, height, inputs);
             self.tree_changed = false;
+            let lroot = cache.root.as_mut().expect("layout calculado");
+            compute_ink(&cache.tree, root, lroot, Point::default());
+            self.geometry(&cache.tree, root, lroot);
+            self.full = true;
         }
+        if scale != self.scale {
+            self.scale = scale;
+            self.full = true;
+        }
+        self.layout_cache = Some(cache);
         self.layout_cached = reuse;
         self.layout_time = start.elapsed();
-        let tree = &cache.tree;
-        let lroot = cache.root.as_ref().expect("layout calculado");
-        canvas.clear(root.style.bg.unwrap_or(Color::from_rgb(0x0B, 0x0D, 0x14)));
-        // `restore_to_count` al final: un frame nunca deja la pila del canvas
-        // desequilibrada (la superficie del piloto se reutiliza entre frames).
-        let base = canvas.save();
-        canvas.scale((scale, scale));
-        let mut painter = Painter {
-            engine: self,
-            canvas,
-            tree,
+        let moved = self.place_layers(scale, self.full);
+        self.pending = union(self.pending, moved);
+    }
+
+    /// Fase de pintura: repinta solo la zona dañada (lo pendiente de `update`,
+    /// lo que cambió de aspecto en la fase de estilo, las transiciones, los
+    /// campos de texto y el tooltip), sin recorrer los subárboles cuya tinta
+    /// queda fuera.
+    ///
+    /// `stale`: zona del lienzo que no contiene el último frame pintado y hay
+    /// que repintar igualmente (todo el lienzo si es nuevo). Devuelve la zona
+    /// repintada, alineada a píxeles físicos, o `None` si no había nada que pintar.
+    pub fn paint(
+        &mut self,
+        canvas: &Canvas,
+        root: &Node,
+        width: f32,
+        height: f32,
+        stale: Option<Rect>,
+    ) -> Option<Rect> {
+        let scale = self.scale;
+        let screen = Rect::from_wh(width, height);
+        let full = std::mem::take(&mut self.full);
+        let mut damage = union(stale, self.pending.take());
+        let changed = [
+            std::mem::take(&mut self.restyled),
+            std::mem::take(&mut self.animated),
+        ];
+        if !full {
+            for key in changed.iter().flatten() {
+                damage = union(damage, self.region_ink(key));
+            }
+        }
+        damage = union(damage, self.inputs_damage());
+        let tip = self.tooltip(root, width, height);
+        let tip_paint = tip.as_ref().map(|t| t.paint.clone());
+        if tip_paint != self.tip_painted {
+            for old_or_new in [&self.tip_painted, &tip_paint].into_iter().flatten() {
+                damage = union(damage, Some(old_or_new.ink));
+            }
+            self.tip_painted = tip_paint;
+        }
+        if full {
+            damage = Some(screen);
+        }
+        let damage = damage.and_then(|d| pixel_align(intersect(d, screen), scale));
+        self.damage = damage;
+        let clip = damage?;
+        // Sin `update` previo no hay nada que pintar.
+        let cache = self.layout_cache.take()?;
+
+        let frame = Frame {
+            root,
+            tree: &cache.tree,
+            lroot: cache.root.as_ref().expect("layout calculado"),
             scale,
-            regions: Vec::new(),
-            overlays: Vec::new(),
-            scrolls: Vec::new(),
-            inputs: Vec::new(),
-            tip: None,
+            tip: tip.as_ref(),
         };
-        painter.paint(root, lroot, Point::new(0.0, 0.0), None, no_clip());
-        // Las capas superiores se pintan al final, en orden de aparición. Una capa
-        // anidada dentro de otra se encola al pintar la primera y queda por encima.
-        // Escapan del recorte de los `scroll` que las contienen.
-        let mut i = 0;
-        while let Some(&(node, lnode, origin, parent)) = painter.overlays.get(i) {
-            painter.paint_node(node, lnode, origin, parent, no_clip());
-            i += 1;
-        }
-        // El tooltip va por encima de todo, capas incluidas, y no recibe eventos.
-        if let Some((rect, node)) = painter.tip.take() {
-            self.paint_tooltip(canvas, rect, node, width, height);
-        }
-        canvas.restore_to_count(base);
-        let Painter {
-            regions,
-            scrolls,
-            inputs,
-            ..
-        } = painter;
+        let inputs = if pixel_align(screen, scale) == Some(clip) {
+            self.paint_area(canvas, &frame, clip, clip)
+        } else {
+            self.paint_partial(canvas, &frame, clip, screen)
+        };
         self.layout_cache = Some(cache);
-        self.sync_scroll(scrolls);
         for (key, scroll_x, frame) in inputs {
             if let Some(state) = self.inputs.get_mut(&key) {
                 state.scroll_x = scroll_x;
                 state.frame = Some(frame);
             }
         }
-        regions
+        Some(clip)
     }
 
-    /// Guarda los límites medidos en este frame y olvida los `scroll` que ya no existen.
-    fn sync_scroll(&mut self, seen: Vec<ScrollMetrics>) {
-        let mut alive = HashSet::new();
-        for m in seen {
-            self.scroll
-                .entry(m.key.clone())
-                .or_default()
-                .set_limits(m.axis, m.max, m.viewport);
-            alive.insert(m.key);
+    /// Repinta `clip` (más pequeño que el lienzo). Skia recorta las aristas de
+    /// una figura al borde del recorte y el antialiasing cerca del corte sale
+    /// algo distinto del de la figura entera: si se recortara justo a la zona
+    /// dañada, sus bordes no casarían con lo que la rodea. Por eso se pinta con
+    /// un margen en una superficie aparte y se copia solo la zona dañada.
+    fn paint_partial(
+        &self,
+        canvas: &Canvas,
+        frame: &Frame,
+        clip: Rect,
+        screen: Rect,
+    ) -> Vec<(String, f32, InputFrame)> {
+        let scale = frame.scale;
+        let px = |r: Rect| {
+            IRect::new(
+                (r.left * scale).round() as i32,
+                (r.top * scale).round() as i32,
+                (r.right * scale).round() as i32,
+                (r.bottom * scale).round() as i32,
+            )
+        };
+        let outer = intersect(clip.with_outset((CLIP_MARGIN, CLIP_MARGIN)), screen);
+        let Some(outer) = pixel_align(outer, scale) else {
+            return Vec::new();
+        };
+        let (area, inner) = (px(outer), px(clip));
+        let Some(mut off) = surfaces::raster_n32_premul(area.size()) else {
+            return self.paint_area(canvas, frame, clip, clip);
+        };
+        off.canvas()
+            .translate((-area.left as f32, -area.top as f32));
+        let inputs = self.paint_area(off.canvas(), frame, outer, clip);
+        let copied = off.peek_pixels().and_then(|pixmap| {
+            let sub = pixmap.extract_subset(inner.with_offset((-area.left, -area.top)))?;
+            canvas
+                .write_pixels(
+                    sub.info(),
+                    sub.bytes()?,
+                    sub.row_bytes(),
+                    (inner.left, inner.top),
+                )
+                .then_some(())
+        });
+        if copied.is_none() {
+            return self.paint_area(canvas, frame, clip, clip);
         }
-        self.scroll.retain(|k, _| alive.contains(k));
+        inputs
+    }
+
+    /// Pinta lo que cae en `area` (recortando a ella) saltándose los
+    /// subárboles cuya tinta no toca `cull`. Devuelve la geometría de los
+    /// campos de texto pintados.
+    fn paint_area(
+        &self,
+        canvas: &Canvas,
+        frame: &Frame,
+        area: Rect,
+        cull: Rect,
+    ) -> Vec<(String, f32, InputFrame)> {
+        // `restore_to_count` al final: un frame nunca deja la pila del canvas
+        // desequilibrada (la superficie del piloto se reutiliza entre frames).
+        let base = canvas.save();
+        canvas.scale((frame.scale, frame.scale));
+        canvas.clip_rect(area, ClipOp::Intersect, false);
+        canvas.clear(
+            frame
+                .root
+                .style
+                .bg
+                .unwrap_or(Color::from_rgb(0x0B, 0x0D, 0x14)),
+        );
+        let mut painter = Painter {
+            engine: self,
+            canvas,
+            tree: frame.tree,
+            scale: frame.scale,
+            damage: cull,
+            overlays: Vec::new(),
+            inputs: Vec::new(),
+        };
+        painter.paint(frame.root, frame.lroot, Point::default(), Point::default());
+        // Las capas superiores se pintan al final, en orden de aparición. Una capa
+        // anidada dentro de otra se encola al pintar la primera y queda por encima.
+        // Escapan del recorte de los `scroll` que las contienen.
+        let mut i = 0;
+        while let Some(&(node, lnode, origin, shift)) = painter.overlays.get(i) {
+            painter.paint_node(node, lnode, origin, shift);
+            i += 1;
+        }
+        // El tooltip va por encima de todo, capas incluidas, y no recibe eventos.
+        if let Some(tip) = frame.tip {
+            paint_tooltip(canvas, tip);
+        }
+        canvas.restore_to_count(base);
+        painter.inputs
+    }
+
+    /// Recalcula las regiones de hit-testing y las capas tras un layout. Las
+    /// regiones quedan en orden de pintura: las capas superiores, al final.
+    fn geometry(&mut self, tree: &TaffyTree<Leaf>, root: &Node, lroot: &LayoutNode) {
+        let mut g = Geometry {
+            tree,
+            regions: Vec::new(),
+            layers: vec![Layer::new(None, None, false, no_clip())],
+            overlays: Vec::new(),
+        };
+        g.collect(root, lroot, Point::default(), None, 0);
+        let mut i = 0;
+        while let Some(&(node, lnode, origin, parent, layer)) = g.overlays.get(i) {
+            let own = g.layers.len();
+            g.layers
+                .push(Layer::new(Some(layer), None, true, lnode.ink));
+            g.collect_node(node, lnode, origin, parent, own);
+            i += 1;
+        }
+        let alive: HashSet<&str> = g
+            .layers
+            .iter()
+            .filter_map(|l| l.scroll.as_ref().map(|s| s.key.as_str()))
+            .collect();
+        self.scroll.retain(|k, _| alive.contains(k.as_str()));
+        self.regions = g.regions;
+        self.layers = g.layers;
+    }
+
+    /// Composición: coloca cada capa según el desplazamiento de su `scroll` (y
+    /// actualiza los límites de este), y mueve las regiones si alguna capa se
+    /// movió. Devuelve la zona que hay que repintar: la de las capas que se
+    /// movieron o cuya barra cambió.
+    fn place_layers(&mut self, scale: f32, force: bool) -> Option<Rect> {
+        let mut damage = None;
+        let mut moved = force;
+        for i in 0..self.layers.len() {
+            let (base, base_clip) = match self.layers[i].parent {
+                Some(p) => (self.layers[p].offset, self.layers[p].clip),
+                None => (Point::default(), no_clip()),
+            };
+            let layer = &mut self.layers[i];
+            let mut clip = if layer.unclipped {
+                no_clip()
+            } else {
+                base_clip
+            };
+            let mut own = Point::default();
+            let mut bar = (0.0, false);
+            if let Some(s) = &layer.scroll {
+                let viewport = s.viewport.with_offset(-base);
+                let state = self.scroll.entry(s.key.clone()).or_default();
+                state.set_limits(s.axis, s.max, viewport);
+                own = snap(state.offset, scale);
+                bar = (state.bar, state.dragging);
+                clip = intersect(clip, viewport);
+            }
+            let painted = LayerPaint {
+                offset: base + own,
+                extent: layer.extent.with_offset(-base),
+                bar,
+            };
+            if layer.painted != Some(painted) {
+                damage = union(damage, Some(painted.extent));
+                damage = union(damage, layer.painted.map(|p| p.extent));
+            }
+            moved |= layer.offset != painted.offset || layer.clip != clip;
+            layer.offset = painted.offset;
+            layer.clip = clip;
+            layer.painted = Some(painted);
+        }
+        if moved {
+            for r in &mut self.regions {
+                let layer = &self.layers[r.layer];
+                r.rect = r.local.with_offset(-layer.offset);
+                r.clip = layer.clip;
+            }
+        }
+        damage
+    }
+
+    /// Zona (absoluta y visible) que puede pintar el subárbol de `key`.
+    fn region_ink(&self, key: &str) -> Option<Rect> {
+        let r = self.regions.iter().rev().find(|r| r.key == key)?;
+        let ink = r.ink.with_offset(-self.layers[r.layer].offset);
+        Some(intersect(ink, r.clip))
+    }
+
+    /// Campos de texto cuyo aspecto cambió desde el último frame sin cambiar
+    /// el layout: cursor, parpadeo, selección, composición o foco.
+    fn inputs_damage(&mut self) -> Option<Rect> {
+        let mut damage = None;
+        let mut painted = HashMap::with_capacity(self.inputs.len());
+        for (key, state) in &self.inputs {
+            let mut h = DefaultHasher::new();
+            (
+                state.display(),
+                state.editor.cursor(),
+                state.editor.selection(),
+                &state.preedit,
+                state.caret_visible(),
+                self.focused.as_deref() == Some(key.as_str()),
+            )
+                .hash(&mut h);
+            let visual = h.finish();
+            if self.inputs_painted.get(key) != Some(&visual) {
+                damage = union(damage, self.region_ink(key));
+            }
+            painted.insert(key.clone(), visual);
+        }
+        self.inputs_painted = painted;
+        damage
+    }
+
+    /// Burbuja del tooltip visible, debajo del nodo (o encima, si no cabe),
+    /// centrada y sin salirse de la ventana. Colores heredables: `tooltip_bg` y
+    /// `tooltip_color`.
+    fn tooltip(&self, root: &Node, width: f32, height: f32) -> Option<Tooltip> {
+        const PAD: (f32, f32) = (10.0, 6.0);
+        const GAP: f32 = 8.0;
+        const MARGIN: f32 = 8.0;
+        const MAX_WIDTH: f32 = 260.0;
+        if self.tip.alpha <= 0.0 {
+            return None;
+        }
+        let key = self.tip.key.as_deref()?;
+        let owner = self
+            .regions
+            .iter()
+            .rev()
+            .find(|r| r.key == key && r.tooltip)?
+            .rect;
+        let node = root.find(key)?;
+        let text = node.style.tooltip.as_deref()?;
+        let tp = &node.text_props;
+        let mut props = tp.clone();
+        props.size = 12.0;
+        props.weight = 500;
+        props.color = tp.tooltip_color;
+        props.line_height = None;
+        props.letter_spacing = 0.0;
+        let mut p = self.paragraph(text, &props, &Style::default());
+        p.layout(MAX_WIDTH);
+        let (tw, th) = (
+            p.max_intrinsic_width().min(MAX_WIDTH).ceil(),
+            p.height().ceil(),
+        );
+        p.layout(tw + 0.5);
+        let (w, h) = (tw + 2.0 * PAD.0, th + 2.0 * PAD.1);
+        let x = (owner.center_x() - w / 2.0).clamp(MARGIN, (width - MARGIN - w).max(MARGIN));
+        let below = owner.bottom + GAP;
+        let y = if below + h <= height - MARGIN {
+            below
+        } else {
+            (owner.top - GAP - h).max(MARGIN)
+        };
+        let bubble = Rect::from_xywh(x, y, w, h);
+        let shadow = bubble
+            .with_offset((0.0, TIP_SHADOW_DY))
+            .with_outset((3.0 * TIP_SHADOW_SIGMA + 1.0, 3.0 * TIP_SHADOW_SIGMA + 1.0));
+        Some(Tooltip {
+            paragraph: p,
+            text_at: Point::new(x + PAD.0, y + PAD.1),
+            bubble,
+            paint: TipPaint {
+                ink: join(bubble, shadow),
+                alpha: self.tip.alpha,
+                text: text.to_owned(),
+                colors: (tp.tooltip_bg, tp.tooltip_color),
+            },
+        })
     }
 }
 
-/// Límites de un contenedor `scroll` medidos durante la pintura.
-struct ScrollMetrics {
-    key: String,
-    axis: Axis,
-    max: Point,
-    viewport: Rect,
+/// Lo que se pinta en un frame.
+struct Frame<'a> {
+    root: &'a Node,
+    tree: &'a TaffyTree<Leaf>,
+    lroot: &'a LayoutNode,
+    scale: f32,
+    tip: Option<&'a Tooltip>,
 }
+
+/// Margen (píxeles lógicos) con el que se pinta una zona dañada antes de
+/// copiarla: el antialiasing de una figura cortada por el recorte solo cambia
+/// cerca del corte.
+const CLIP_MARGIN: f32 = 32.0;
+
+/// Sombra de la burbuja del tooltip.
+const TIP_SHADOW_SIGMA: f32 = 6.0;
+const TIP_SHADOW_DY: f32 = 3.0;
+
+/// Tooltip listo para pintar.
+struct Tooltip {
+    paragraph: Paragraph,
+    text_at: Point,
+    bubble: Rect,
+    paint: TipPaint,
+}
+
+fn paint_tooltip(canvas: &Canvas, tip: &Tooltip) {
+    let bubble = RRect::new_rect_xy(tip.bubble, 8.0, 8.0);
+    canvas.save_layer_alpha_f(None, tip.paint.alpha);
+    let mut shadow = Paint::default();
+    shadow
+        .set_anti_alias(true)
+        .set_color(Color::from_argb(60, 0, 0, 0));
+    if let Some(mf) = MaskFilter::blur(BlurStyle::Normal, TIP_SHADOW_SIGMA, false) {
+        shadow.set_mask_filter(mf);
+    }
+    canvas.draw_rrect(bubble.with_offset((0.0, TIP_SHADOW_DY)), &shadow);
+    let mut bg = Paint::default();
+    bg.set_anti_alias(true).set_color(tip.paint.colors.0);
+    canvas.draw_rrect(bubble, &bg);
+    tip.paragraph.paint(canvas, tip.text_at);
+    canvas.restore();
+}
+
+impl Layer {
+    fn new(
+        parent: Option<usize>,
+        scroll: Option<ScrollLayer>,
+        unclipped: bool,
+        extent: Rect,
+    ) -> Self {
+        Self {
+            parent,
+            scroll,
+            unclipped,
+            extent,
+            offset: Point::default(),
+            clip: no_clip(),
+            painted: None,
+        }
+    }
+}
+
+/// Misma identidad, estructura, contenido y manejadores: lo que hay que comprobar
+/// aunque el estilo no cambie.
+fn same_shape(a: &Node, b: &Node) -> bool {
+    a.key == b.key
+        && a.kind == b.kind
+        && a.children.len() == b.children.len()
+        && a.text == b.text
+        && a.same_handlers(b)
+}
+
+/// Dos nodos con la misma forma (`same_shape`) y distinto estilo tienen la misma
+/// geometría si coinciden en todo esto: el layout, las regiones y la tinta del
+/// anterior valen para el nuevo.
+fn same_geometry(a: &Node, b: &Node) -> bool {
+    let (sa, sb) = (&a.style, &b.style);
+    let content = match b.kind {
+        Kind::Box => true,
+        // Las métricas del texto; el color se cambia en el propio párrafo.
+        Kind::Text => {
+            let (ta, tb) = (&a.text_props, &b.text_props);
+            ta.size == tb.size
+                && ta.weight == tb.weight
+                && ta.family == tb.family
+                && ta.line_height == tb.line_height
+                && ta.letter_spacing == tb.letter_spacing
+                && sa.max_lines == sb.max_lines
+                && sa.text_align == sb.text_align
+        }
+        // Su párrafo depende de demasiadas cosas (placeholder, colores…) y la imagen
+        // se carga por `src`: cualquier cambio rehace el layout.
+        Kind::Input | Kind::Image => sa == sb && a.text_props == b.text_props,
+    };
+    content
+        && taffy_style(sa) == taffy_style(sb)
+        // Lo que cambia las regiones o la tinta.
+        && sa.overlay == sb.overlay
+        && sa.capture == sb.capture
+        && sa.focusable == sb.focusable
+        && sa.tooltip.is_some() == sb.tooltip.is_some()
+        && sa.scroll == sb.scroll
+        && sa.shadow == sb.shadow
+        && sa.press_scale == sb.press_scale
+}
+
+/// Tinta (hasta dónde puede pintar) y `sticky` de cada nodo del subárbol, en
+/// coordenadas locales de su capa. Se calcula tras cada layout.
+fn compute_ink(tree: &TaffyTree<Leaf>, node: &Node, lnode: &mut LayoutNode, origin: Point) {
+    let layout = tree.layout(lnode.id).expect("layout");
+    let rect = Rect::from_xywh(
+        origin.x + layout.location.x,
+        origin.y + layout.location.y,
+        layout.size.width,
+        layout.size.height,
+    );
+    let s = &node.style;
+    let mut ink = rect;
+    if let Some(sh) = s.shadow {
+        // `MaskFilter::blur` con sigma = blur / 2: el difuminado llega a 3 sigmas.
+        let spread = 1.5 * sh.blur;
+        ink = join(
+            ink,
+            rect.with_offset((sh.dx, sh.dy))
+                .with_outset((spread, spread)),
+        );
+    }
+    if matches!(node.kind, Kind::Text | Kind::Input) {
+        // Glifos que desbordan su caja (interlineado ajustado, acentos, cursivas).
+        let m = node.text_props.size * 0.5;
+        ink = join(ink, rect.with_outset((m, m)));
+    }
+    if node.is_focusable() {
+        ink = join(ink, rect.with_outset((FOCUS_OUTSET, FOCUS_OUTSET)));
+    }
+    let mut sticky = node.is_editable() || s.overlay;
+    let child_origin = Point::new(rect.left, rect.top);
+    for (child, lchild) in node.children.iter().zip(&mut lnode.children) {
+        compute_ink(tree, child, lchild, child_origin);
+        sticky |= lchild.sticky;
+        // Un `scroll` recorta a sus hijos a su caja; las capas superiores se pintan aparte.
+        if !child.style.overlay && s.scroll.is_none() {
+            ink = join(ink, lchild.ink);
+        }
+    }
+    if s.press_scale > 1.0 {
+        let (c, k) = (rect.center(), s.press_scale);
+        ink = Rect::new(
+            c.x + (ink.left - c.x) * k,
+            c.y + (ink.top - c.y) * k,
+            c.x + (ink.right - c.x) * k,
+            c.y + (ink.bottom - c.y) * k,
+        );
+    }
+    // Margen para el antialiasing.
+    lnode.ink = ink.with_outset((1.0, 1.0));
+    lnode.sticky = sticky;
+}
+
+/// Nodo de la capa superior pendiente de recorrer: nodo, layout, origen local,
+/// región padre y capa en la que está.
+type GeometryDeferred<'a> = (&'a Node, &'a LayoutNode, Point, Option<usize>, usize);
+
+/// Recorrido del árbol que registra las regiones y las capas, en el mismo orden
+/// en que se pinta.
+struct Geometry<'a> {
+    tree: &'a TaffyTree<Leaf>,
+    regions: Vec<HitRegion>,
+    layers: Vec<Layer>,
+    overlays: Vec<GeometryDeferred<'a>>,
+}
+
+impl<'a> Geometry<'a> {
+    fn collect(
+        &mut self,
+        node: &'a Node,
+        lnode: &'a LayoutNode,
+        origin: Point,
+        parent: Option<usize>,
+        layer: usize,
+    ) {
+        if node.style.overlay {
+            self.overlays.push((node, lnode, origin, parent, layer));
+            return;
+        }
+        self.collect_node(node, lnode, origin, parent, layer);
+    }
+
+    fn collect_node(
+        &mut self,
+        node: &'a Node,
+        lnode: &'a LayoutNode,
+        origin: Point,
+        parent: Option<usize>,
+        layer: usize,
+    ) {
+        let layout = self.tree.layout(lnode.id).expect("layout");
+        let rect = Rect::from_xywh(
+            origin.x + layout.location.x,
+            origin.y + layout.location.y,
+            layout.size.width,
+            layout.size.height,
+        );
+        let index = self.regions.len();
+        self.regions.push(HitRegion {
+            key: node.key.clone(),
+            rect,
+            clip: no_clip(),
+            local: rect,
+            ink: lnode.ink,
+            layer,
+            interactive: node.is_interactive() || node.is_editable(),
+            capture: node.style.capture,
+            focusable: node.is_focusable(),
+            editable: node.is_editable(),
+            tooltip: node.style.tooltip.is_some(),
+            scroll: node.style.scroll,
+            parent,
+        });
+        let mut child_layer = layer;
+        if let Some(axis) = node.style.scroll {
+            let bw = node.style.border_width;
+            let viewport = rect.with_inset((bw, bw));
+            let scroll = ScrollLayer {
+                key: node.key.clone(),
+                axis,
+                max: Point::new(layout.scroll_width(), layout.scroll_height()),
+                viewport,
+            };
+            child_layer = self.layers.len();
+            self.layers
+                .push(Layer::new(Some(layer), Some(scroll), false, viewport));
+        }
+        let child_origin = Point::new(rect.left, rect.top);
+        for (child, lchild) in node.children.iter().zip(&lnode.children) {
+            self.collect(child, lchild, child_origin, Some(index), child_layer);
+        }
+    }
+}
+
+/// Lo que sobresale el anillo de foco de su nodo.
+const FOCUS_OUTSET: f32 = FOCUS_GAP + FOCUS_WIDTH;
 
 fn no_clip() -> Rect {
     Rect::new(-1.0e9, -1.0e9, 1.0e9, 1.0e9)
@@ -854,52 +1568,82 @@ fn intersect(a: Rect, b: Rect) -> Rect {
     )
 }
 
-/// Nodo de la capa superior pendiente de pintar: nodo, layout, origen absoluto y región padre.
-type Deferred<'a> = (&'a Node, &'a LayoutNode, Point, Option<usize>);
+/// El menor rectángulo que contiene a ambos.
+fn join(a: Rect, b: Rect) -> Rect {
+    Rect::new(
+        a.left.min(b.left),
+        a.top.min(b.top),
+        a.right.max(b.right),
+        a.bottom.max(b.bottom),
+    )
+}
 
-/// Contexto de un frame de pintura: recorre el árbol y registra las regiones de hit-testing.
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+}
+
+/// Une una zona a la dañada; las vacías no cuentan.
+fn union(damage: Option<Rect>, r: Option<Rect>) -> Option<Rect> {
+    match (damage, r.filter(|r| r.width() > 0.0 && r.height() > 0.0)) {
+        (Some(d), Some(r)) => Some(join(d, r)),
+        (d, r) => d.or(r),
+    }
+}
+
+/// Amplía la zona a píxeles físicos enteros: con un recorte alineado, lo
+/// repintado es idéntico a lo que daría pintar el frame entero.
+fn pixel_align(r: Rect, scale: f32) -> Option<Rect> {
+    let r = Rect::new(
+        (r.left * scale).floor() / scale,
+        (r.top * scale).floor() / scale,
+        (r.right * scale).ceil() / scale,
+        (r.bottom * scale).ceil() / scale,
+    );
+    (r.width() > 0.0 && r.height() > 0.0).then_some(r)
+}
+
+/// Alinea un desplazamiento a píxeles físicos (el texto no se emborrona).
+fn snap(p: Point, scale: f32) -> Point {
+    Point::new((p.x * scale).round() / scale, (p.y * scale).round() / scale)
+}
+
+/// Nodo de la capa superior pendiente de pintar: nodo, layout, origen absoluto
+/// y desplazamiento acumulado de los `scroll` que lo contienen.
+type Deferred<'a> = (&'a Node, &'a LayoutNode, Point, Point);
+
+/// Contexto de un frame de pintura: recorre el árbol saltándose lo que queda
+/// fuera de la zona dañada.
 struct Painter<'a> {
     engine: &'a Engine,
     canvas: &'a Canvas,
     tree: &'a TaffyTree<Leaf>,
     /// Densidad de píxeles, para alinear el desplazamiento a píxeles físicos.
     scale: f32,
-    regions: Vec<HitRegion>,
+    /// Zona a repintar (absoluta).
+    damage: Rect,
     /// Nodos con `layer="overlay"` aplazados hasta el final del frame.
     overlays: Vec<Deferred<'a>>,
-    scrolls: Vec<ScrollMetrics>,
-    /// Nodo cuyo tooltip hay que pintar al final del frame, con su rectángulo.
-    tip: Option<(Rect, &'a Node)>,
     /// Geometría de cada campo pintado: key, desplazamiento horizontal y frame.
     inputs: Vec<(String, f32, InputFrame)>,
 }
 
 impl<'a> Painter<'a> {
-    fn paint(
-        &mut self,
-        node: &'a Node,
-        lnode: &'a LayoutNode,
-        origin: Point,
-        parent: Option<usize>,
-        clip: Rect,
-    ) {
+    /// `origin`: esquina absoluta del padre; `shift`: desplazamiento acumulado
+    /// de los `scroll` que lo contienen (local = absoluto + `shift`).
+    fn paint(&mut self, node: &'a Node, lnode: &'a LayoutNode, origin: Point, shift: Point) {
         if node.style.overlay {
-            self.overlays.push((node, lnode, origin, parent));
+            self.overlays.push((node, lnode, origin, shift));
             return;
         }
-        self.paint_node(node, lnode, origin, parent, clip);
+        self.paint_node(node, lnode, origin, shift);
     }
 
     /// Pinta el nodo y sus hijos. Una capa aplazada se pinta en coordenadas
     /// absolutas: no hereda la opacidad ni la escala de sus ancestros.
-    fn paint_node(
-        &mut self,
-        node: &'a Node,
-        lnode: &'a LayoutNode,
-        origin: Point,
-        parent: Option<usize>,
-        clip: Rect,
-    ) {
+    fn paint_node(&mut self, node: &'a Node, lnode: &'a LayoutNode, origin: Point, shift: Point) {
+        if !lnode.sticky && !overlaps(lnode.ink.with_offset(-shift), self.damage) {
+            return;
+        }
         let canvas = self.canvas;
         let layout = self.tree.layout(lnode.id).expect("layout");
         let rect = Rect::from_xywh(
@@ -908,19 +1652,6 @@ impl<'a> Painter<'a> {
             layout.size.width,
             layout.size.height,
         );
-        let my_index = self.regions.len();
-        self.regions.push(HitRegion {
-            key: node.key.clone(),
-            rect,
-            clip,
-            interactive: node.is_interactive() || node.is_editable(),
-            capture: node.style.capture,
-            focusable: node.is_focusable(),
-            editable: node.is_editable(),
-            tooltip: node.style.tooltip.is_some(),
-            scroll: node.style.scroll,
-            parent,
-        });
 
         let s = &node.style;
         let st = self.engine.anim.get(&node.key).copied().unwrap_or_default();
@@ -1005,48 +1736,34 @@ impl<'a> Painter<'a> {
         }
 
         let mut child_origin = Point::new(rect.left, rect.top);
-        let mut child_clip = clip;
+        let mut child_shift = shift;
         let mut bars = None;
-        if let Some(axis) = s.scroll {
+        if s.scroll.is_some() {
             // Se recorta a la caja de relleno (dentro del borde) y los hijos se
             // desplazan; la barra se pinta encima, sin ocupar espacio en el layout.
+            // Los límites ya los fijó la composición (`place_layers`).
             let bw = s.border_width;
             let viewport = rect.with_inset((bw, bw));
-            let max = Point::new(layout.scroll_width(), layout.scroll_height());
-            let mut state = self
+            let state = self
                 .engine
                 .scroll
                 .get(&node.key)
                 .cloned()
                 .unwrap_or_default();
-            state.set_limits(axis, max, viewport);
-            let snap = |v: f32| (v * self.scale).round() / self.scale;
-            let offset = Point::new(snap(state.offset.x), snap(state.offset.y));
+            let offset = snap(state.offset, self.scale);
             canvas.save();
             let r = (s.radius - bw).max(0.0);
             canvas.clip_rrect(RRect::new_rect_xy(viewport, r, r), ClipOp::Intersect, true);
             child_origin -= offset;
-            child_clip = intersect(clip, viewport);
-            self.scrolls.push(ScrollMetrics {
-                key: node.key.clone(),
-                axis,
-                max,
-                viewport,
-            });
+            child_shift += offset;
             bars = Some(state);
         }
         for (child, lchild) in node.children.iter().zip(&lnode.children) {
-            self.paint(child, lchild, child_origin, Some(my_index), child_clip);
+            self.paint(child, lchild, child_origin, child_shift);
         }
         if let Some(state) = bars {
             canvas.restore();
             paint_scrollbars(canvas, &state, s.scrollbar_color);
-        }
-        if self.engine.tip.alpha > 0.0
-            && node.style.tooltip.is_some()
-            && self.engine.tip.key.as_deref() == Some(node.key.as_str())
-        {
-            self.tip = Some((rect, node));
         }
         if st.focus > 0.0 {
             paint_focus_ring(
@@ -1061,69 +1778,19 @@ impl<'a> Painter<'a> {
     }
 }
 
-impl Engine {
-    /// Burbuja del tooltip debajo del nodo (o encima, si no cabe), centrada y
-    /// sin salirse de la ventana. Colores heredables: `tooltip_bg` y `tooltip_color`.
-    fn paint_tooltip(&self, canvas: &Canvas, owner: Rect, node: &Node, width: f32, height: f32) {
-        const PAD: (f32, f32) = (10.0, 6.0);
-        const GAP: f32 = 8.0;
-        const MARGIN: f32 = 8.0;
-        const MAX_WIDTH: f32 = 260.0;
-        let Some(text) = node.style.tooltip.as_deref() else {
-            return;
-        };
-        let tp = &node.text_props;
-        let mut props = tp.clone();
-        props.size = 12.0;
-        props.weight = 500;
-        props.color = tp.tooltip_color;
-        props.line_height = None;
-        props.letter_spacing = 0.0;
-        let mut p = self.paragraph(text, &props, &Style::default());
-        p.layout(MAX_WIDTH);
-        let (tw, th) = (
-            p.max_intrinsic_width().min(MAX_WIDTH).ceil(),
-            p.height().ceil(),
-        );
-        p.layout(tw + 0.5);
-        let (w, h) = (tw + 2.0 * PAD.0, th + 2.0 * PAD.1);
-        let x = (owner.center_x() - w / 2.0).clamp(MARGIN, (width - MARGIN - w).max(MARGIN));
-        let below = owner.bottom + GAP;
-        let y = if below + h <= height - MARGIN {
-            below
-        } else {
-            (owner.top - GAP - h).max(MARGIN)
-        };
-        let bubble = RRect::new_rect_xy(Rect::from_xywh(x, y, w, h), 8.0, 8.0);
-
-        canvas.save_layer_alpha_f(None, self.tip.alpha);
-        let mut shadow = Paint::default();
-        shadow
-            .set_anti_alias(true)
-            .set_color(Color::from_argb(60, 0, 0, 0));
-        if let Some(mf) = MaskFilter::blur(BlurStyle::Normal, 6.0, false) {
-            shadow.set_mask_filter(mf);
-        }
-        canvas.draw_rrect(bubble.with_offset((0.0, 3.0)), &shadow);
-        let mut bg = Paint::default();
-        bg.set_anti_alias(true).set_color(tp.tooltip_bg);
-        canvas.draw_rrect(bubble, &bg);
-        p.paint(canvas, (x + PAD.0, y + PAD.1));
-        canvas.restore();
-    }
-}
+/// Separación y grosor del anillo de foco.
+const FOCUS_GAP: f32 = 2.0;
+const FOCUS_WIDTH: f32 = 2.0;
 
 /// Anillo de foco: trazo de 2 px separado 2 px del borde, que sigue las esquinas.
 fn paint_focus_ring(canvas: &Canvas, rect: Rect, radius: f32, color: Color, t: f32) {
-    const GAP: f32 = 2.0;
-    const WIDTH: f32 = 2.0;
-    let out = GAP + WIDTH / 2.0;
+    let out = FOCUS_GAP + FOCUS_WIDTH / 2.0;
     let r = if radius > 0.0 { radius + out } else { 0.0 };
     let ring = RRect::new_rect_xy(rect.with_outset((out, out)), r, r);
     let mut p = Paint::default();
     p.set_anti_alias(true)
         .set_style(PaintStyle::Stroke)
-        .set_stroke_width(WIDTH)
+        .set_stroke_width(FOCUS_WIDTH)
         .set_color(color.with_a((color.a() as f32 * t).round() as u8));
     canvas.draw_rrect(ring, &p);
 }
@@ -1542,7 +2209,8 @@ pub fn render_png(
     let mut engine = Engine::new();
     engine.load_images(root)?;
     let mut surface = raster_surface(width, height, scale).map_err(PyRuntimeError::new_err)?;
-    engine.draw(surface.canvas(), root, width, height, scale);
+    engine.update(root, width, height, scale);
+    engine.paint(surface.canvas(), root, width, height, None);
     write_png(&mut surface, path).map_err(PyRuntimeError::new_err)
 }
 

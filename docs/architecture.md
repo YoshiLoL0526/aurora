@@ -47,11 +47,12 @@ src/                 (crate aurora_core → módulo aurora._core)
            └──────────────────────────────────────────────────────────┬──────────────┘
                                                                       │ dict anidado (1 cruce)
            ┌────────────────────────── Rust (sin el GIL) ─────────────▼──────────────┐
-           │ spec::parse    → Node tipado, herencia de text props, keys estables     │
-           │ Engine::layout → árbol Taffy + medición de texto con Skia               │
-           │ Engine::tick   → avanza transiciones hover/pressed (dt real)            │
-           │ Painter        → Skia pinta en el framebuffer y registra HitRegions     │
-           │ present        → softbuffer muestra el frame                            │
+           │ spec::parse     → Node tipado, herencia de text props, keys estables    │
+           │ Engine::restyle → estilo: qué cambió y en qué fase entra cada cambio    │
+           │ Engine::tick    → avanza transiciones hover/pressed (dt real)           │
+           │ Engine::update  → layout (Taffy + texto con Skia) y composición (capas) │
+           │ Engine::paint   → Skia repinta solo la zona dañada del framebuffer      │
+           │ present         → softbuffer muestra la zona pintada                    │
            └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -65,10 +66,14 @@ src/                 (crate aurora_core → módulo aurora._core)
    recorrido (`Element.to_spec`), resolviendo tokens de tema y lambdas de texto.
 5. **Parseo.** `spec::parse` convierte los dicts en `Node` tipados. Es el único lugar del núcleo
    que conoce la forma de los datos de Python.
-6. **Layout.** Se construye un árbol Taffy paralelo. Los nodos de texto llevan un `Paragraph` de
-   Skia ya "shapeado" como contexto: el mismo párrafo se usa para medir y para pintar.
-7. **Pintura.** `Painter` recorre el árbol: sombra → fondo → borde → texto → hijos. Skia escribe
-   directamente en la memoria del framebuffer.
+6. **Estilo.** El árbol nuevo se compara con el anterior para decidir qué fases hay que rehacer
+   (ver [Invalidación por fases](#invalidación-por-fases)).
+7. **Layout.** Si hace falta, se actualiza un árbol Taffy paralelo. Los nodos de texto llevan un
+   `Paragraph` de Skia ya "shapeado" como contexto: el mismo párrafo se usa para medir y para
+   pintar. Tras él se calculan las regiones de hit-testing y las capas.
+8. **Composición.** Cada capa (el contenido de un `scroll`) se coloca según su desplazamiento.
+9. **Pintura.** `Painter` repinta la zona dañada: sombra → fondo → borde → texto → hijos, sin
+   recorrer lo que queda fuera. Skia escribe directamente en la memoria del framebuffer.
 
 ## Decisiones de diseño
 
@@ -91,8 +96,9 @@ flexbox no aporta nada diferencial.
 winit + softbuffer + Skia raster es la combinación más portable y simple por ahora: no hay
 contextos de GPU que crear ni drivers con los que pelear. El formato de píxel de softbuffer
 (`0x00RRGGBB`) coincide en little-endian con el N32 (BGRA) de Skia, así que Skia pinta
-directamente en el buffer de la ventana, **sin copias**. El backend GPU (v0.3) entra detrás
-del mismo punto.
+directamente en el buffer de la ventana, **sin copias** cuando se repinta entero (un repintado
+parcial copia solo la zona dañada; ver [Invalidación por fases](#invalidación-por-fases)). El
+backend GPU (v0.3) entra detrás del mismo punto.
 
 ### Árbol completo por actualización, con ramas memorizadas
 
@@ -135,9 +141,9 @@ maquetarlo en Skia. Por eso el `Engine` evita repetirlo:
 
 - **Layout.** El árbol de Taffy, con los párrafos ya maquetados, vive entre frames
   (`LayoutCache`) y se reutiliza tal cual mientras no cambie nada de lo que lo determina: el árbol
-  de nodos (`Runtime::sync` llama a `invalidate_layout` al reconstruir), el tamaño de la ventana y
-  el texto que muestran los campos (una huella de todos, porque se puede escribir o componer con
-  el IME sin pasar por Python). Hover, scroll, animaciones y parpadeo solo repintan.
+  de nodos (si la fase de estilo encuentra un cambio que lo afecte), el tamaño de la ventana y el
+  texto que muestran los campos (una huella de todos, porque se puede escribir o componer con el
+  IME sin pasar por Python). Hover, scroll, animaciones y parpadeo solo repintan.
 - **Diff por key.** Si algo cambió, el árbol de Taffy no se rehace: `Engine::reconcile` recorre
   el árbol nuevo y cada nodo reutiliza el nodo de Taffy que tenía su key en el layout anterior.
   Solo lo marca sucio si cambia lo que afecta al layout: su estilo de Taffy (que es exactamente lo
@@ -158,6 +164,60 @@ maquetarlo en Skia. Por eso el `Engine` evita repetirlo:
 
 `Pilot.stats` y la suite de `benchmarks/` miden cada fase.
 
+### Invalidación por fases
+
+Cada frame recorre cuatro fases, y cada cambio entra en la primera que le afecta: las anteriores
+no se repiten. Como en un navegador, lo caro es rehacer de más.
+
+| Fase | Qué hace | La provoca |
+|---|---|---|
+| **Estilo** (`Engine::restyle`) | Compara el árbol nuevo con el anterior, nodo a nodo. | Una reconstrucción de la vista. |
+| **Layout** (`Engine::update`) | Taffy, párrafos y geometría: regiones, capas y tinta. | Un cambio de estructura o de estilo de layout, el tamaño de la ventana, el texto de un campo. |
+| **Composición** (`Engine::update`) | Coloca cada capa según su desplazamiento. | Desplazar un `scroll`. |
+| **Pintura** (`Engine::paint`) | Repinta solo la zona dañada. | Colores, transiciones, cursor, tooltip, capas que se movieron. |
+
+- **Estilo.** `restyle` recorre a la vez el árbol anterior, el nuevo y el de layout. Si todos los
+  nodos coinciden en lo que determina la geometría (keys, estructura, estilo de Taffy, texto y
+  métricas de fuente, manejadores, capas, `capture`, `focusable`, sombra, `press_scale`…), el
+  layout, las regiones y la tinta siguen valiendo: solo se apuntan para repintar los nodos cuyo
+  estilo cambió. Un texto que solo cambia de color se vuelve a "shapear" en su propio nodo de
+  Taffy, con el mismo ancho y las mismas mediciones. Cualquier otro cambio rehace el layout (que
+  aun así es incremental, por key) y repinta la ventana entera. En la lista de 10 000 filas,
+  cambiar la selección ya no rehace el layout (~57 ms): la comparación cuesta ~12 ms.
+- **Capas y regiones.** Tras un layout, `Engine::geometry` registra las regiones de hit-testing y
+  las **capas**: la raíz, el contenido de cada `scroll` y cada capa superior (`overlay`, que se
+  desplaza con sus ancestros pero escapa de su recorte). Las regiones guardan su rectángulo en
+  coordenadas locales de su capa, las que tendrían con todos los `scroll` en el origen. La
+  composición (`place_layers`) calcula el desplazamiento acumulado y el recorte de cada capa,
+  fija los límites de cada `ScrollState` y, si alguna se movió, recoloca las regiones: desplazar
+  no rehace el layout ni recalcula las regiones.
+- **Tinta.** Cada nodo de layout guarda la **tinta** de su subárbol: hasta dónde puede pintar,
+  contando la sombra (3 sigmas de difuminado), el anillo de foco, el texto que desborda su caja y
+  `press_scale`. Los hijos de un `scroll` no cuentan (los recorta su caja) y las capas superiores
+  tampoco (se pintan aparte). Un subárbol es *sticky* si contiene una capa superior (hay que
+  recorrerlo para encolarla) o un campo de texto (su geometría se recalcula al pintarlo).
+- **Daño.** La zona a repintar es la unión de: las capas que se movieron (su zona visible), los
+  nodos que cambiaron en la fase de estilo y aquellos cuya transición avanzó en `tick` (su tinta,
+  recortada a lo visible), los campos de texto cuyo aspecto cambió (una huella de cursor,
+  selección, composición, parpadeo y foco), el tooltip (su burbuja antes y después) y lo que el
+  lienzo no tenga del frame anterior. Si no hay nada, el frame no pinta: un frame ocioso cuesta
+  lo que comparar unas huellas.
+- **Pintura parcial.** El `Painter` se salta los subárboles no *sticky* cuya tinta no toca la zona
+  dañada. Skia recorta las aristas de una figura al borde del recorte y su antialiasing cerca del
+  corte sale algo distinto del de la figura entera, así que recortar justo a la zona dañada
+  dejaría bordes que no casan con lo de alrededor. Por eso la zona se pinta con un margen
+  (`CLIP_MARGIN`) en una superficie aparte y se copia solo la zona dañada, alineada a píxeles
+  físicos. `tests/test_phases.py` comprueba que cada frame incremental coincide con un repintado
+  completo.
+- **Lienzo retenido.** Pintar solo una parte exige que el lienzo conserve el frame anterior. El
+  piloto reutiliza su superficie; la ventana usa la edad del buffer de softbuffer (`age`: hace
+  cuántos frames se pintó lo que contiene) y el `Runtime` recuerda la zona pintada de los últimos
+  frames para ponerlo al día. Con edad 0 (buffer nuevo, o macOS, que no conserva el buffer) se
+  repinta entero. Al presentar, `present_with_damage` solo copia a la pantalla la zona pintada.
+- **Un solo pintado por frame.** `Runtime::draw_frame` hace layout y composición, avisa a los
+  `on_scroll` (que ya conocen el desplazamiento y los límites) y, si alguno invalida la vista,
+  reconstruye y vuelve a hacer layout antes de pintar, una sola vez.
+
 ### Animaciones en Rust
 
 Las transiciones de hover y pressed se interpolan en el núcleo con suavizado exponencial
@@ -167,8 +227,8 @@ por el GIL ni depende de su velocidad.
 
 ### Hit-testing con burbujeo y barreras
 
-Durante la pintura se registra una `HitRegion` por nodo (rectángulo absoluto e índice del padre),
-en orden de pintura. Para resolver un clic:
+Tras cada layout se registra una `HitRegion` por nodo (rectángulo e índice del padre), en orden
+de pintura; la composición la mantiene en su posición absoluta. Para resolver un clic:
 
 1. Se toma la **última** región que contiene el punto (la pintada más arriba).
 2. Se sube por los padres hasta encontrar un nodo con `on_click`, o hasta un nodo con
@@ -216,22 +276,25 @@ reservar hueco para la barra) y sus hijos no se encogen en el eje desplazado. Ta
 `scroll_width()`/`scroll_height()`, el desplazamiento máximo.
 
 El estado (`ScrollState` en `src/scroll.rs`: desplazamiento, destino del suavizado, visibilidad de
-la barra, arrastre) vive en el `Engine` por key, como las animaciones de hover. Al pintar, el
-`Painter` recorta a la caja de relleno, traslada a los hijos y registra los límites medidos; tras el
-frame, el `Engine` los guarda, ajusta el desplazamiento si el contenido encogió y olvida los
-`scroll` que ya no existen. Cada `HitRegion` lleva su `clip` (la intersección de los `scroll` que la
-contienen), así que lo que está fuera de la zona visible no recibe eventos.
+la barra, arrastre) vive en el `Engine` por key, como las animaciones de hover. Cada `scroll` abre
+una capa: tras el layout se registran sus límites (desplazamiento máximo y zona visible) y los
+`scroll` que ya no existen se olvidan; en cada frame la composición fija esos límites en su
+`ScrollState` (que ajusta el desplazamiento si el contenido encogió) y coloca la capa. Al pintar,
+el `Painter` recorta a la caja de relleno y traslada a los hijos. Cada `HitRegion` lleva su `clip`
+(la intersección de los `scroll` que la contienen), así que lo que está fuera de la zona visible no
+recibe eventos.
 
 La rueda se resuelve con las regiones del último frame: desde la región bajo el puntero se sube
 por los ancestros hasta el primer `scroll` que todavía pueda moverse en esa dirección.
 
 ### `on_scroll` y listas virtuales
 
-Tras pintar, `Runtime::notify_scroll` compara el desplazamiento y la zona visible de cada `scroll`
-con `on_scroll` (las keys se recogen al reconstruir) con lo último que se le avisó, y solo llama si
-cambió. No marca la vista como sucia: se llama en cada frame de desplazamiento, y quien necesite
-reconstruir cambia un `Signal`. `Runtime::draw_frame` (lo usan la ventana y el piloto) aprovecha
-eso: si tras avisar la vista quedó invalidada, reconstruye y repinta en el mismo frame, una sola vez.
+Tras la composición, `Runtime::notify_scroll` compara el desplazamiento y la zona visible de cada
+`scroll` con `on_scroll` (las keys se recogen al reconstruir) con lo último que se le avisó, y solo
+llama si cambió. No marca la vista como sucia: se llama en cada frame de desplazamiento, y quien
+necesite reconstruir cambia un `Signal`. `Runtime::draw_frame` (lo usan la ventana y el piloto)
+aprovecha eso: si tras avisar la vista quedó invalidada, reconstruye antes de pintar, así que el
+frame se pinta una sola vez y ya con las filas nuevas.
 
 `virtual_list` (Python) se apoya en ello: con filas de alto fijo, el contenido es una caja con el
 alto total y las filas visibles colocadas con `position="absolute"`. Su `on_scroll` guarda la zona
@@ -294,7 +357,8 @@ las capas, y no registra `HitRegion`: no intercepta el ratón.
 Un nodo con `layer="overlay"` se maqueta en su sitio, pero el `Painter` lo aplaza: lo encola y lo
 pinta al terminar el árbol, en coordenadas absolutas. Como sus `HitRegion` se registran después,
 también gana el hit-testing; su índice de padre sigue apuntando a su padre en el árbol, así que el
-burbujeo no cambia.
+burbujeo no cambia. Cada capa superior es también una capa de composición: se desplaza con los
+`scroll` que la contienen, pero no la recortan.
 
 ## Extender Aurora
 
@@ -302,7 +366,9 @@ burbujeo no cambia.
   `components.py`. Si se puede hacer así, hazlo así.
 - **Una propiedad de estilo nueva** toca tres lugares: el campo en `spec::Style` y su parseo,
   su efecto en `taffy_style` (layout) o en `Painter::paint` (pintura), y su documentación en
-  [`reference.md`](reference.md).
+  [`reference.md`](reference.md). Si hace que el nodo pinte fuera de su caja (como una sombra) o
+  cambia las regiones de hit-testing, también va en `compute_ink` y en `same_geometry` (fase de
+  estilo); si no, cambiarla ya solo repinta el nodo.
 - **Un nuevo tipo de nodo** (imagen, canvas, input) añade una variante a `spec::Kind`, su
   medición en el layout y su pintura.
 

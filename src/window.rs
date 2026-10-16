@@ -100,18 +100,30 @@ impl App {
         };
         let info = ImageInfo::new_n32_premul((w.get() as i32, h.get() as i32), None);
         let scale = window.scale_factor() as f32;
+        // El buffer puede conservar un frame anterior (según la plataforma): solo
+        // se repinta y se presenta lo que cambió desde entonces.
+        let age = buffer.age();
         let mut hover_changed = false;
+        let mut damage = None;
         if let Some(mut sk) = surfaces::wrap_pixels(&info, bytes, w.get() as usize * 4, None) {
             let result = self.rt.draw_frame(
                 sk.canvas(),
                 w.get() as f32 / scale,
                 h.get() as f32 / scale,
                 scale,
+                age,
             );
-            hover_changed = *result.as_ref().unwrap_or(&false);
+            if let Ok((hover, painted)) = &result {
+                (hover_changed, damage) = (*hover, *painted);
+            }
             report(result.map(drop));
         }
-        buffer.present().expect("present");
+        // Sin daño se presenta igualmente (todo el buffer): el sistema pudo pedir
+        // el frame porque la ventana se descubrió.
+        match damage.and_then(|d| physical_rect(d, scale, w, h)) {
+            Some(rect) => buffer.present_with_damage(&[rect]).expect("present"),
+            None => buffer.present().expect("present"),
+        }
 
         if hover_changed {
             self.update_cursor();
@@ -180,6 +192,26 @@ fn key_input(event: &KeyEvent, mods: Mods) -> Option<KeyInput> {
         text,
         mods,
         repeat: event.repeat,
+    })
+}
+
+/// Zona pintada (píxeles lógicos) en píxeles físicos del buffer.
+fn physical_rect(
+    r: skia_safe::Rect,
+    scale: f32,
+    w: NonZeroU32,
+    h: NonZeroU32,
+) -> Option<softbuffer::Rect> {
+    let (bw, bh) = (w.get() as f32, h.get() as f32);
+    let left = (r.left * scale).floor().clamp(0.0, bw);
+    let top = (r.top * scale).floor().clamp(0.0, bh);
+    let right = (r.right * scale).ceil().clamp(0.0, bw);
+    let bottom = (r.bottom * scale).ceil().clamp(0.0, bh);
+    Some(softbuffer::Rect {
+        x: left as u32,
+        y: top as u32,
+        width: NonZeroU32::new((right - left) as u32)?,
+        height: NonZeroU32::new((bottom - top) as u32)?,
     })
 }
 

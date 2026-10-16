@@ -24,10 +24,13 @@ completo, más la mediana de cada fase:
 | `view` | Tu función de vista (Python). |
 | `to_spec` | Serializar el árbol de `Element` a dicts (Python). |
 | `parse` | Dicts → `Node` tipados en Rust (`spec::parse`). |
-| `layout` | Árbol de Taffy, shaping de los párrafos y cálculo del layout. |
-| `paint` | Pintura con Skia y registro de las regiones de hit-testing. |
+| `style` | Comparar el árbol nuevo con el anterior: decide si hay que rehacer el layout o solo repintar. |
+| `layout` | Árbol de Taffy, shaping de los párrafos, cálculo del layout y regiones de hit-testing. |
+| `paint` | Composición (colocar las capas de los `scroll`) y pintura con Skia de la zona dañada. |
 
-`view`, `to_spec` y `parse` valen 0 en los frames que no reconstruyen la vista. Las fases salen
+`view`, `to_spec`, `parse` y `style` valen 0 en los frames que no reconstruyen la vista, y `layout`
+en los que no cambian nada que lo afecte ([invalidación por
+fases](../docs/architecture.md#invalidación-por-fases)). Las fases salen
 de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
 
 ## Escenarios

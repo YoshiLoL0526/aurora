@@ -12,7 +12,7 @@ use skia_safe::Color;
 use crate::color::parse_color;
 use crate::image::{Fit, Source};
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub struct Edges {
     pub top: f32,
     pub right: f32,
@@ -20,7 +20,7 @@ pub struct Edges {
     pub left: f32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shadow {
     pub dx: f32,
     pub dy: f32,
@@ -28,7 +28,7 @@ pub struct Shadow {
     pub color: Color,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Gradient {
     pub from: Color,
     pub to: Color,
@@ -88,13 +88,13 @@ impl Axis {
 }
 
 /// Longitud: píxeles lógicos o porcentaje del contenedor ("50%").
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Len {
     Px(f32),
     Pct(f32),
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Style {
     // Layout
     pub row: bool,
@@ -224,6 +224,20 @@ impl Node {
 
     pub fn handler(&self, event: &str) -> Option<&Py<PyAny>> {
         self.handlers.get(event)
+    }
+
+    /// Nodo del subárbol con esa key.
+    pub fn find(&self, key: &str) -> Option<&Node> {
+        if self.key == key {
+            return Some(self);
+        }
+        self.children.iter().find_map(|c| c.find(key))
+    }
+
+    /// Si los dos nodos tienen manejadores para los mismos eventos.
+    pub fn same_handlers(&self, other: &Node) -> bool {
+        self.handlers.len() == other.handlers.len()
+            && self.handlers.keys().all(|k| other.handlers.contains_key(k))
     }
 }
 

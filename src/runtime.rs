@@ -5,7 +5,7 @@
 //! (`pilot.rs`), así que lo que se prueba sin pantalla es exactamente lo que
 //! ocurre con una ventana abierta.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -16,7 +16,7 @@ use skia_safe::{Canvas, Point, Rect};
 
 use crate::input::InputState;
 use crate::keys::{KeyEvent, KeyInput, Mods};
-use crate::render::{Engine, HitRegion, TIP_DELAY, ancestors, hit_test, topmost};
+use crate::render::{Engine, TIP_DELAY, ancestors, hit_test, topmost};
 use crate::scroll::{LINE, ScrollEvent};
 use crate::spec::{self, Node};
 
@@ -35,29 +35,37 @@ pub fn wake() {
 }
 
 /// Cuánto costó cada fase del último frame. Base de la suite de benchmarks
-/// (`benchmarks/`) y de la invalidación por fases: `build` y `parse` valen cero
-/// si el frame no reconstruyó la vista.
+/// (`benchmarks/`): `build`, `parse` y `style` valen cero si el frame no
+/// reconstruyó la vista.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct FrameStats {
     /// Llamada a Python: `view()` + serialización (`Element.to_spec`).
     pub build: Duration,
     /// Dicts de Python → `Node` (`spec::parse`).
     pub parse: Duration,
+    /// Fase de estilo: comparar el árbol nuevo con el anterior (`Engine::restyle`).
+    pub style: Duration,
+    /// Layout y geometría (regiones, capas y tinta).
     pub layout: Duration,
     /// El layout se reutilizó del frame anterior (no cambió nada que lo afecte).
     pub layout_cached: bool,
-    /// Pintura y registro de `HitRegion`s (todo el `draw` salvo el layout).
+    /// Composición y pintura (el resto del frame, sin el layout ni la reconstrucción).
     pub paint: Duration,
+    /// Zona repintada (píxeles lógicos), o `None` si no se pintó nada.
+    pub damage: Option<Rect>,
     /// Nodos del árbol actual.
     pub nodes: usize,
     pub rebuilt: bool,
 }
 
+/// Frames de los que se recuerda la zona pintada: un lienzo que contiene un
+/// frame más antiguo se repinta entero.
+const DAMAGE_HISTORY: usize = 4;
+
 pub struct Runtime {
     build: Py<PyAny>,
     pub engine: Engine,
     tree: Option<Node>,
-    regions: Vec<HitRegion>,
     dirty: bool,
     /// Última posición conocida del puntero (píxeles lógicos).
     pointer: Option<(f32, f32)>,
@@ -85,6 +93,10 @@ pub struct Runtime {
     scroll_listeners: Vec<String>,
     /// Último evento entregado a cada uno: solo se avisa cuando cambia.
     scroll_seen: HashMap<String, ScrollEvent>,
+    /// Zona pintada en cada uno de los últimos frames, del más reciente al más
+    /// antiguo (`None`: nada). Con ella se pone al día un lienzo que se quedó
+    /// unos frames atrás (ventanas con varios buffers).
+    history: VecDeque<Option<Rect>>,
 }
 
 /// Qué cursor del ratón corresponde a lo que hay bajo el puntero.
@@ -147,7 +159,6 @@ impl Runtime {
             build,
             engine: Engine::new(),
             tree: None,
-            regions: Vec::new(),
             dirty: true,
             pointer: None,
             drag: None,
@@ -163,6 +174,7 @@ impl Runtime {
             parser: spec::Parser::default(),
             scroll_listeners: Vec::new(),
             scroll_seen: HashMap::new(),
+            history: VecDeque::new(),
         }
     }
 
@@ -180,25 +192,57 @@ impl Runtime {
         self.dirty || WAKE_PENDING.load(Ordering::Acquire)
     }
 
-    /// Pinta el frame y avisa a los `on_scroll`. Si un aviso invalida la vista
-    /// (una lista virtual que cambia de rango visible), la reconstruye y repinta
-    /// en este mismo frame, una sola vez: las filas nuevas aparecen sin un frame
-    /// de retraso aunque el desplazamiento supere el margen de filas de más.
-    /// Devuelve `true` si cambió lo que hay bajo el puntero.
+    /// Pinta el frame. Entre la composición (que fija el desplazamiento y los
+    /// límites de cada `scroll`) y la pintura avisa a los `on_scroll`: si un
+    /// aviso invalida la vista (una lista virtual que cambia de rango visible),
+    /// la reconstruye antes de pintar, una sola vez. Las filas nuevas aparecen
+    /// sin un frame de retraso y el frame se pinta una sola vez.
+    ///
+    /// `age`: hace cuántos frames se pintó lo que contiene el lienzo (como la
+    /// edad del buffer en softbuffer): 1 si es el último, 0 si no se sabe.
+    /// Devuelve si cambió lo que hay bajo el puntero y la zona pintada.
     pub fn draw_frame(
         &mut self,
         canvas: &Canvas,
         width: f32,
         height: f32,
         scale: f32,
-    ) -> PyResult<bool> {
-        let mut hover_changed = self.draw(canvas, width, height, scale);
+        age: u8,
+    ) -> PyResult<(bool, Option<Rect>)> {
+        let start = Instant::now();
+        self.stats.layout = Duration::ZERO;
+        self.stats.layout_cached = true;
+        self.update(width, height, scale);
+        let mut rebuild = Duration::ZERO;
         if self.notify_scroll()? && self.needs_sync() {
+            let t = Instant::now();
             self.sync()?;
-            hover_changed |= self.draw(canvas, width, height, scale);
+            rebuild = t.elapsed();
+            self.update(width, height, scale);
             self.notify_scroll()?;
         }
-        Ok(hover_changed)
+        // Lo que se pintó en los frames que este lienzo no vio también hay que pintarlo.
+        let stale = match age as usize {
+            1 => None,
+            n if n == 0 || n > self.history.len() + 1 => Some(Rect::from_wh(width, height)),
+            n => self
+                .history
+                .iter()
+                .take(n - 1)
+                .fold(None, |acc, d| join(acc, *d)),
+        };
+        let damage = match &self.tree {
+            Some(tree) => self.engine.paint(canvas, tree, width, height, stale),
+            None => None,
+        };
+        self.stats.paint = start.elapsed().saturating_sub(self.stats.layout + rebuild);
+        self.stats.damage = damage;
+        self.history.push_front(damage);
+        self.history.truncate(DAMAGE_HISTORY);
+        // Tras una reconstrucción, lo que hay bajo el puntero puede haber cambiado
+        // aunque el puntero no se mueva.
+        let revealed = std::mem::take(&mut self.reveal_focus) && self.reveal_focused();
+        Ok((self.refresh_hover() || revealed, damage))
     }
 
     /// Reconstruye la vista si algo la invalidó. Si la vista falla, se
@@ -209,6 +253,7 @@ impl Runtime {
         }
         self.stats.build = Duration::ZERO;
         self.stats.parse = Duration::ZERO;
+        self.stats.style = Duration::ZERO;
         self.stats.rebuilt = false;
         if !self.dirty && self.tree.is_some() {
             return Ok(());
@@ -228,7 +273,7 @@ impl Runtime {
 
         // El foco se pierde si su nodo desaparece o deja de ser enfocable.
         if let Some(focused) = &self.engine.focused
-            && find(&tree, focused).is_none_or(|n| !n.is_focusable())
+            && tree.find(focused).is_none_or(|n| !n.is_focusable())
         {
             self.engine.focused = None;
         }
@@ -244,7 +289,9 @@ impl Runtime {
         self.engine.load_images(&tree)?;
         self.autofocus_seen = autofocus.into_iter().collect();
         self.engine.sync_inputs(&tree);
-        self.engine.invalidate_layout();
+        let start = Instant::now();
+        self.engine.restyle(self.tree.as_ref(), &tree);
+        self.stats.style = start.elapsed();
         self.tree = Some(tree);
 
         if let Some(key) = appeared {
@@ -269,19 +316,13 @@ impl Runtime {
         }
     }
 
-    /// Pinta el árbol y recalcula el hover: tras una reconstrucción, lo que
-    /// hay bajo el puntero puede haber cambiado aunque el puntero no se mueva.
-    /// Devuelve `true` si hace falta otro frame.
-    pub fn draw(&mut self, canvas: &Canvas, width: f32, height: f32, scale: f32) -> bool {
+    /// Layout y composición del árbol actual (ver `Engine::update`).
+    fn update(&mut self, width: f32, height: f32, scale: f32) {
         if let Some(tree) = &self.tree {
-            let start = Instant::now();
-            self.regions = self.engine.draw(canvas, tree, width, height, scale);
-            self.stats.layout = self.engine.layout_time;
-            self.stats.layout_cached = self.engine.layout_cached;
-            self.stats.paint = start.elapsed().saturating_sub(self.engine.layout_time);
+            self.engine.update(tree, width, height, scale);
+            self.stats.layout += self.engine.layout_time;
+            self.stats.layout_cached &= self.engine.layout_cached;
         }
-        let revealed = std::mem::take(&mut self.reveal_focus) && self.reveal_focused();
-        self.refresh_hover() || revealed
     }
 
     // ---------------------------------------------------------------- puntero
@@ -331,7 +372,7 @@ impl Runtime {
         self.engine.tip.suppressed = true;
         self.engine.focus_visible = false;
         let target = self.pointer.and_then(|(x, y)| {
-            ancestors(&self.regions, topmost(&self.regions, x, y))
+            ancestors(&self.engine.regions, topmost(&self.engine.regions, x, y))
                 .find(|r| r.focusable)
                 .map(|r| (r.key.clone(), r.editable))
         });
@@ -378,7 +419,13 @@ impl Runtime {
             return CursorKind::Text;
         }
         match self.engine.hovered.as_ref() {
-            Some(key) if self.regions.iter().any(|r| &r.key == key && r.editable) => {
+            Some(key)
+                if self
+                    .engine
+                    .regions
+                    .iter()
+                    .any(|r| &r.key == key && r.editable) =>
+            {
                 CursorKind::Text
             }
             Some(_) => CursorKind::Pointer,
@@ -430,7 +477,12 @@ impl Runtime {
 
     /// Enfoca con el teclado un nodo concreto (anillo visible).
     pub fn focus_key(&mut self, key: &str) -> PyResult<bool> {
-        if !self.regions.iter().any(|r| r.key == key && r.focusable) {
+        if !self
+            .engine
+            .regions
+            .iter()
+            .any(|r| r.key == key && r.focusable)
+        {
             return Ok(false);
         }
         self.engine.focus_visible = true;
@@ -443,18 +495,19 @@ impl Runtime {
     /// una barrera (`capture`, p. ej. un modal), el foco no sale de ella.
     fn focus_next(&mut self, back: bool) -> PyResult<()> {
         let scope = self
+            .engine
             .regions
             .iter()
             .rposition(|r| r.capture)
-            .map(|i| self.regions[i].key.clone());
-        let order: Vec<String> = (0..self.regions.len())
-            .filter(|&i| self.regions[i].focusable)
+            .map(|i| self.engine.regions[i].key.clone());
+        let order: Vec<String> = (0..self.engine.regions.len())
+            .filter(|&i| self.engine.regions[i].focusable)
             .filter(|&i| {
                 scope
                     .as_ref()
-                    .is_none_or(|s| ancestors(&self.regions, Some(i)).any(|r| &r.key == s))
+                    .is_none_or(|s| ancestors(&self.engine.regions, Some(i)).any(|r| &r.key == s))
             })
-            .map(|i| self.regions[i].key.clone())
+            .map(|i| self.engine.regions[i].key.clone())
             .collect();
         if order.is_empty() {
             return Ok(());
@@ -482,17 +535,17 @@ impl Runtime {
             .engine
             .focused
             .as_ref()
-            .and_then(|f| self.regions.iter().rposition(|r| &r.key == f))
+            .and_then(|f| self.engine.regions.iter().rposition(|r| &r.key == f))
         else {
             return false;
         };
         // En un campo de texto lo que tiene que verse es el cursor; en la primera
         // o la última línea, también el borde del campo.
-        let field = self.regions[idx].rect;
+        let field = self.engine.regions[idx].rect;
         let mut rect = match self
             .engine
             .inputs
-            .get(&self.regions[idx].key)
+            .get(&self.engine.regions[idx].key)
             .and_then(InputState::caret)
         {
             Some(caret) => {
@@ -514,7 +567,7 @@ impl Runtime {
             }
             None => field,
         };
-        let scrolls: Vec<String> = ancestors(&self.regions, self.regions[idx].parent)
+        let scrolls: Vec<String> = ancestors(&self.engine.regions, self.engine.regions[idx].parent)
             .filter(|r| r.scroll.is_some())
             .map(|r| r.key.clone())
             .collect();
@@ -556,7 +609,7 @@ impl Runtime {
         let focused = self.engine.focused.clone();
         let clickable = focused
             .as_ref()
-            .and_then(|f| self.tree.as_ref().and_then(|t| find(t, f)))
+            .and_then(|f| self.tree.as_ref().and_then(|t| t.find(f)))
             .is_some_and(Node::is_interactive);
         match input.key.as_str() {
             "Tab" if !shortcut => {
@@ -599,13 +652,13 @@ impl Runtime {
             .engine
             .focused
             .as_ref()
-            .and_then(|f| self.regions.iter().rposition(|r| &r.key == f))
-            .or(if self.regions.is_empty() {
+            .and_then(|f| self.engine.regions.iter().rposition(|r| &r.key == f))
+            .or(if self.engine.regions.is_empty() {
                 None
             } else {
                 Some(0)
             });
-        let chain: Vec<String> = ancestors(&self.regions, start)
+        let chain: Vec<String> = ancestors(&self.engine.regions, start)
             .map(|r| r.key.clone())
             .collect();
         if chain.is_empty() {
@@ -645,10 +698,12 @@ impl Runtime {
             })
         };
         let start = match &self.engine.focused {
-            Some(f) => self.regions.iter().rposition(|r| &r.key == f),
-            None => self.pointer.and_then(|(x, y)| topmost(&self.regions, x, y)),
+            Some(f) => self.engine.regions.iter().rposition(|r| &r.key == f),
+            None => self
+                .pointer
+                .and_then(|(x, y)| topmost(&self.engine.regions, x, y)),
         };
-        let keys: Vec<String> = ancestors(&self.regions, start)
+        let keys: Vec<String> = ancestors(&self.engine.regions, start)
             .filter(|r| r.scroll.is_some())
             .map(|r| r.key.clone())
             .collect();
@@ -838,7 +893,7 @@ impl Runtime {
             return None;
         }
         let key = tip.key.as_ref()?;
-        find(self.tree.as_ref()?, key)?.style.tooltip.clone()
+        self.tree.as_ref()?.find(key)?.style.tooltip.clone()
     }
 
     /// Selección del campo `key` en caracteres (no bytes): `(inicio, fin)`.
@@ -863,8 +918,8 @@ impl Runtime {
         let Some((x, y)) = self.pointer else {
             return false;
         };
-        let idx = topmost(&self.regions, x, y);
-        let keys: Vec<String> = ancestors(&self.regions, idx)
+        let idx = topmost(&self.engine.regions, x, y);
+        let keys: Vec<String> = ancestors(&self.engine.regions, idx)
             .filter(|r| r.scroll.is_some())
             .map(|r| r.key.clone())
             .collect();
@@ -885,7 +940,7 @@ impl Runtime {
     fn scrollbar_at(&self) -> Option<(String, bool)> {
         let (x, y) = self.pointer?;
         let inside = |r: Rect| x >= r.left && x < r.right && y >= r.top && y < r.bottom;
-        ancestors(&self.regions, topmost(&self.regions, x, y))
+        ancestors(&self.engine.regions, topmost(&self.engine.regions, x, y))
             .filter(|r| r.scroll.is_some())
             .find_map(|r| {
                 let state = self.engine.scroll.get(&r.key)?;
@@ -948,11 +1003,11 @@ impl Runtime {
     fn refresh_hover(&mut self) -> bool {
         let hovered = self
             .pointer
-            .and_then(|(x, y)| hit_test(&self.regions, x, y));
+            .and_then(|(x, y)| hit_test(&self.engine.regions, x, y));
         let changed = hovered != self.engine.hovered;
         self.engine.hovered = hovered;
         let tip = self.pointer.and_then(|(x, y)| {
-            ancestors(&self.regions, topmost(&self.regions, x, y))
+            ancestors(&self.engine.regions, topmost(&self.engine.regions, x, y))
                 .find(|r| r.tooltip)
                 .map(|r| r.key.clone())
         });
@@ -980,7 +1035,7 @@ impl Runtime {
         let Some(cb) = self
             .tree
             .as_ref()
-            .and_then(|tree| find(tree, key))
+            .and_then(|tree| tree.find(key))
             .and_then(|node| node.handler(event))
         else {
             return Ok(None);
@@ -1018,7 +1073,7 @@ impl Runtime {
         }
         for (key, event) in &pending {
             self.scroll_seen.insert(key.clone(), *event);
-            if let Some(cb) = find(tree, key).and_then(|n| n.handler("scroll")) {
+            if let Some(cb) = tree.find(key).and_then(|n| n.handler("scroll")) {
                 Python::attach(|py| cb.call1(py, (Py::new(py, *event)?,)).map(drop))?;
             }
         }
@@ -1027,7 +1082,8 @@ impl Runtime {
 
     /// Rectángulo absoluto (píxeles lógicos) con el que se pintó `key` en el último frame.
     pub fn rect(&self, key: &str) -> Option<Rect> {
-        self.regions
+        self.engine
+            .regions
             .iter()
             .rev()
             .find(|r| r.key == key)
@@ -1035,11 +1091,17 @@ impl Runtime {
     }
 }
 
-fn find<'a>(node: &'a Node, key: &str) -> Option<&'a Node> {
-    if node.key == key {
-        return Some(node);
+/// Une dos zonas pintadas.
+fn join(a: Option<Rect>, b: Option<Rect>) -> Option<Rect> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(Rect::new(
+            a.left.min(b.left),
+            a.top.min(b.top),
+            a.right.max(b.right),
+            a.bottom.max(b.bottom),
+        )),
+        (a, b) => a.or(b),
     }
-    node.children.iter().find_map(|c| find(c, key))
 }
 
 fn collect_scroll_listeners(node: &Node, out: &mut Vec<String>) {

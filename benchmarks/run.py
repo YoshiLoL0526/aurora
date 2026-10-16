@@ -30,7 +30,7 @@ from scenarios import SCENARIOS, Bench, Scenario
 
 import aurora
 
-PHASES = ("view", "to_spec", "parse", "layout", "paint")
+PHASES = ("view", "to_spec", "parse", "style", "layout", "paint")
 WARMUP = 3
 
 
@@ -76,6 +76,7 @@ def _sample(pilot: aurora.Pilot, timed: _TimedView, total: float) -> dict[str, f
         "view": view,
         "to_spec": max(0.0, stats["build"] - view),
         "parse": stats["parse"],
+        "style": stats["style"],
         "layout": stats["layout"],
         "paint": stats["paint"],
     }

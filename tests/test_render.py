@@ -15,15 +15,17 @@ def _png_size(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", data[16:24])
 
 
-def _png_pixel(path: Path, x: int, y: int) -> tuple[int, int, int]:
-    """Decodificador PNG mínimo (8 bits RGB/RGBA, sin entrelazado) para no depender de Pillow."""
+def _png_rows(path: Path, count: int | None = None) -> tuple[int, list[bytearray]]:
+    """Decodificador PNG mínimo (8 bits RGB/RGBA, sin entrelazado) para no depender de Pillow.
+
+    Devuelve los canales por píxel y las primeras `count` filas (todas si es `None`)."""
     data = path.read_bytes()
-    pos, idat, width, channels = 8, b"", 0, 0
+    pos, idat, width, height, channels = 8, b"", 0, 0, 0
     while pos < len(data):
         length, kind = struct.unpack(">I4s", data[pos : pos + 8])
         chunk = data[pos + 8 : pos + 8 + length]
         if kind == b"IHDR":
-            width = struct.unpack(">I", chunk[:4])[0]
+            width, height = struct.unpack(">II", chunk[:8])
             channels = {2: 3, 6: 4}[chunk[9]]
         elif kind == b"IDAT":
             idat += chunk
@@ -31,7 +33,8 @@ def _png_pixel(path: Path, x: int, y: int) -> tuple[int, int, int]:
     raw = zlib.decompress(idat)
     stride = width * channels
     prev = bytearray(stride)
-    for row_index in range(y + 1):
+    rows = []
+    for row_index in range(height if count is None else count):
         start = row_index * (stride + 1)
         ftype, line = raw[start], bytearray(raw[start + 1 : start + 1 + stride])
         for i in range(stride):
@@ -47,8 +50,14 @@ def _png_pixel(path: Path, x: int, y: int) -> tuple[int, int, int]:
                 p = a + b - c
                 pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
                 line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 0xFF
+        rows.append(line)
         prev = line
-    return tuple(prev[x * channels : x * channels + 3])
+    return channels, rows
+
+
+def _png_pixel(path: Path, x: int, y: int) -> tuple[int, int, int]:
+    channels, rows = _png_rows(path, y + 1)
+    return tuple(rows[y][x * channels : x * channels + 3])
 
 
 def test_render_png_size_respects_scale(tmp_path):
