@@ -1,5 +1,7 @@
 """Dibujo inmediato con `canvas`: un gráfico de líneas y un indicador circular.
 
+El deslizador mueve la carga del clúster y el indicador se redibuja al instante.
+
 uv run examples/canvas.py               # abre la ventana
 uv run examples/canvas.py --png out.png # render headless
 """
@@ -8,7 +10,7 @@ import math
 import random
 import sys
 
-from aurora import App, Canvas, Signal, button, canvas, card, column, component, row, spacer, text
+from aurora import App, Canvas, Signal, button, canvas, card, column, component, row, slider, spacer, text
 
 random.seed(7)
 series = Signal([50 + 30 * math.sin(i / 4) + random.uniform(-8, 8) for i in range(40)])
@@ -18,7 +20,6 @@ load = Signal(0.62)
 def add_point() -> None:
     values = series()
     series.set([*values[1:], max(0.0, min(100.0, values[-1] + random.uniform(-15, 15)))])
-    load.set(random.uniform(0.1, 0.95))
 
 
 def line_chart(c: Canvas) -> None:
@@ -62,9 +63,11 @@ def chart_card():
 
 @component
 def gauge_card():
-    return card(width=240)[
+    return card(width=240, gap=14)[
         text("Carga del clúster", weight=600),
-        canvas(gauge, height=220),
+        canvas(gauge, height=210),
+        # El deslizador mueve el `Signal`; el lienzo se vuelve a dibujar solo.
+        slider(load, min=0, max=1, width=200, key="load"),
     ]
 
 

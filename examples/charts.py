@@ -6,11 +6,26 @@ uv run examples/charts.py --png out.png # render headless
 
 import random
 import sys
+from typing import Literal
 
 import numpy as np
 import polars as pl
 
-from aurora import App, Element, Signal, button, card, chart, column, component, row, scroll, spacer, text
+from aurora import (
+    App,
+    Element,
+    Signal,
+    button,
+    card,
+    chart,
+    column,
+    component,
+    row,
+    scroll,
+    segmented,
+    spacer,
+    text,
+)
 
 random.seed(7)
 rng = np.random.default_rng(7)
@@ -40,6 +55,10 @@ senal = np.sin(t / 9_000) + np.sin(t / 41) * 0.22
 # Las series "en vivo" se mutan en sitio: el gráfico relee la misma memoria.
 ventana = np.full(120, 0.5)
 version = Signal(0)
+
+# Forma del gráfico de cierres, elegida con el `segmented` de su tarjeta.
+Forma = Literal["bar", "area", "line"]
+forma: Signal[Forma] = Signal("bar")
 
 
 def nuevo_dato() -> None:
@@ -72,10 +91,19 @@ def en_vivo(_version: int) -> Element:
 
 
 @component
-def cierres_semana(_version: int) -> Element:
-    return card(grow=1, width=0)[
-        text("Tareas cerradas", weight=600),
-        chart(cierres, kind="bar", labels=DIAS, height=160, color="$primary", bar_width=0.62),
+def cierres_semana(kind: Forma, _version: int) -> Element:
+    return card(grow=1, width=0, gap=12)[
+        row(align="center")[
+            text("Tareas cerradas", weight=600),
+            spacer(),
+            segmented(
+                [("bar", "Barras"), ("area", "Área"), ("line", "Línea")],
+                forma,
+                key="cierres-forma",
+                width=200,
+            ),
+        ],
+        chart(cierres, kind=kind, labels=DIAS, height=150, color="$primary", bar_width=0.62),
     ]
 
 
@@ -105,7 +133,7 @@ def view():
                 button("Nuevo dato", nuevo_dato, key="nuevo-dato"),
             ],
             row(gap=16, align="stretch")[latencias(), en_vivo(version())],
-            row(gap=16, align="stretch")[cierres_semana(version()), dispersion()],
+            row(gap=16, align="stretch")[cierres_semana(forma(), version()), dispersion()],
             row(align="stretch")[senal_larga()],
         ]
     ]

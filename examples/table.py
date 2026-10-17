@@ -8,7 +8,7 @@ import random
 import sys
 from dataclasses import dataclass
 
-from aurora import App, Column, Signal, badge, column, row, spacer, table, text, text_input
+from aurora import App, Column, Signal, avatar, badge, column, row, spacer, table, text, text_input
 
 random.seed(11)
 
@@ -48,7 +48,16 @@ def _euros(v: float) -> str:
 
 COLUMNAS = [
     Column("id", "Nº", width=90, align="end"),
-    Column("nombre", "Cliente", width=200),
+    Column(
+        "nombre",
+        "Cliente",
+        width=220,
+        # La celda admite cualquier elemento: aquí, un avatar junto al nombre.
+        cell=lambda c: row(gap=10, align="center", grow=1, width=0)[
+            avatar(c.nombre, size=24),
+            text(c.nombre, max_lines=1, shrink=1),
+        ],
+    ),
     Column("ciudad", "Ciudad", width=150),
     Column("pedidos", "Pedidos", width=110, align="end"),
     Column("total", "Total", width=140, align="end", format=_euros),

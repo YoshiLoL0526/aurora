@@ -1,14 +1,17 @@
 """Animaciones declarativas: una lista de tareas que se reordena, entra y sale con suavidad.
 
-python examples/animate.py               # abre la ventana
-python examples/animate.py --png out.png # render headless (estado final, sin animación)
+El modal es el componente `dialog` (con su entrada y salida ya incluidas) y la barra de
+progreso crece hasta su nuevo valor al marcar tareas.
+
+uv run examples/animate.py               # abre la ventana
+uv run examples/animate.py --png out.png # render headless (estado final, sin animación)
 """
 
 import random
 import sys
 from dataclasses import dataclass, replace
 
-from aurora import App, Signal, animate, badge, box, button, card, column, row, spacer, text
+from aurora import App, Signal, animate, badge, box, button, column, dialog, progress, row, spacer, text
 
 
 @dataclass(frozen=True)
@@ -79,54 +82,56 @@ def task_row(t):
             transition=animate.tween(0.15),
             on_click=lambda: toggle(t.id),
         ),
-        text(t.title, color="$muted" if t.done else "$text"),
+        text(
+            t.title,
+            color="$muted" if t.done else "$text",
+            # El color del texto también funde al cambiar de estado (el texto necesita
+            # su propia transición: la del contenedor no se hereda).
+            transition=animate.tween(0.15),
+            max_lines=1,
+            shrink=1,
+        ),
         spacer(),
         button("Quitar", lambda: remove(t.id), variant="ghost"),
     ]
 
 
 def details():
-    if not modal():
-        return None
-    return box(
-        key="modal",
-        layer="overlay",
-        position="absolute",
-        top=0,
-        right=0,
-        bottom=0,
-        left=0,
-        bg="#00000088",
-        align="center",
-        justify="center",
-        enter=animate.fade(),
-        exit=animate.fade(),
-        on_click=lambda: modal.set(False),
-    )[
-        card(width=360, capture=True, enter=animate.zoom(0.94), gap=12)[
-            text("Animaciones declarativas", size=18, weight=700),
+    """El diálogo trae su propia animación: la tarjeta entra con un zoom suave y sale fundiéndose."""
+    return dialog(
+        modal,
+        column(gap=16)[
             text(
-                "Cada fila declara cómo cambia, entra y sale. El núcleo Rust interpola los "
-                "frames sin volver a llamar a Python.",
+                "Cada fila declara cómo cambia y cómo entra y sale: transition funde sus colores, "
+                "animate_layout la desliza cuando la lista se reordena, y enter y exit la "
+                "presentan y la retiran. El núcleo Rust interpola los frames sin volver a "
+                "llamar a Python.",
                 color="$muted",
+                line_height=1.4,
             ),
             row(justify="end")[button("Cerrar", lambda: modal.set(False), variant="soft")],
-        ]
-    ]
+        ],
+        title="Animaciones declarativas",
+        key="details",
+        width=420,
+    )
 
 
 def view():
     done = sum(t.done for t in tasks())
+    total = len(tasks())
     return box()[
         column(padding=32, gap=20, max_width=640)[
             row(align="center", gap=12)[
                 text("Tareas", size=26, weight=700),
-                badge(f"{done}/{len(tasks())}", tone="success" if done else "accent"),
+                badge(f"{done}/{total}", tone="success" if done else "accent"),
                 spacer(),
                 button("Barajar", shuffle, variant="soft"),
-                button("¿Cómo funciona?", lambda: modal.set(True), variant="soft"),
+                button("¿Cómo funciona?", lambda: modal.set(True), variant="soft", key="help"),
                 button("+ Añadir", add),
             ],
+            # Al marcar una tarea, la barra crece (animada) hasta su nuevo valor.
+            progress(done, max=max(total, 1), height=6),
             column(gap=8)[[task_row(t) for t in tasks()]],
         ],
         details(),

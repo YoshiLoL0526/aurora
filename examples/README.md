@@ -5,12 +5,12 @@ sin abrir ventana, útil para ver el resultado en un servidor o en CI.
 
 | Ejemplo | Qué muestra | Comando |
 |---|---|---|
-| [`hello.py`](hello.py) | Lo esencial: layout, tarjetas de métricas, botones y un contador reactivo. | `uv run examples/hello.py` |
-| [`studio.py`](studio.py) | Una app completa: navegación entre vistas con transición, kanban con búsqueda y menús de acciones, gráfico interactivo, formulario de nueva tarea (Ctrl+N), ajustes con `tabs`/`switch`/`select`/`textarea` animados por defecto y una zona de peligro en acordeón, modal con confirmación, toasts, tooltips y tema claro/oscuro. | `uv run examples/studio.py` |
-| [`canvas.py`](canvas.py) | Dibujo inmediato con `canvas`: gráfico de líneas con rejilla y un indicador circular que se redibujan al cambiar los datos. | `uv run examples/canvas.py` |
-| [`charts.py`](charts.py) | Gráficos nativos con `chart`: línea de dos series (polars), área que se actualiza con datos mutados en sitio, barras por categoría, dispersión y una señal de un millón de puntos con zoom y pan. | `uv run examples/charts.py` |
-| [`table.py`](table.py) | Tabla de 100 000 clientes con `table`: ordenación por columna, columnas redimensionables arrastrando el borde de la cabecera, filas virtualizadas, celdas con `badge`, búsqueda y selección de fila. | `uv run examples/table.py` |
-| [`animate.py`](animate.py) | Animaciones declarativas: lista de tareas que se reordena, filas que entran, salen y cambian de color con suavidad, y un modal con entrada y salida. | `uv run examples/animate.py` |
+| [`hello.py`](hello.py) | Lo esencial: layout, tarjetas de métricas, botones y un contador reactivo con deslizador de paso. | `uv run examples/hello.py` |
+| [`studio.py`](studio.py) | Una app completa: navegación entre vistas con transición, kanban con búsqueda, menús de acciones y densidad ajustable, gráfico interactivo, formulario de nueva tarea (Ctrl+N), ajustes con `tabs`/`switch`/`checkbox`/`radio`/`select`/`textarea`, un deslizador y zona de peligro en acordeón, diálogo con confirmación, toasts, tooltips y tema claro/oscuro. | `uv run examples/studio.py` |
+| [`canvas.py`](canvas.py) | Dibujo inmediato con `canvas`: gráfico de líneas con rejilla y un indicador circular que se redibujan al cambiar los datos; el deslizador mueve la carga. | `uv run examples/canvas.py` |
+| [`charts.py`](charts.py) | Gráficos nativos con `chart`: línea de dos series (polars), área que se actualiza con datos mutados en sitio, barras por categoría con la forma elegible en un `segmented`, dispersión y una señal de un millón de puntos con zoom y pan. | `uv run examples/charts.py` |
+| [`table.py`](table.py) | Tabla de 100 000 clientes con `table`: ordenación por columna, columnas redimensionables arrastrando el borde de la cabecera, filas virtualizadas, celdas con `avatar` y `badge`, búsqueda y selección de fila. | `uv run examples/table.py` |
+| [`animate.py`](animate.py) | Animaciones declarativas: lista de tareas que se reordena, filas que entran, salen y funden su color con suavidad, barra de progreso que crece y un `dialog` con su animación integrada. | `uv run examples/animate.py` |
 | [`brand.py`](brand.py) | Genera el banner y el logo del README con la propia librería. | `uv run examples/brand.py` |
 
 ```bash

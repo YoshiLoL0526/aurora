@@ -211,7 +211,8 @@ ejemplos vivos: cada captura se genera ejecutando el código que la acompaña.
 - [**Referencia**](docs/reference.md): todas las primitivas, componentes y propiedades de estilo.
 - [**Arquitectura**](docs/architecture.md): cómo funciona el núcleo y por qué está diseñado así.
 - [**Visión**](VISION.md) y [**Roadmap**](ROADMAP.md): hacia dónde va el proyecto.
-- [**Ejemplos**](examples/): `hello.py`, `studio.py` y `brand.py` (genera el banner de este README).
+- [**Ejemplos**](examples/): `hello.py` para empezar, `studio.py` como app completa, `canvas.py`,
+  `charts.py`, `table.py` y `animate.py` por temas, y `brand.py` (genera el banner de este README).
 
 ## Contribuir
 

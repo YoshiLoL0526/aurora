@@ -6,7 +6,7 @@ Una app de gestión de proyectos con:
   • gráfico de barras interactivo construido solo con primitivas (clic en una barra = detalle)
   • tablero kanban: búsqueda, filtros por etiqueta, mover tareas y eliminar con confirmación
   • formulario de nueva tarea en un modal: text_input con autofocus, select y Enter para crear
-  • ajustes con tabs, switch, checkbox, select y textarea enlazados a Signals
+  • ajustes con tabs, switch, checkbox, radio, deslizador, select y textarea enlazados a Signals
   • scroll por página, tooltips, teclado (Tab, Esc, Ctrl/Cmd+N) y tema claro/oscuro reactivo
   • hover/pressed animados en Rust en todos los elementos clicables, y transiciones
     declaradas: el switch desliza, las tarjetas se mueven, las páginas se funden
@@ -30,6 +30,7 @@ from aurora import (
     Element,
     KeyEvent,
     Signal,
+    __version__,
     accordion,
     animate,
     badge,
@@ -44,9 +45,11 @@ from aurora import (
     menu,
     pages,
     progress,
+    radio,
     row,
     segmented,
     select,
+    slider,
     spacer,
     stat,
     switch,
@@ -165,6 +168,8 @@ weekly_digest = Signal(True)
 notify_assigned = Signal(True)
 notify_mentions = Signal(False)
 open_section: Signal[str | None] = Signal(None)
+density = Signal("comoda")  # densidad del tablero: comoda | compacta
+week_goal = Signal(20.0)  # objetivo semanal de tareas (deslizador)
 
 # ══════════════════════════════════════════════════════════════════ acciones
 
@@ -504,7 +509,7 @@ def small_action(
     )[text(label, size=12, weight=600, color=color)]
 
 
-def task_card(t: Task, col_index: int) -> Element:
+def task_card(t: Task, col_index: int, compact: bool) -> Element:
     pcolor = PROJECTS[t.project]
     options = []
     if col_index > 0:
@@ -514,8 +519,8 @@ def task_card(t: Task, col_index: int) -> Element:
     options.append(("Eliminar", lambda: modal.set(("delete", t.id)), {"color": "$danger"}))
     return card(
         key=f"task-{t.id}",
-        padding=14,
-        gap=10,
+        padding=10 if compact else 14,
+        gap=8 if compact else 10,
         radius=14,
         shadow=(0, 4, 14, "$shadow"),
         # Las tarjetas entran, se deslizan al reordenarse y se desvanecen al irse.
@@ -570,12 +575,21 @@ def tag_chip(tag: str) -> Element:
 def board() -> Element:
     tags = active_tags()
     q = query().strip().lower()
+    # Ajustes → Densidad: "compacta" aprieta tarjetas y columnas para que quepan más.
+    compact = density() == "compacta"
     visible = [t for t in tasks() if (not tags or t.tag in tags) and q in t.title.lower()]
     columns = []
     for i, (status, label, color) in enumerate(STATUSES):
         items = [t for t in visible if t.status == status]
         columns.append(
-            column(grow=1, width=0, gap=12, padding=12, radius=18, bg="$surface_hover")[
+            column(
+                grow=1,
+                width=0,
+                gap=8 if compact else 12,
+                padding=10 if compact else 12,
+                radius=18,
+                bg="$surface_hover",
+            )[
                 row(gap=8, align="center", padding=(2, 4))[
                     dot(color),
                     text(label, size=13, weight=700),
@@ -583,7 +597,7 @@ def board() -> Element:
                     spacer(),
                     text(f"{sum(t.points for t in items)} pts", size=11, color="$muted"),
                 ],
-                [task_card(t, i) for t in items]
+                [task_card(t, i, compact) for t in items]
                 or column(
                     padding=(28, 12), align="center", radius=14, border_width=1, border_color="$border"
                 )[text("Sin tareas aquí", size=12, color="$muted"),],
@@ -681,6 +695,21 @@ def settings() -> Element:
                 key="set-lang",
                 width=200,
             ),
+        ),
+        divider(),
+        setting_row(
+            "Densidad del tablero",
+            "Compacta muestra más tarjetas a la vez",
+            radio([("comoda", "Cómoda"), ("compacta", "Compacta")], density, key="set-density"),
+        ),
+        divider(),
+        setting_row(
+            "Objetivo semanal",
+            "Tareas que quieres cerrar cada semana",
+            row(gap=10, align="center")[
+                slider(week_goal, min=5, max=40, width=180, key="set-goal"),
+                text(lambda: f"{round(week_goal())} tareas", size=12, weight=600, color="$muted"),
+            ],
         ),
         divider(),
         column(gap=8)[
@@ -806,7 +835,7 @@ def modal_layer() -> Element | None:
         features = [
             "Layout flexbox con Taffy y texto con shaping real (Skia)",
             "Scroll, teclado y foco, campos de texto con IME e imágenes",
-            "Hover/pressed y tooltips animados en Rust, sin pasar por Python",
+            "Animaciones declarativas y movimiento por defecto, en Rust",
             "Estado con Signals y tema claro/oscuro reactivo",
         ]
         body = [
@@ -821,7 +850,7 @@ def modal_layer() -> Element | None:
                 )[text("A", size=20, weight=800, color="#FFFFFF")],
                 column(gap=2)[
                     text("Aurora Studio", size=18, weight=700),
-                    text("Demo de capacidades · v0.2", size=12, color="$muted"),
+                    text(f"Demo de capacidades · v{__version__}", size=12, color="$muted"),
                 ],
             ],
             column(gap=10)[

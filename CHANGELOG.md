@@ -59,6 +59,14 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Cambiado
 
+- **Los ejemplos se actualizan a lo último de la librería**: `hello.py` muestra la versión real en
+  su insignia y ajusta el paso del contador con un `slider`; `animate.py` usa `dialog` para el
+  modal, lleva el progreso en una barra y funde el color del texto al completar; `canvas.py`
+  mueve la carga del clúster con un deslizador; `charts.py` elige la forma del gráfico de cierres
+  con un `segmented`; `table.py` pinta avatares en las celdas; `brand.py` refleja el ejemplo del
+  README; y `studio.py` añade `radio` y `slider` a Ajustes (densidad del tablero y objetivo
+  semanal) y su número de versión deja de estar escrito a mano. La galería de la documentación
+  gana capturas de esos estados.
 - **Reorganización interna en módulos** (misma API pública):
   - `python/aurora/components.py` pasa a ser el paquete `python/aurora/components/`, con un
     módulo por familia (`basic`, `forms`, `navigation`, `overlays`, `feedback` y `lists`).
@@ -71,6 +79,9 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Corregido
 
+- `examples/brand.py` ya no falla al imprimir «✓» en una consola de Windows sin UTF-8 (como ya
+  hacía `studio.py`), así que `uv run examples/brand.py` termina con código 0 y regenera el banner
+  y el logo.
 - En un `textarea`, `Ctrl+Inicio`/`Ctrl+Fin` (Windows/Linux) y `Cmd+Inicio`/`Cmd+Fin`
   (macOS) saltan al principio o al final del texto; sin modificador, Inicio/Fin siguen
   yendo al borde de la línea. Antes, en macOS `Cmd+Inicio` no hacía el salto.

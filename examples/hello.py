@@ -1,15 +1,20 @@
 """Hola mundo de Aurora: un mini dashboard con estado reactivo.
 
-python examples/hello.py            # abre la ventana
-python examples/hello.py --png out.png   # render headless
+uv run examples/hello.py                 # abre la ventana
+uv run examples/hello.py --png out.png   # render headless
 """
 
 import sys
 
-from aurora import App, Signal, badge, button, card, column, row, spacer, stat, text
+from aurora import App, Signal, __version__, badge, button, card, column, row, slider, spacer, stat, text
 
 clicks = Signal(0)
-step = Signal(1)
+step = Signal(1.0)  # el deslizador lo mantiene entre 1 y 50
+
+
+def snap_step(value: float) -> None:
+    """El deslizador da valores continuos: el paso se queda en enteros."""
+    step.set(round(value))
 
 
 def header():
@@ -19,23 +24,23 @@ def header():
             text("Rust + Skia + Taffy, controlado desde Python", size=13, color="$muted"),
         ],
         spacer(),
-        badge("v0.2"),
+        badge(f"v{__version__}"),
     ]
 
 
 def counter():
     return card(gradient=("#1E1A3A", "#0F2A2A", 35), border_color="#2E2A55", gap=18)[
-        row(align="center")[
-            text("Contador reactivo", size=15, weight=600),
-            spacer(),
-            text(lambda: f"paso ×{step()}", size=12, color="$muted"),
-        ],
+        text("Contador reactivo", size=15, weight=600),
         text(lambda: f"{clicks():,}", size=56, weight=800, letter_spacing=-1.5),
         row(gap=10)[
-            button("−", lambda: clicks.update(lambda c: c - step()), variant="soft", width=52),
-            button("+ Incrementar", lambda: clicks.update(lambda c: c + step()), grow=1),
-            button("×10", lambda: step.update(lambda s: 1 if s == 10 else 10), variant="soft"),
+            button("−", lambda: clicks.update(lambda c: c - round(step())), variant="soft", width=52),
+            button("+ Incrementar", lambda: clicks.update(lambda c: c + round(step())), grow=1),
             button("Reset", lambda: clicks.set(0), variant="ghost"),
+        ],
+        row(align="center", gap=12)[
+            text("Paso", size=12, color="$muted"),
+            slider(step, min=1, max=50, width=240, key="step", on_change=snap_step),
+            text(lambda: f"×{round(step())}", size=12, weight=700, width=32, text_align="end"),
         ],
     ]
 

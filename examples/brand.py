@@ -6,6 +6,8 @@ motor de render, este script es también una prueba visual rápida.
     uv run examples/brand.py            # escribe docs/assets/*.png
 """
 
+import io
+import sys
 from pathlib import Path
 
 from aurora import App, Element, box, button, card, column, row, spacer, text
@@ -42,22 +44,34 @@ def mini_app() -> Element:
     return column(gap=14, width=430)[
         card(padding=18, gap=6, bg="#0F1220", border_color="#232842")[
             code_line(
-                ("from ", kw), ("aurora ", "#E6E8F0"), ("import ", kw), ("App, Signal, card, text", "#E6E8F0")
+                ("from ", kw),
+                ("aurora ", "#E6E8F0"),
+                ("import ", kw),
+                ("App, Signal, button, card, row, text", "#E6E8F0"),
             ),
             box(height=6),
             code_line(("clicks ", "#E6E8F0"), ("= ", mu), ("Signal", fn), ("(0)", "#E6E8F0")),
+            box(height=6),
+            code_line(("def ", kw), ("view", fn), ("():", "#E6E8F0")),
+            code_line(("    return ", kw), ("card", fn), ("(padding=32, gap=16)[", "#E6E8F0")),
             code_line(
-                ("view ", "#E6E8F0"), ("= ", mu), ("lambda", kw), (": ", mu), ("card", fn), ("()[", "#E6E8F0")
-            ),
-            code_line(
-                ("    text", fn),
+                ("        text", fn),
                 ("(", "#E6E8F0"),
                 ("lambda", kw),
                 (": ", mu),
                 ('f"{clicks()} clicks"', st),
-                ("),", "#E6E8F0"),
+                (", size=40, weight=800),", "#E6E8F0"),
             ),
-            code_line(("]", "#E6E8F0")),
+            code_line(("        row", fn), ("(gap=8)[", "#E6E8F0")),
+            code_line(
+                ("            button", fn),
+                ('("Restar"),', "#E6E8F0"),
+                (" button", fn),
+                ('("Sumar"),', "#E6E8F0"),
+            ),
+            code_line(("        ],", "#E6E8F0")),
+            code_line(("    ]", "#E6E8F0")),
+            box(height=6),
             code_line(("App", fn), ("(view).", "#E6E8F0"), ("run", fn), ("()", "#E6E8F0")),
         ],
         card(padding=18, gap=12, gradient=("#1E1A3A", "#0F2A2A", 30), border_color="#2E2A55")[
@@ -118,6 +132,9 @@ def logo() -> Element:
 
 
 if __name__ == "__main__":
+    # Consolas sin UTF-8 (cp1252 en Windows): que "✓" no rompa la salida.
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(errors="replace")
     ASSETS.mkdir(parents=True, exist_ok=True)
     App(banner).render_png(str(ASSETS / "banner.png"), size=(1280, 520), scale=2)
     App(logo).render_png(str(ASSETS / "logo.png"), size=(256, 256), scale=2)
