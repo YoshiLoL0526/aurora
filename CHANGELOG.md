@@ -10,6 +10,22 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Añadido
 
+- **Accesibilidad con AccessKit**: lo que describe la vista llega a los lectores de pantalla
+  (Narrador y NVDA en Windows, VoiceOver en macOS, Orca en Linux) y sus acciones vuelven a la app.
+  - Los **componentes** anuncian su rol y su nombre solos (`button`, `checkbox`, `switch`, `radio`,
+    `slider`, `select`, `tabs`, `menu`, `dialog`, `progress`, `toast`, `virtual_list`, `table`…), y
+    cualquier elemento acepta props de accesibilidad: `role`, `label`, `description`, `value`,
+    `checked`, `selected`, `expanded`, `level`, `live`, `position_in_set`, `set_size`, `sort`,
+    `modal`, `hidden`, `value_min`/`value_max`/`value_step` y `alt` (en imágenes). El andamiaje de
+    layout no se anuncia (una caja sin rol ni nombre es decorativa).
+  - El **foco, los estados y los valores** se publican al sistema, incluido lo que se está
+    escribiendo en un campo; el lector puede activar, enfocar, escribir valores y ajustar
+    deslizadores (acciones de AccessKit). Sin lector conectado, el árbol ni se construye.
+  - `Pilot.a11y_tree()` y `Pilot.a11y_action(...)` comprueban y simulan lo que ve y hace un lector
+    en los tests.
+  - **Navegación por teclado**: flechas (y Home/End) en `slider`, flechas en el selector segmentado,
+    y el foco del lector ya no se pierde si su nodo sigue en la vista (puede caer en un texto, que
+    no es enfocable con Tab: `pilot.a11y_action(..., "focus")`).
 - **Varias ventanas**: `App.window(view, title=..., size=...)` crea ventanas adicionales, cada una
   con su vista; `app.windows()` las lista. Comparten el tema y los `Signal` (un cambio se ve en
   todas) y el inspector (F12) es independiente en cada una.
@@ -63,6 +79,10 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ### Cambiado
 
+- **Interno — el parse del spec reutiliza las claves de cada dict**: cada prop se consulta con un
+  `PyString` ya creado (y con su hash memorizado) en vez de fabricar y hashear una cadena por
+  consulta. Es ~2× más rápido por consulta y la fase de parse baja alrededor de un tercio en los
+  benchmarks (`lista_10k`, 50 003 nodos: ~230 → ~160 ms); las props de accesibilidad salen gratis.
 - **La documentación explica cómo instalar el paquete publicado**: el README, el inicio y la guía
   enseñan `pip install aurora-ui` (o `uv add aurora-ui`) como primera vía —los wheels ya traen el
   núcleo compilado, sin Rust ni compilar nada— y dejan el clonado del repositorio (uv + Rust) para

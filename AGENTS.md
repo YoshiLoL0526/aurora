@@ -68,6 +68,13 @@ cargo fmt --check && cargo clippy --release -- -D warnings
   (explicit `key` or tree path) preserves animation state across rebuilds.
 - Hit-testing: take the last-painted region containing the point and bubble up to the first node with
   a `click` handler; `capture=True` stops bubbling (e.g. modals).
+- Accessibility: Python declares semantics (`role`, `label`, `checked`… → `spec::A11y`; components
+  set the defaults); `a11y.rs` builds the AccessKit tree from nodes + regions (physical-pixel bounds,
+  decorative boxes pruned) with stable ids per `key`, and `Runtime::a11y_action` answers reader
+  actions by reusing existing paths (`dispatch("click")`, editing the `Editor`, arrow keys for
+  sliders). The winit adapter lives in `View` (`window.rs`) and updates via `update_if_active` — a
+  no-op without a reader; `UserEvent::Access` carries `InitialTreeRequested`/`ActionRequested`.
+  `Pilot.a11y_tree()`/`a11y_action()` share the builder and actions for headless tests.
 
 ## Extending
 

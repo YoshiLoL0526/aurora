@@ -84,12 +84,15 @@ impl Runtime {
 
     /// Desplaza los `scroll` que contienen al nodo enfocado hasta que se vea.
     pub(super) fn reveal_focused(&mut self) -> bool {
-        let Some(idx) = self
-            .engine
-            .focused
-            .as_ref()
-            .and_then(|f| self.engine.regions.iter().rposition(|r| &r.key == f))
-        else {
+        let Some(key) = self.engine.focused.clone() else {
+            return false;
+        };
+        self.reveal_key(&key)
+    }
+
+    /// Desplaza los `scroll` que contienen a `key` hasta que se vea.
+    pub(super) fn reveal_key(&mut self, key: &str) -> bool {
+        let Some(idx) = self.engine.regions.iter().rposition(|r| r.key == key) else {
             return false;
         };
         // En un campo de texto lo que tiene que verse es el cursor; en la primera

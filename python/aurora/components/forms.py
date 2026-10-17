@@ -10,7 +10,7 @@ from .. import animate
 from .._icons import _CHECK
 from ..elements import Element, TextLike, box, column, image, row, text
 from ..signal import Signal
-from ._shared import Options, _field, _items, _toggle
+from ._shared import Options, _a11y_label, _field, _items, _toggle
 from ._state import _DRAG_START
 
 
@@ -89,6 +89,7 @@ def checkbox(
     (o `AURORA_MOTION=0`) el cambio es inmediato.
     """
     on, flip = _toggle(checked, on_change)
+    label_props = _a11y_label(label)
     mark = box(
         width=18,
         height=18,
@@ -109,9 +110,19 @@ def checkbox(
             exit=motion.leaving(animate.zoom(0.55)),
         )
     ]
-    return row(**{"gap": 8, "align": "center", "radius": 6, "key": key, "on_click": flip, **style})[
-        mark, label is not None and text(label)
-    ]
+    return row(
+        **{
+            "gap": 8,
+            "align": "center",
+            "radius": 6,
+            "key": key,
+            "on_click": flip,
+            "role": "checkbox",
+            "checked": on,
+            **label_props,
+            **style,
+        }
+    )[mark, label is not None and text(label, hidden=bool(label_props))]
 
 
 def switch(
@@ -128,6 +139,7 @@ def switch(
     (o `AURORA_MOTION=0`) el cambio es inmediato.
     """
     value, flip = _toggle(on, on_change)
+    label_props = _a11y_label(label)
     track = box(
         width=36,
         height=20,
@@ -148,9 +160,19 @@ def switch(
             animate_layout=motion.move(),
         )
     ]
-    return row(**{"gap": 10, "align": "center", "radius": 10, "key": key, "on_click": flip, **style})[
-        track, label is not None and text(label)
-    ]
+    return row(
+        **{
+            "gap": 10,
+            "align": "center",
+            "radius": 10,
+            "key": key,
+            "on_click": flip,
+            "role": "switch",
+            "checked": value,
+            **label_props,
+            **style,
+        }
+    )[track, label is not None and text(label, hidden=bool(label_props))]
 
 
 def radio(options: Options, selected: Signal[Any], *, key: str | None = None, **style: Any) -> Element:
@@ -164,7 +186,7 @@ def radio(options: Options, selected: Signal[Any], *, key: str | None = None, **
     items = _items(options)
     base = key or f"radio-{id(selected)}"
 
-    def option(value: Any, label: str) -> Element:
+    def option(index: int, value: Any, label: str) -> Element:
         on = selected() == value
         circle = box(
             width=18,
@@ -193,10 +215,17 @@ def radio(options: Options, selected: Signal[Any], *, key: str | None = None, **
             gap=8,
             align="center",
             radius=6,
+            role="radio",
+            checked=on,
+            label=label,
+            position_in_set=index + 1,
+            set_size=len(items),
             on_click=lambda v=value: selected.set(v),
-        )[circle, text(label, transition=motion.fast())]
+        )[circle, text(label, transition=motion.fast(), hidden=True)]
 
-    return column(**{"gap": 10, **style})[[option(v, label) for v, label in items]]
+    return column(**{"gap": 10, "role": "radiogroup", **style})[
+        [option(i, v, label) for i, (v, label) in enumerate(items)]
+    ]
 
 
 def slider(
@@ -232,6 +261,24 @@ def slider(
         value.set(v)
         if on_change is not None:
             on_change(v)
+
+    # Paso del teclado y de las acciones Incrementar/Decrementar del lector.
+    step = span / 20.0
+
+    def on_key(e: Any) -> bool | None:
+        if e.key in ("ArrowRight", "ArrowUp"):
+            set_value(current + step)
+            return True
+        if e.key in ("ArrowLeft", "ArrowDown"):
+            set_value(current - step)
+            return True
+        if e.key == "Home":
+            set_value(low)
+            return True
+        if e.key == "End":
+            set_value(high)
+            return True
+        return None
 
     def on_drag(e: Any) -> None:
         if e.phase == "start":
@@ -276,12 +323,20 @@ def slider(
     return box(
         key=key,
         on_drag=on_drag,
+        on_key=on_key,
+        on_value=set_value,
+        role="slider",
+        value=current,
+        value_min=low,
+        value_max=high,
+        value_step=step,
         **{
             "width": width,
             "height": 24,
             "padding": (0, 8),
             "justify": "center",
             "cursor": "pointer",
+            "focusable": True,
             **style,
         },
     )[rail]

@@ -225,6 +225,15 @@ class Pilot:
         """Simula que el IME confirma texto."""
     def selection(self, key: str) -> tuple[int, int] | None:
         """Selección del campo `key` en caracteres; `(n, n)` si solo hay cursor."""
+    def a11y_tree(self) -> list[dict[str, Any]]:
+        """Árbol de accesibilidad del último frame: lo que ve un lector de pantalla.
+        Un dict por nodo con `id`, `key`, `role`, `label`, `value`, estados
+        (`checked`, `selected`, `expanded`…), `bounds` en píxeles lógicos,
+        `actions`, `children` y `focused`; lo decorativo no aparece."""
+    def a11y_action(self, key: str, action: str, value: str | float | None = None) -> None:
+        """Pide una acción de accesibilidad sobre el nodo `key`, como un lector:
+        `"click"`, `"focus"`, `"blur"`, `"set_value"`, `"increment"`,
+        `"decrement"`, `"expand"`, `"collapse"` o `"scroll_into_view"`."""
     clipboard: str
     """Portapapeles del piloto (en memoria)."""
     def focus(self, key: str) -> None:

@@ -23,7 +23,7 @@ TextLike = str | Callable[[], Any]
 # Alias cómodos para los props de texto más usados.
 _ALIASES = {"size": "font_size", "weight": "font_weight", "family": "font_family"}
 # Texto libre que no se interpreta como token de tema aunque empiece por "$".
-_LITERAL = {"placeholder", "src"}
+_LITERAL = {"placeholder", "src", "label", "alt", "description", "value", "role", "live"}
 
 
 class Element:

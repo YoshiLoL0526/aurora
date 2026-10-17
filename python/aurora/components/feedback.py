@@ -34,9 +34,18 @@ def progress(
         ratio = 0.0
     ratio = 0.0 if ratio < 0.0 else 1.0 if ratio > 1.0 else ratio
     fill: dict[str, Any] = {"bg": color} if isinstance(color, str) else {"gradient": color}
-    return box(**{"height": 8, "radius": "$full", "bg": "$surface_hover", **style})[
-        box(width=f"{ratio * 100:.4f}%", height="100%", radius="$full", animate_layout=motion.move(), **fill)
-    ]
+    return box(
+        **{
+            "height": 8,
+            "radius": "$full",
+            "bg": "$surface_hover",
+            "role": "progressbar",
+            "value": current,
+            "value_min": 0.0,
+            "value_max": float(max),
+            **style,
+        }
+    )[box(width=f"{ratio * 100:.4f}%", height="100%", radius="$full", animate_layout=motion.move(), **fill)]
 
 
 def spinner(
@@ -48,7 +57,7 @@ def spinner(
     lo que necesita un indicador de carga — y `pilot.settle()` no lo detiene.
     Con `App(motion=False)` queda fijo, a opacidad plena.
     """
-    return row(key=key, gap=gap, align="center", **style)[
+    return row(key=key, gap=gap, align="center", role="progressbar", **style)[
         [
             box(width=size, height=size, radius="$full", bg=tone, pulse=motion.pulse(delay=i * 0.15))
             for i in range(3)
@@ -70,7 +79,14 @@ def skeleton(
     Late despacio mientras está visible (con `App(motion=False)`, fijo). Los
     `estilo` van a cada bloque (`bg`, `radius`, `width`…).
     """
-    base = {"bg": "$surface_hover", "radius": "$sm", "pulse": motion.pulse(1.6, floor=0.55), **style}
+    # Marcador de carga: decorativo, no se anuncia.
+    base = {
+        "bg": "$surface_hover",
+        "radius": "$sm",
+        "pulse": motion.pulse(1.6, floor=0.55),
+        "hidden": True,
+        **style,
+    }
     if lines <= 1:
         return box(**{"width": width, "height": height, **base})
     last = "60%" if isinstance(width, str) else width * 0.6
@@ -125,9 +141,11 @@ def toast(
         enter=motion.entering(animate.slide(y=8)),
         exit=motion.leaving(animate.fade()),
         on_click=close,
+        role="status",
+        live="polite",
         **style,
     )[
         box(width=8, height=8, radius="$full", bg=tone, shrink=0),
         text(message, size=13, shrink=1, max_lines=2),
-        text("✕", size=12, color="$muted"),
+        text("✕", size=12, color="$muted", hidden=True),
     ]

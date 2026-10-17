@@ -51,9 +51,13 @@ def menu(
             key=f"{key}-item-{i}",
             padding=(8, 12),
             radius=8,
+            role="menuitem",
+            label=label,
+            position_in_set=i + 1,
+            set_size=len(items),
             bg_hover="$surface_hover",
             on_click=lambda a=action: (close(), a()),
-        )[text(label, size=13, **extra)]
+        )[text(label, size=13, hidden=True, **extra)]
 
     # El clic del disparador abre y cierra la lista (es su única acción).
     trigger.handlers["click"] = toggle(open_)
@@ -62,7 +66,7 @@ def menu(
         panel(
             top=drop,
             min_width=180,
-            content=column(gap=2)[[option(i, entry) for i, entry in enumerate(items)]],
+            content=column(gap=2, role="menu")[[option(i, entry) for i, entry in enumerate(items)]],
         ),
     ]
     return column(**{"key": key, "on_key": on_key, **style})[trigger, opened]
@@ -107,6 +111,9 @@ def dialog(
             return True
         return None
 
+    a11y_card: dict[str, Any] = {"role": "dialog", "modal": True}
+    if isinstance(title, str):
+        a11y_card["label"] = title
     card_styles: dict[str, Any] = {
         "width": width,
         "padding": 24,
@@ -114,6 +121,7 @@ def dialog(
         "capture": True,
         "focusable": True,
         "enter": motion.entering(animate.zoom(0.96)),
+        **a11y_card,
         **style,
     }
     if not _has_autofocus(content):
@@ -132,7 +140,12 @@ def dialog(
         exit=motion.leaving(animate.fade()),
         on_click=close,
         on_key=on_key,
-    )[card(**card_styles)[title is not None and text(title, size=17, weight=700), content]]
+    )[
+        card(**card_styles)[
+            title is not None and text(title, size=17, weight=700, hidden="label" in a11y_card),
+            content,
+        ]
+    ]
 
 
 def tooltip(child: Element, tip: str) -> Element:
@@ -194,9 +207,13 @@ def select(
         border_color="$border",
         on_click=toggle(open_),
         on_key=on_key,
+        role="combobox",
+        expanded=open_(),
+        value=current,
+        placeholder=placeholder,
     )[
-        current is not None and text(current, max_lines=1),
-        current is None and text(placeholder, color="$muted", max_lines=1),
+        current is not None and text(current, max_lines=1, hidden=True),
+        current is None and text(placeholder, color="$muted", max_lines=1, hidden=True),
         spacer(),
         image(_CHEVRON, width=14),
     ]
@@ -207,17 +224,22 @@ def select(
             key=f"{k}-opt-{i}",
             padding=(8, 10),
             radius=8,
+            role="option",
+            selected=chosen,
+            label=label,
+            position_in_set=i + 1,
+            set_size=len(items),
             bg="$surface_hover" if chosen else "#00000000",
             bg_hover="$surface_hover",
             on_click=lambda: choose(v),
-        )[text(label, weight=600 if chosen else 400, max_lines=1)]
+        )[text(label, weight=600 if chosen else 400, max_lines=1, hidden=True)]
 
     opened = open_() and [
         backdrop(close),
         panel(
             top=_SELECT_HEIGHT + 6,
             right=0,
-            content=scroll(max_height=240, gap=2)[
+            content=scroll(max_height=240, gap=2, role="listbox")[
                 [option(i, v, label) for i, (v, label) in enumerate(items)]
             ],
         ),

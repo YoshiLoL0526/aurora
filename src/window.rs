@@ -44,6 +44,14 @@ pub enum UserEvent {
     Tray(TrayIconEvent),
     /// Opción elegida en el menú de la bandeja.
     Menu(MenuEvent),
+    /// Un lector de pantalla (AccessKit) pide el árbol o una acción, o se va.
+    Access(accesskit_winit::Event),
+}
+
+impl From<accesskit_winit::Event> for UserEvent {
+    fn from(event: accesskit_winit::Event) -> Self {
+        UserEvent::Access(event)
+    }
 }
 
 /// Lo que Python puede pedir al bucle.
@@ -218,6 +226,8 @@ struct View {
     window: Arc<Window>,
     surface: Option<Box<dyn Surface>>,
     rt: Runtime,
+    /// Adaptador de accesibilidad (AccessKit): el árbol nativo de esta ventana.
+    a11y: accesskit_winit::Adapter,
     mods: Mods,
     /// Si el IME del sistema está activado (solo mientras hay un campo enfocado).
     ime_allowed: bool,
@@ -239,21 +249,27 @@ struct View {
 }
 
 impl View {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         event_loop: &ActiveEventLoop,
         id: u64,
         window: Arc<Window>,
         backend: Backend,
         rt: Runtime,
+        a11y_proxy: EventLoopProxy<UserEvent>,
         on_close: Option<Py<PyAny>>,
         on_closed: Option<Py<PyAny>>,
     ) -> Result<Self, String> {
+        // El adaptador de accesibilidad tiene que existir antes de mostrar la
+        // ventana (se crea oculta y se enseña con el primer frame presentado).
+        let a11y = accesskit_winit::Adapter::with_event_loop_proxy(event_loop, &window, a11y_proxy);
         let surface = surface::create(event_loop, &window, backend)?;
         Ok(Self {
             id,
             window,
             surface: Some(surface),
             rt,
+            a11y,
             mods: Mods::default(),
             ime_allowed: false,
             wake_at: None,
@@ -282,7 +298,7 @@ impl View {
         let Some(surface) = &mut self.surface else {
             return;
         };
-        let window = &self.window;
+        let window = self.window.clone();
 
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_frame).as_secs_f32();
@@ -296,7 +312,7 @@ impl View {
         let scale = window.scale_factor() as f32;
         let mut hover_changed = false;
         let rt = &mut self.rt;
-        let presented = surface.present(window, &mut |canvas, age| {
+        let presented = surface.present(&window, &mut |canvas, age| {
             let size = canvas.base_layer_size();
             let (w, h) = (size.width as f32 / scale, size.height as f32 / scale);
             let result = rt.draw_frame(canvas, w, h, scale, age);
@@ -313,7 +329,7 @@ impl View {
             // La GPU dejó de responder (dispositivo perdido, driver reiniciado):
             // se sigue pintando por CPU.
             let name = surface.name();
-            match surface::cpu(window) {
+            match surface::cpu(&window) {
                 Ok(cpu) if name != "cpu" => {
                     eprintln!("aurora: el backend {name} falló ({err}); se usa la CPU");
                     self.surface = Some(cpu);
@@ -322,6 +338,10 @@ impl View {
                 _ => self.fatal = Some(format!("no se pudo presentar el frame: {err}")),
             }
         }
+
+        // El árbol que ven los lectores de pantalla, con la geometría de este
+        // frame. Sin lector conectado, AccessKit ni llama al constructor.
+        self.sync_a11y();
 
         if hover_changed {
             self.update_cursor();
@@ -337,6 +357,16 @@ impl View {
             _ => None,
         };
         self.update_ime();
+    }
+
+    /// Publica el árbol de accesibilidad del último frame, si hay un lector
+    /// conectado (sin lector, AccessKit ni ejecuta el constructor).
+    fn sync_a11y(&mut self) {
+        let scale = self.window.scale_factor() as f32;
+        let size = self.window.inner_size();
+        let (width, height) = (size.width as f32 / scale, size.height as f32 / scale);
+        let View { a11y, rt, .. } = self;
+        a11y.update_if_active(|| rt.a11y_build(width, height, scale).update);
     }
 
     /// El IME del sistema solo se activa con un campo enfocado, y su ventana
@@ -513,6 +543,8 @@ struct Host {
     tray_on_double_click: Option<Py<PyAny>>,
     /// La barra de menús de la app, si la describió.
     bar: Option<crate::menu::Built>,
+    /// Proxy para los eventos de accesibilidad (AccessKit) de cada ventana.
+    a11y_proxy: EventLoopProxy<UserEvent>,
     fatal: Option<String>,
 }
 
@@ -547,6 +579,7 @@ impl Host {
             window,
             self.backend,
             rt,
+            self.a11y_proxy.clone(),
             config.on_close,
             config.on_closed,
         )?;
@@ -720,6 +753,31 @@ impl Host {
         }
     }
 
+    /// Un evento del lector de pantalla (AccessKit): pide el árbol, entrega una
+    /// acción sobre un nodo o avisa de que se desconectó.
+    fn a11y_event(&mut self, event: accesskit_winit::Event) {
+        use accesskit_winit::WindowEvent as A11y;
+        let Some(view) = self.views.get_mut(&event.window_id) else {
+            return;
+        };
+        match event.window_event {
+            // Primer árbol (o una reactivación): tiene que venir completo.
+            A11y::InitialTreeRequested => {
+                view.sync_a11y();
+                view.window.request_redraw();
+            }
+            A11y::ActionRequested(request) => {
+                let View { rt, window, .. } = view;
+                match rt.a11y_action(request.target_node, request.action, request.data) {
+                    Ok(_) => window.request_redraw(),
+                    Err(err) => Python::attach(|py| err.print(py)),
+                }
+            }
+            // El lector se desconectó: nada que soltar (los updates se saltan solos).
+            A11y::AccessibilityDeactivated => {}
+        }
+    }
+
     /// Cierra las ventanas con error irrecuperable.
     fn reap(&mut self, event_loop: &ActiveEventLoop) {
         let failed: Vec<(WindowId, String)> = self
@@ -885,6 +943,11 @@ impl ApplicationHandler<UserEvent> for Host {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        // El lector de pantalla ve el evento antes que la app (AccessKit:
+        // posición y tamaño de la ventana, foco…).
+        if let Some(view) = self.views.get_mut(&id) {
+            view.a11y.process_event(&view.window, &event);
+        }
         match event {
             WindowEvent::RedrawRequested => {
                 self.redraw(id);
@@ -927,6 +990,7 @@ impl ApplicationHandler<UserEvent> for Host {
             UserEvent::Command(command) => self.command(event_loop, command),
             UserEvent::Tray(event) => self.tray_event(event),
             UserEvent::Menu(event) => self.menu_event(event),
+            UserEvent::Access(event) => self.a11y_event(event),
         }
     }
 }
@@ -991,6 +1055,7 @@ pub fn run(
             bar.menu.init_for_nsapp();
         }
         event_loop.set_control_flow(ControlFlow::Wait);
+        let a11y_proxy = event_loop.create_proxy();
         let mut host = Host {
             initial: Some(initial),
             views: HashMap::new(),
@@ -1004,6 +1069,7 @@ pub fn run(
             tray_on_click: None,
             tray_on_double_click: None,
             bar,
+            a11y_proxy,
             fatal: None,
         };
         // Los eventos de la bandeja y de sus menús despiertan al bucle.

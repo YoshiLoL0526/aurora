@@ -154,6 +154,7 @@ def table(
     def header(col: Column) -> Element:
         sorted_by = current is not None and current[0] == col.key
         descending = current is not None and current[1]
+        sorted_props = {"sort": "descending" if descending else "ascending"} if sorted_by else {}
         arrow = sorted_by and image(_ARROW_DOWN if descending else _ARROW_UP, width=12)
         label = text(
             col.title if col.title is not None else col.key,
@@ -163,6 +164,7 @@ def table(
             letter_spacing=0.3,
             max_lines=1,
             shrink=1,
+            hidden=True,
         )
         handle = (
             col.resizable
@@ -189,6 +191,9 @@ def table(
             align="center",
             justify=col.align,
             padding=(0, 12),
+            role="columnheader",
+            label=col.title if col.title is not None else col.key,
+            **sorted_props,
             bg_hover="$surface_hover" if col.sortable else None,
             on_click=(lambda: toggle(col)) if col.sortable else None,
         )[
@@ -212,6 +217,7 @@ def table(
             align="center",
             justify=col.align,
             padding=(0, 12),
+            role="cell",
         )[content]
 
     def body_row(position: int) -> Element:
@@ -222,6 +228,9 @@ def table(
             key=f"{key}/row/{index}",
             grow=1,
             align="center",
+            role="row",
+            position_in_set=position + 1,
+            set_size=len(rows),
             bg="$surface_hover" if striped and position % 2 else None,
             bg_hover="$surface_pressed" if click else None,
             focusable=False,
@@ -230,7 +239,14 @@ def table(
 
     body = (
         virtual_list(
-            len(rows), body_row, item_height=row_height, key=f"{key}/body", overscan=overscan, min_height=0
+            len(rows),
+            body_row,
+            item_height=row_height,
+            key=f"{key}/body",
+            overscan=overscan,
+            min_height=0,
+            role="generic",
+            item_role="generic",
         )
         if rows
         else column(grow=1, align="center", justify="center", padding=24)[text(empty, color="$muted")]
@@ -243,6 +259,7 @@ def table(
         "radius": "$lg",
         "border_width": 1,
         "border_color": "$border",
+        "role": "table",
         "min_height": header_height + 1 + 3 * row_height,
     }
     if "height" not in style and "max_height" not in style:
@@ -250,7 +267,7 @@ def table(
     return column(key=key, **{**defaults, **style})[
         scroll(axis="x", key=f"{key}/x", grow=1, min_height=0, radius="$lg")[
             column(grow=1, min_width=total, min_height=0)[
-                row(height=header_height, shrink=0)[[header(c) for c in cols]],
+                row(height=header_height, shrink=0, role="row")[[header(c) for c in cols]],
                 divider(),
                 body,
             ]

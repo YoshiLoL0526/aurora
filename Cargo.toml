@@ -27,6 +27,11 @@ include = [
 ]
 
 [dependencies]
+# Accesibilidad nativa: el árbol que ven los lectores de pantalla (UIA en
+# Windows, NSAccessibility en macOS, AT-SPI en Linux) se construye desde el de
+# la vista. Ver `a11y.rs`; el adaptador de ventana está en `accesskit_winit`.
+accesskit = "0.25.1"
+accesskit_winit = "0.34.1"
 arboard = { version = "3", default-features = false }
 # Menús nativos: la barra de la app (Windows/macOS), el menú de la bandeja y
 # los contextuales. Sin features: en Linux no hay barra (no metemos GTK).

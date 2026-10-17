@@ -101,6 +101,19 @@ impl Runtime {
             } else {
                 Some(0)
             });
+        self.dispatch_key_chain(start, input)
+    }
+
+    /// Entrega la tecla a los `on_key` de `key` y sus ancestros, como si ese
+    /// nodo tuviera el foco (lo usan las acciones de ajuste de los lectores).
+    pub(super) fn dispatch_key_from(&mut self, key: &str, input: &KeyInput) -> PyResult<bool> {
+        let start = self.engine.regions.iter().rposition(|r| r.key == key);
+        self.dispatch_key_chain(start, input)
+    }
+
+    /// Entrega la tecla a los `on_key` de la región `start` y sus ancestros,
+    /// de dentro hacia fuera.
+    fn dispatch_key_chain(&mut self, start: Option<usize>, input: &KeyInput) -> PyResult<bool> {
         let chain: Vec<String> = ancestors(&self.engine.regions, start)
             .map(|r| r.key.clone())
             .collect();

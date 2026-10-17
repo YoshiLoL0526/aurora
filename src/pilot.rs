@@ -4,13 +4,14 @@
 
 use pyo3::exceptions::{PyLookupError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 use skia_safe::{Point, Surface};
 
 use crate::keys::KeyInput;
 use crate::render::{raster_surface, write_png};
 use crate::runtime::{Clipboard, Runtime};
 use crate::scroll::LINE;
+use accesskit::{Action, ActionData};
 
 /// Paso de tiempo de un frame simulado.
 const FRAME: f32 = 1.0 / 60.0;
@@ -212,6 +213,68 @@ impl Pilot {
     /// Selección del campo `key` en caracteres: `(inicio, fin)`; iguales si solo hay cursor.
     fn selection(&self, key: &str) -> Option<(usize, usize)> {
         self.rt.selection(key)
+    }
+
+    /// Árbol de accesibilidad del último frame: lo que ve un lector de pantalla.
+    /// Una lista de dicts por nodo con `id`, `key`, `role`, `label`, `value`,
+    /// estados (`checked`, `selected`, `expanded`…), `bounds` en píxeles lógicos,
+    /// `actions`, `children` y `focused`. Lo decorativo y lo `hidden` no aparece.
+    fn a11y_tree<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        let built = self.rt.a11y_build(self.width, self.height, self.scale);
+        crate::a11y::to_dicts(py, &built, self.scale)
+    }
+
+    /// Pide una acción de accesibilidad sobre el nodo `key`, como la pediría un
+    /// lector de pantalla: `"click"`, `"focus"`, `"blur"`, `"set_value"` (con
+    /// `value`: texto o número), `"increment"`, `"decrement"`, `"expand"`,
+    /// `"collapse"` o `"scroll_into_view"`. `LookupError` si el nodo no está en
+    /// el árbol de accesibilidad.
+    #[pyo3(signature = (key, action, value = None))]
+    fn a11y_action(
+        &mut self,
+        key: &str,
+        action: &str,
+        value: Option<Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        let action = match action {
+            "click" => Action::Click,
+            "focus" => Action::Focus,
+            "blur" => Action::Blur,
+            "set_value" => Action::SetValue,
+            "increment" => Action::Increment,
+            "decrement" => Action::Decrement,
+            "expand" => Action::Expand,
+            "collapse" => Action::Collapse,
+            "scroll_into_view" => Action::ScrollIntoView,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "acción desconocida: {other:?} (click, focus, blur, set_value, increment, \
+                     decrement, expand, collapse, scroll_into_view)"
+                )));
+            }
+        };
+        let data = match value {
+            None => None,
+            Some(v) => match v.extract::<String>() {
+                Ok(text) => Some(ActionData::Value(text.into_boxed_str())),
+                Err(_) => {
+                    Some(ActionData::NumericValue(v.extract().map_err(|_| {
+                        PyValueError::new_err("value debe ser texto o número")
+                    })?))
+                }
+            },
+        };
+        let Some(id) = self.rt.a11y.node_id(key).or_else(|| {
+            // El árbol puede no haberse construido todavía: construirlo lo registra.
+            let _ = self.rt.a11y_build(self.width, self.height, self.scale);
+            self.rt.a11y.node_id(key)
+        }) else {
+            return Err(PyLookupError::new_err(format!(
+                "no hay ningún nodo de accesibilidad con key {key:?}"
+            )));
+        };
+        self.rt.a11y_action(id, action, data)?;
+        self.step(FRAME).map(drop)
     }
 
     /// Portapapeles del piloto (en memoria, no toca el del sistema).

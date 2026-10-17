@@ -21,6 +21,8 @@ def virtual_list(
     key: str,
     gap: float = 0,
     overscan: int = 4,
+    role: str = "list",
+    item_role: str = "listitem",
     **style: Any,
 ) -> Element:
     """Lista desplazable de `count` filas que solo construye las visibles.
@@ -34,6 +36,8 @@ def virtual_list(
     Cada fila ocupa un hueco de todo el ancho y `item_height` de alto: dale `grow=1`
     a su raíz para que lo rellene. `key` es obligatoria: guarda la posición y la zona
     visible. Con `@component`, las filas que siguen visibles no se reconstruyen.
+    Para los lectores de pantalla es una `"list"` de `"listitem"`s (con su posición);
+    `table` cambia esos roles con `role`/`item_role`.
     """
     if item_height <= 0:
         raise ValueError("item_height debe ser positivo")
@@ -53,9 +57,17 @@ def virtual_list(
     first, last = visible(*(viewport() or (0.0, _GUESSED_HEIGHT)))
     total = count * item_height + max(0, count - 1) * gap
     rows = [
-        column(key=f"{key}#{i}", position="absolute", top=i * stride, left=0, right=0, height=item_height)[
-            item(i)
-        ]
+        column(
+            key=f"{key}#{i}",
+            position="absolute",
+            top=i * stride,
+            left=0,
+            right=0,
+            height=item_height,
+            role=item_role,
+            position_in_set=i + 1,
+            set_size=count,
+        )[item(i)]
         for i in range(first, last)
     ]
-    return scroll(key=key, on_scroll=on_scroll, **style)[box(height=total, shrink=0)[rows]]
+    return scroll(key=key, on_scroll=on_scroll, role=role, **style)[box(height=total, shrink=0)[rows]]

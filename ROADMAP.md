@@ -65,7 +65,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 ## Hacia la 1.0 🚧
 
-- ⏳ Accesibilidad completa con AccessKit (lectores de pantalla, navegación por teclado)
+- ✅ Accesibilidad completa con AccessKit (lectores de pantalla, navegación por teclado)
 - 🚧 Integración con el escritorio:
   - ✅ Multi-ventana (`app.window(...)`, ciclo de vida y cierre por ventana)
   - ✅ Diálogos nativos (abrir/guardar archivo)

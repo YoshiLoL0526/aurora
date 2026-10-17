@@ -32,6 +32,15 @@ def _items(options: Options) -> list[tuple[Any, str]]:
     return [o if isinstance(o, tuple) else (o, str(o)) for o in options]
 
 
+def _a11y_label(label: Any) -> dict[str, Any]:
+    """`label` de accesibilidad si el control muestra texto propio: resuelve la
+    lambda ahora (como el contenido) para que el nombre lo lleve el nodo del
+    control y su texto visible no se anuncie dos veces."""
+    value = label() if callable(label) else label
+    text = "" if value is None else str(value)
+    return {"label": text} if text else {}
+
+
 def _has_autofocus(element: Element) -> bool:
     """Si algún nodo del subárbol pide el foco al aparecer (para no quitárselo)."""
     return bool(element.style.get("autofocus")) or any(_has_autofocus(c) for c in element.children)

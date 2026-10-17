@@ -5,9 +5,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use accesskit::{Live, Role, SortDirection};
 use pyo3::exceptions::PyValueError;
+use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyList};
+use pyo3::types::{PyBytes, PyDict, PyList, PyString};
 use skia_safe::Color;
 
 use crate::color::parse_color;
@@ -236,6 +238,99 @@ impl Kind {
     }
 }
 
+/// Semántica de accesibilidad declarada por Python (`role`, `label`, `checked`…).
+/// El árbol nativo que ven los lectores de pantalla se construye en `a11y.rs`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct A11y {
+    /// Rol del nodo (`"button"`, `"tablist"`…). Ver `a11y::parse_role`.
+    pub role: Option<Role>,
+    /// Nombre accesible. En una imagen, `alt` es su alias.
+    pub label: Option<String>,
+    /// Texto secundario (ayuda o contexto), aparte del nombre.
+    pub description: Option<String>,
+    /// Valor declarado con `value=`: el texto de un desplegable o el número de
+    /// un deslizador.
+    pub value: Option<Value>,
+    /// Estado de casillas, interruptores y radios.
+    pub checked: Option<bool>,
+    /// Estado de pestañas y opciones.
+    pub selected: Option<bool>,
+    /// Estado de desplegables y acordeones.
+    pub expanded: Option<bool>,
+    /// Región viva (`live="polite"`): sus cambios se anuncian solos.
+    pub live: Option<Live>,
+    /// Nivel de un `heading` (1 = título principal).
+    pub level: Option<usize>,
+    /// Posición y tamaño del conjunto: "elemento 3 de 100" (listas, tablas).
+    pub position_in_set: Option<usize>,
+    pub set_size: Option<usize>,
+    /// Orden de una columna ordenable (`"ascending"`, `"descending"`).
+    pub sort: Option<SortDirection>,
+    /// Diálogo modal: bloquea el resto de la interfaz.
+    pub modal: bool,
+    /// Fuera del árbol: decorativo (un separador, un icono ya descrito por su texto).
+    pub hidden: bool,
+    /// Rango de un deslizador o una barra de progreso.
+    pub value_min: Option<f64>,
+    pub value_max: Option<f64>,
+    /// Paso de las acciones Incrementar/Decrementar de un deslizador.
+    pub value_step: Option<f64>,
+}
+
+/// Valor de `value=`: texto (`"3 de 10"`) o número (`0.5`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+    Text(String),
+    Number(f64),
+}
+
+impl A11y {
+    fn parse(d: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let value = match get(d, "value")? {
+            None => None,
+            Some(v) => Some(match v.extract::<String>() {
+                Ok(text) => Value::Text(text),
+                Err(_) => Value::Number(
+                    v.extract()
+                        .map_err(|_| PyValueError::new_err("value debe ser texto o número"))?,
+                ),
+            }),
+        };
+        Ok(Self {
+            role: str_of(d, "role")?
+                .map(|name| crate::a11y::parse_role(&name))
+                .transpose()?,
+            label: match str_of(d, "label")? {
+                Some(label) => Some(label),
+                None => str_of(d, "alt")?,
+            },
+            description: str_of(d, "description")?,
+            value,
+            checked: opt_bool_of(d, "checked")?,
+            selected: opt_bool_of(d, "selected")?,
+            expanded: opt_bool_of(d, "expanded")?,
+            live: str_of(d, "live")?
+                .map(|name| crate::a11y::parse_live(&name))
+                .transpose()?,
+            level: get(d, "level")?.map(|v| v.extract::<usize>()).transpose()?,
+            position_in_set: get(d, "position_in_set")?
+                .map(|v| v.extract::<usize>())
+                .transpose()?,
+            set_size: get(d, "set_size")?
+                .map(|v| v.extract::<usize>())
+                .transpose()?,
+            sort: str_of(d, "sort")?
+                .map(|name| crate::a11y::parse_sort(&name))
+                .transpose()?,
+            modal: bool_of(d, "modal")?,
+            hidden: bool_of(d, "hidden")?,
+            value_min: f64_of(d, "value_min")?,
+            value_max: f64_of(d, "value_max")?,
+            value_step: f64_of(d, "value_step")?,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct Node {
     /// Identidad estable entre reconstrucciones (key explícita o ruta en el árbol).
@@ -245,6 +340,8 @@ pub struct Node {
     pub style: Style,
     pub text: Option<String>,
     pub text_props: TextProps,
+    /// Semántica de accesibilidad: lo que ven los lectores de pantalla.
+    pub a11y: A11y,
     pub children: Vec<Node>,
     /// Manejadores de eventos por nombre (`"click"`, …), sin el prefijo `on_`.
     pub handlers: HashMap<String, Py<PyAny>>,
@@ -265,6 +362,7 @@ impl Node {
             style: self.style.clone(),
             text: self.text.clone(),
             text_props: self.text_props.clone(),
+            a11y: self.a11y.clone(),
             children: self.children.iter().map(|c| c.clone_ref(py)).collect(),
             handlers: self
                 .handlers
@@ -330,8 +428,109 @@ impl Node {
 // Helpers de extracción: claves ausentes o `None` → valor por defecto.
 // ---------------------------------------------------------------------------
 
+/// Consulta una clave del spec. La clave sale del `match` ya creada e internada
+/// (`intern!`): en el parse de un nodo se consultan ~80 claves y crear y hashear
+/// un `PyString` por consulta se lleva buena parte de la fase. Una clave fuera
+/// de la tabla se crea al momento, como antes.
 fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
-    Ok(d.get_item(key)?.filter(|v| !v.is_none()))
+    let py = d.py();
+    macro_rules! hit {
+        ($name:literal) => {
+            d.get_item(intern!(py, $name))
+        };
+    }
+    let item = match key {
+        "align" => hit!("align"),
+        "alt" => hit!("alt"),
+        "animate_layout" => hit!("animate_layout"),
+        "autofocus" => hit!("autofocus"),
+        "bg" => hit!("bg"),
+        "bg_hover" => hit!("bg_hover"),
+        "bg_pressed" => hit!("bg_pressed"),
+        "border_color" => hit!("border_color"),
+        "border_width" => hit!("border_width"),
+        "bottom" => hit!("bottom"),
+        "capture" => hit!("capture"),
+        "chart" => hit!("chart"),
+        "checked" => hit!("checked"),
+        "children" => hit!("children"),
+        "color" => hit!("color"),
+        "cursor" => hit!("cursor"),
+        "description" => hit!("description"),
+        "direction" => hit!("direction"),
+        "draw" => hit!("draw"),
+        "enter" => hit!("enter"),
+        "exit" => hit!("exit"),
+        "expanded" => hit!("expanded"),
+        "fit" => hit!("fit"),
+        "focus_color" => hit!("focus_color"),
+        "focusable" => hit!("focusable"),
+        "font_family" => hit!("font_family"),
+        "font_size" => hit!("font_size"),
+        "font_weight" => hit!("font_weight"),
+        "gap" => hit!("gap"),
+        "gradient" => hit!("gradient"),
+        "grow" => hit!("grow"),
+        "handlers" => hit!("handlers"),
+        "height" => hit!("height"),
+        "hidden" => hit!("hidden"),
+        "justify" => hit!("justify"),
+        "key" => hit!("key"),
+        "kind" => hit!("kind"),
+        "label" => hit!("label"),
+        "layer" => hit!("layer"),
+        "left" => hit!("left"),
+        "letter_spacing" => hit!("letter_spacing"),
+        "level" => hit!("level"),
+        "line_height" => hit!("line_height"),
+        "live" => hit!("live"),
+        "max_height" => hit!("max_height"),
+        "max_lines" => hit!("max_lines"),
+        "max_width" => hit!("max_width"),
+        "memo" => hit!("memo"),
+        "min_height" => hit!("min_height"),
+        "min_width" => hit!("min_width"),
+        "modal" => hit!("modal"),
+        "multiline" => hit!("multiline"),
+        "opacity" => hit!("opacity"),
+        "overflow" => hit!("overflow"),
+        "padding" => hit!("padding"),
+        "placeholder" => hit!("placeholder"),
+        "placeholder_color" => hit!("placeholder_color"),
+        "position" => hit!("position"),
+        "position_in_set" => hit!("position_in_set"),
+        "press_scale" => hit!("press_scale"),
+        "pulse" => hit!("pulse"),
+        "radius" => hit!("radius"),
+        "right" => hit!("right"),
+        "role" => hit!("role"),
+        "rows" => hit!("rows"),
+        "scroll" => hit!("scroll"),
+        "scrollbar_color" => hit!("scrollbar_color"),
+        "selected" => hit!("selected"),
+        "selection_color" => hit!("selection_color"),
+        "set_size" => hit!("set_size"),
+        "shadow" => hit!("shadow"),
+        "shrink" => hit!("shrink"),
+        "sort" => hit!("sort"),
+        "src" => hit!("src"),
+        "style" => hit!("style"),
+        "text" => hit!("text"),
+        "text_align" => hit!("text_align"),
+        "tooltip" => hit!("tooltip"),
+        "tooltip_bg" => hit!("tooltip_bg"),
+        "tooltip_color" => hit!("tooltip_color"),
+        "top" => hit!("top"),
+        "transition" => hit!("transition"),
+        "value" => hit!("value"),
+        "value_max" => hit!("value_max"),
+        "value_min" => hit!("value_min"),
+        "value_step" => hit!("value_step"),
+        "width" => hit!("width"),
+        "wrap" => hit!("wrap"),
+        other => d.get_item(PyString::new(py, other)),
+    }?;
+    Ok(item.filter(|v| !v.is_none()))
 }
 
 fn f32_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f32>> {
@@ -361,6 +560,14 @@ fn bool_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<bool> {
         .map(|v| v.is_truthy())
         .transpose()?
         .unwrap_or(false))
+}
+
+fn opt_bool_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bool>> {
+    get(d, key)?.map(|v| v.is_truthy()).transpose()
+}
+
+fn f64_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f64>> {
+    get(d, key)?.map(|v| v.extract::<f64>()).transpose()
 }
 
 fn color_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Color>> {
@@ -687,6 +894,7 @@ fn parse_fresh(
         None => PyDict::new(d.py()),
     };
     let style = parse_style(&style_dict)?;
+    let a11y = A11y::parse(&style_dict)?;
     let text_props = inherit_text(&style_dict, inherited)?;
     let key = str_of(d, "key")?.unwrap_or_else(|| path.to_owned());
     check_unique(&mut ctx.seen, &key)?;
@@ -727,6 +935,7 @@ fn parse_fresh(
         style,
         text: str_of(d, "text")?,
         text_props,
+        a11y,
         children,
         handlers: parse_handlers(d)?,
         draw,

@@ -94,7 +94,7 @@ impl Runtime {
 
     /// Tras editar: reinicia el parpadeo, muestra el cursor y avisa a Python
     /// con `on_change(texto)` si cambió y `on_submit(texto)` al enviar.
-    fn after_edit(&mut self, key: &str, before: &str, submit: bool) -> PyResult<()> {
+    pub(super) fn after_edit(&mut self, key: &str, before: &str, submit: bool) -> PyResult<()> {
         let Some(state) = self.engine.inputs.get_mut(key) else {
             return Ok(());
         };

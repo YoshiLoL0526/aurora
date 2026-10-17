@@ -44,7 +44,7 @@ mod style;
 mod text;
 
 pub use self::draw::content_size;
-pub use self::geom::{Mark, ancestors, hit_test, topmost};
+pub use self::geom::{HitRegion, Mark, ancestors, hit_test, topmost};
 pub use self::png::{raster_surface, render_png, write_png};
 
 use self::draw::*;

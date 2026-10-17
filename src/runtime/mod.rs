@@ -26,6 +26,7 @@ use crate::spec::{self, Node};
 
 pub use crate::spec::Cursor as CursorKind;
 
+mod a11y;
 mod clipboard;
 mod editing;
 mod focus;
@@ -157,6 +158,8 @@ pub struct Runtime {
     charts: Charts,
     /// Inspector del árbol y profiler de frames.
     pub inspector: Inspector,
+    /// Estado de accesibilidad: ids estables por key para el árbol nativo.
+    pub a11y: crate::a11y::A11y,
 }
 
 impl Runtime {
@@ -188,6 +191,7 @@ impl Runtime {
             canvases: Canvases::default(),
             charts: Charts::default(),
             inspector: Inspector::new(inspector),
+            a11y: crate::a11y::A11y::default(),
         }
     }
 
@@ -318,9 +322,11 @@ impl Runtime {
         self.canvases.rebuilt();
         self.charts.rebuilt();
 
-        // El foco se pierde si su nodo desaparece o deja de ser enfocable.
+        // El foco se pierde si su nodo desaparece de la vista. Un nodo que sigue
+        // ahí pero dejó de ser enfocable (o que enfocó un lector de pantalla)
+        // conserva el foco: el anillo solo lo pinta el foco de teclado.
         if let Some(focused) = &self.engine.focused
-            && tree.find(focused).is_none_or(|n| !n.is_focusable())
+            && tree.find(focused).is_none()
         {
             self.engine.focused = None;
         }
@@ -422,6 +428,15 @@ impl Runtime {
 }
 
 impl Runtime {
+    /// Árbol de accesibilidad completo del frame actual (ver `a11y::build`).
+    /// Lo usan el adaptador de la ventana y el piloto.
+    pub fn a11y_build(&mut self, width: f32, height: f32, scale: f32) -> crate::a11y::Built {
+        let Self {
+            tree, engine, a11y, ..
+        } = self;
+        crate::a11y::build(a11y, tree.as_ref(), engine, width, height, scale)
+    }
+
     /// Llama al manejador `event` del nodo `key`, con `arg` como único
     /// argumento si se indica. Devuelve `false` si el nodo no lo tiene.
     pub fn dispatch(&mut self, key: &str, event: &str, arg: Option<Py<PyAny>>) -> PyResult<bool> {

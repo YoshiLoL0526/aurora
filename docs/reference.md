@@ -16,6 +16,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Hot reload](#hot-reload)
 - [Primitivas](#primitivas)
 - [Teclado y foco](#teclado-y-foco)
+- [Accesibilidad](#accesibilidad)
 - [Componentes](#componentes)
 - [Animaciones](#animaciones)
 - [Propiedades de estilo](#propiedades-de-estilo)
@@ -317,6 +318,8 @@ def test_counter():
 | `type(texto)` | Escribe en el campo enfocado, grafema a grafema, como desde el teclado (`"\n"` = Enter). |
 | `ime_preedit(texto)` / `ime_commit(texto)` | Simulan la composición y la confirmación de un IME. |
 | `selection(key)` | Selección del campo `key` en caracteres: `(inicio, fin)`, iguales si solo hay cursor. |
+| `a11y_tree()` | El árbol de accesibilidad del último frame —lo que ve un lector de pantalla—: una lista de dicts por nodo con `id`, `key`, `role`, `label`, `value`, estados (`checked`, `selected`, `expanded`…), `bounds` en píxeles lógicos, `actions`, `children` y `focused`. Lo decorativo no aparece. |
+| `a11y_action(key, action, value=None)` | Pide una acción como un lector de pantalla sobre el nodo `key`: `"click"`, `"focus"`, `"blur"`, `"set_value"` (con `value`: texto o número), `"increment"`, `"decrement"`, `"expand"`, `"collapse"` o `"scroll_into_view"`. |
 | `clipboard` | Portapapeles del piloto, en memoria (se puede leer y asignar); no toca el del sistema. |
 | `focus(key)` | Enfoca `key` como si se llegara con el teclado. `LookupError` si no se pintó o no es enfocable. |
 | `focused` | Key del nodo enfocado, o `None`. |
@@ -641,6 +644,21 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | `on_<evento>` | Todo argumento que empiece por `on_` se trata como manejador, no como estilo. |
 | `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`. |
 | `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
+| `role` | Rol de accesibilidad para los lectores de pantalla: `"button"`, `"checkbox"`, `"switch"`, `"radio"`, `"radiogroup"`, `"slider"`, `"textbox"`, `"combobox"`, `"option"`, `"tab"`, `"tablist"`, `"dialog"`, `"menu"`, `"menuitem"`, `"list"`, `"listitem"`, `"table"`, `"row"`, `"cell"`, `"columnheader"`, `"progressbar"`, `"image"`, `"heading"`, `"status"`, `"link"`, `"region"`, `"separator"`… (los nombres de ARIA en minúscula). Un rol desconocido lanza `ValueError`. Ver [Accesibilidad](#accesibilidad). |
+| `label` | Nombre con el que el lector anuncia el elemento. Por defecto, su texto (`text`, o el de un botón o casilla). |
+| `description` | Texto secundario de ayuda; si no se indica, el `tooltip` hace de descripción. |
+| `value` | Valor anunciado: texto (`"3 de 10"`) o número (`0.5`). En un campo de texto, el valor es lo que hay escrito. |
+| `checked` | `bool`. Estado de `checkbox` y `switch` (las casillas y los interruptores lo ponen solos). |
+| `selected` | `bool`. Estado de `tab` y `option` (pestañas, desplegables). |
+| `expanded` | `bool`. Estado de `combobox` y `button` de acordeón. |
+| `level` | Nivel de un `heading` (1 = título principal). |
+| `live` | `"polite"` o `"assertive"`: región viva — sus cambios se anuncian solos (lo usan `toast`). |
+| `position_in_set` / `set_size` | Posición y tamaño del conjunto: «elemento 3 de 100» (`radio`, `virtual_list` y `table` los ponen solos). |
+| `sort` | `"ascending"` o `"descending"` en una cabecera ordenada (`table`). |
+| `modal` | `bool`. El diálogo bloquea el resto de la interfaz (lo pone `dialog`). |
+| `value_min` / `value_max` / `value_step` | Rango de un `slider` o una barra de progreso, y paso de las acciones de ajuste. |
+| `hidden` | `bool`. Fuera del árbol de accesibilidad: decorativo (el contenido visual no cambia). |
+| `alt` | En una imagen, texto alternativo (equivale a `label`). Sin `alt` ni `label`, la imagen es decorativa y no se anuncia. |
 | `key` | Identidad estable. Conserva el estado de animación aunque el elemento cambie de posición en el árbol. Recomendado en listas dinámicas. Un elemento sin `key` recibe la de su padre seguida de su posición (`"fila-7/0"`, `"fila-7/1"`…), así que los hijos siguen a su padre si este se mueve. |
 
 ### `DragEvent`
@@ -719,6 +737,38 @@ def view():
 
 Alias aceptados en las combinaciones: `esc`, `return`, `del`, `up`/`down`/`left`/`right`, `pgup`/`pgdn`,
 `plus`; y como modificadores `control`, `option`, `cmd`, `super` y `win`.
+
+## Accesibilidad
+
+Aurora publica lo que describe la vista en el API de accesibilidad del sistema (UIA en Windows,
+NSAccessibility en macOS, AT-SPI en Linux) con [AccessKit](https://accesskit.dev): los lectores de
+pantalla (Narrador, NVDA, VoiceOver, Orca) **ven el árbol** y sus acciones —activar, enfocar,
+escribir un valor, ajustar un deslizador, desplazarse hasta un elemento— llegan a los mismos
+manejadores que un clic o una tecla. Sin lector conectado el árbol ni se construye ni se actualiza.
+
+- Los **componentes** declaran su semántica solos: `button` (nombre y activación), `checkbox` y
+  `switch` (marcado), `radio` (grupo, posición y activo), `slider` (valor y rango), `text_input` /
+  `textarea` (el valor real, incluido lo que se está escribiendo), `select` (valor, desplegado y
+  opciones), `tabs`, `menu`, `dialog` (modal y título), `progress`, `toast` (región viva),
+  `virtual_list` (posiciones) y `table` (cabeceras, filas y ordenación). `image` y `avatar` usan
+  `alt`; sin él son decorativos.
+- Las **primitivas** también cuentan: `text` es una etiqueta con su valor y cualquier elemento
+  acepta las props de la tabla de [Primitivas](#primitivas). Una caja sin rol, sin nombre y sin
+  contenido no se anuncia: el andamiaje de layout no ensucia el árbol.
+- El **texto interno** de un control (la etiqueta de una casilla, el texto de un botón) no se
+  anuncia dos veces: el nombre lo lleva el control.
+- En los campos de texto, la acción «fijar valor» del lector escribe como si se tecleara (dispara
+  `on_change` y respeta un valor controlado).
+- Los **tests** pueden comprobar el árbol y simular acciones con `pilot.a11y_tree()` y
+  `pilot.a11y_action(key, "click")` (ver [Pilot](#pilot-tests-de-interacción)).
+
+```python
+checkbox(acepto, "Acepto los términos", key="terms")  # el lector dice «Acepto los términos, casilla»
+
+table(tasks, cols, key="t")  # la cabecera ordenada anuncia su orden y se activa con Enter
+
+toast(message)  # un aviso: se anuncia solo al aparecer (región viva)
+```
 
 ## Componentes
 

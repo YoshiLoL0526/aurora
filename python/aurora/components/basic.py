@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from ..elements import Element, TextLike, box, column, image, row, text
+from ._shared import _a11y_label
 
 Variant = Literal["primary", "soft", "ghost"]
 
@@ -53,7 +54,11 @@ def button(
         "font_weight": 600,
         **style,
     }
-    return box(on_click=on_click, key=key, **styles)[text(label)]
+    # El botón lleva el nombre en su propio nodo: el texto interno no se repite.
+    label_props = _a11y_label(label)
+    return box(on_click=on_click, key=key, role="button", **label_props, **styles)[
+        text(label, hidden=bool(label_props))
+    ]
 
 
 def card(**style: Any) -> Element:
@@ -91,7 +96,7 @@ def stat(label: str, value: TextLike, delta: str | None = None, *, positive: boo
 def divider(*, vertical: bool = False, color: str = "$border", **style: Any) -> Element:
     """Línea separadora de 1 px. Horizontal por defecto; `vertical=True` en una `row`."""
     size = {"width": 1} if vertical else {"height": 1}
-    return box(**{**size, "bg": color, "shrink": 0, **style})
+    return box(**{**size, "bg": color, "shrink": 0, "role": "separator", **style})
 
 
 _AVATAR_TONES = ("$primary", "$accent", "$success", "$muted")
@@ -108,9 +113,17 @@ def avatar(
     color estable (el mismo nombre siempre da el mismo color)."""
     shape = {"width": size, "height": size, "radius": "$full", "shrink": 0}
     if src is not None:
-        return image(src, fit="cover", **{**shape, **style})
+        return image(src, fit="cover", **{"alt": name or None, **shape, **style})
     initials = "".join(word[0] for word in name.split()[:2]).upper() or "?"
     tone = _AVATAR_TONES[sum(map(ord, name)) % len(_AVATAR_TONES)]
-    return box(**{**shape, "bg": tone, "align": "center", "justify": "center", **style})[
-        text(initials, size=size * 0.38, weight=700, color="#FFFFFF")
-    ]
+    return box(
+        **{
+            **shape,
+            "bg": tone,
+            "align": "center",
+            "justify": "center",
+            "role": "image",
+            **({"label": name} if name else {}),
+            **style,
+        }
+    )[text(initials, size=size * 0.38, weight=700, color="#FFFFFF", hidden=bool(name))]

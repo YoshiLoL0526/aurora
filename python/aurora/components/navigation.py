@@ -27,21 +27,32 @@ def tabs(options: Options, selected: Signal[Any], *, key: str | None = None, **s
             return True
         return None
 
-    def tab(value: Any, label: str) -> Element:
+    def tab(index: int, value: Any, label: str) -> Element:
         active = selected() == value
         return column(
             key=f"{base}-{value}",
             gap=8,
             padding=(8, 12, 0, 12),
             radius=6,
+            role="tab",
+            selected=active,
+            label=label,
+            position_in_set=index + 1,
+            set_size=len(items),
             on_click=lambda: selected.set(value),
         )[
-            text(label, weight=600, color="$text" if active else "$muted", transition=motion.fast()),
+            text(
+                label,
+                weight=600,
+                color="$text" if active else "$muted",
+                transition=motion.fast(),
+                hidden=True,
+            ),
             box(height=2, radius=1, bg="$primary" if active else "#00000000", transition=motion.fast()),
         ]
 
     return column(**{"gap": 0, **style})[
-        row(gap=4, on_key=on_key)[[tab(v, label) for v, label in items]],
+        row(gap=4, on_key=on_key, role="tablist")[[tab(i, v, label) for i, (v, label) in enumerate(items)]],
         divider(),
     ]
 
@@ -95,7 +106,14 @@ def segmented(
     n = max(1, len(items))
     index = values.index(selected()) if selected() in values else 0
 
-    def option(value: Any, label: str) -> Element:
+    def on_key(e: Any) -> bool | None:
+        if e.key in ("ArrowLeft", "ArrowRight") and selected() in values:
+            step = 1 if e.key == "ArrowRight" else -1
+            selected.set(values[(values.index(selected()) + step) % len(values)])
+            return True
+        return None
+
+    def option(index: int, value: Any, label: str) -> Element:
         on = selected() == value
         return box(
             key=f"{base}-{value}",
@@ -105,6 +123,11 @@ def segmented(
             radius=9,
             align="center",
             justify="center",
+            role="radio",
+            checked=on,
+            label=label,
+            position_in_set=index + 1,
+            set_size=len(items),
             bg_hover=None if on else "$surface_pressed",
             on_click=lambda v=value: selected.set(v),
         )[
@@ -115,10 +138,21 @@ def segmented(
                 color="$text" if on else "$muted",
                 max_lines=1,
                 transition=motion.fast(),
+                hidden=True,
             )
         ]
 
-    return row(**{"padding": 3, "radius": "$md", "bg": "$surface_hover", "width": width, **style})[
+    return row(
+        **{
+            "padding": 3,
+            "radius": "$md",
+            "bg": "$surface_hover",
+            "width": width,
+            "role": "radiogroup",
+            "on_key": on_key,
+            **style,
+        }
+    )[
         box(grow=1, width=0)[
             # El pulgar, primero: se pinta debajo de las etiquetas.
             box(
@@ -133,7 +167,7 @@ def segmented(
                 shadow=(0, 1, 4, "$shadow"),
                 animate_layout=motion.move(),
             ),
-            row()[[option(v, label) for v, label in items]],
+            row()[[option(i, v, label) for i, (v, label) in enumerate(items)]],
         ],
     ]
 
@@ -165,15 +199,19 @@ def accordion(
                 padding=(10, 12),
                 radius="$md",
                 align="center",
+                role="button",
+                expanded=shown,
+                label=title,
                 bg_hover="$surface_hover",
                 on_click=lambda v=value, on=shown: open.set(None if on else v),
             )[
-                text(title, size=14, weight=600),
+                text(title, size=14, weight=600, hidden=True),
                 spacer(),
-                text("▾" if shown else "▸", size=12, color="$muted"),
+                text("▾" if shown else "▸", size=12, color="$muted", hidden=True),
             ],
             box(
                 overflow="hidden",
+                hidden=not shown,
                 animate_layout=motion.move(),
                 height=None if shown else 0,
             )[content],

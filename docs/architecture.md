@@ -37,6 +37,7 @@ python/aurora/
 src/                 (crate aurora_core → módulo aurora._core)
 ├── lib.rs           Funciones expuestas a Python: render_png, run, wake, Pilot
 ├── spec.rs          Árbol de Python (dicts) → Node tipado; herencia de estilos de texto
+├── a11y.rs          Accesibilidad: semántica y acciones → árbol nativo de AccessKit
 ├── color.rs         Parseo de colores e interpolación
 ├── render/          Motor por fases del frame (un módulo por fase)
 │   ├── mod.rs       Engine: estado, update (layout y composición) y orquestación
@@ -53,6 +54,7 @@ src/                 (crate aurora_core → módulo aurora._core)
 │   ├── keyboard.rs  Manejadores `on_key`, Tab/Enter/Espacio y flechas
 │   ├── editing.rs   Campos de texto: edición, portapapeles, IME y cursor
 │   ├── focus.rs     Foco (`on_focus`/`on_blur`), Tab y revelado del nodo
+│   ├── a11y.rs      Acciones de un lector de pantalla (enfocar, activar, ajustar)
 │   ├── wheel.rs     Rueda, zoom de gráficos y barras de desplazamiento
 │   └── clipboard.rs Portapapeles del sistema o en memoria
 ├── scroll.rs        Estado de los contenedores scroll: desplazamiento, suavizado, barra
@@ -108,7 +110,9 @@ src/                 (crate aurora_core → módulo aurora._core)
 4. **Reconstrucción.** Se llama a `view()` y el árbol resultante se serializa a dicts en un único
    recorrido (`Element.to_spec`), resolviendo tokens de tema y lambdas de texto.
 5. **Parseo.** `spec::parse` convierte los dicts en `Node` tipados. Es el único lugar del núcleo
-   que conoce la forma de los datos de Python.
+   que conoce la forma de los datos de Python. Cada prop se consulta con una clave ya creada e
+   internada (`intern!`): fabricar y hashear un `PyString` por consulta se llevaba buena parte de
+   la fase.
 6. **Estilo.** El árbol nuevo se compara con el anterior para decidir qué fases hay que rehacer
    (ver [Invalidación por fases](#invalidación-por-fases)).
 7. **Layout.** Si hace falta, se actualiza un árbol Taffy paralelo. Los nodos de texto llevan un
@@ -493,6 +497,29 @@ descendientes. Una tecla se entrega como `KeyEvent` (`src/keys.rs`) a los `on_ke
 la región enfocada por sus padres; si ninguno devuelve un valor verdadero, el `Runtime` aplica el
 comportamiento por defecto (foco, activación, desplazamiento). El anillo se anima con el mismo
 suavizado que hover y pressed y se pinta después de los hijos.
+
+## Accesibilidad
+
+La semántica vive en el spec: además del estilo, cada nodo puede traer `role`, `label`, `checked`…
+(`spec::A11y`), y los componentes los declaran por ti. Con eso, `a11y.rs` construye el **árbol de
+AccessKit** del frame —roles con nombre y estados, bounds en píxeles físicos desde las regiones, las
+acciones que admite cada nodo— y una caja sin rol, sin nombre y sin contenido no aparece: el
+andamiaje de layout es invisible para el lector.
+
+El árbol no se construye por gusto: en la ventana, `View::sync_a11y` llama a `update_if_active`, y
+**sin lector conectado AccessKit no ejecuta el constructor** — el coste en el frame caliente es una
+comparación. El `Adapter` de `accesskit_winit` se crea con la ventana (oculta: es requisito) y otro
+evento del bucle (`UserEvent::Access`) entrega lo que el lector pide: el primer árbol
+(`InitialTreeRequested`) o una acción (`ActionRequested`), que `Runtime::a11y_action` traduce a los
+caminos que ya existen —enfocar, activar (`dispatch("click")`), editar el `Editor` de un campo,
+pulsar la flecha de un deslizador, revelar un nodo—. Los ids del árbol son estables por key, así el
+foco del lector sobrevive a las reconstrucciones. El piloto usa el mismo constructor
+(`Pilot.a11y_tree`) y el mismo camino de acciones (`Pilot.a11y_action`), así que los tests headless
+ejercitan lo que verá la plataforma.
+
+Por plataforma: Windows usa UIA (el adaptador subclasea el HWND), macOS NSAccessibility (subclasea
+la NSView; VoiceOver conecta del todo con la app empaquetada) y Linux AT-SPI por D-Bus (`zbus`). En
+los tres, sin escritorio accesible el adaptador queda inactivo y no pasa nada.
 
 ## Tooltips
 
