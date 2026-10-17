@@ -50,7 +50,7 @@ Frame lifecycle:
 2. `spec::parse` (`src/spec.rs`) is the **only** place in Rust that knows the shape of the Python
    data: dicts → typed `Node`. Text style inheritance (`color`, `font_size`, `font_weight`,
    `font_family`, `line_height`, `letter_spacing`) is resolved here once, CSS-style.
-3. `render.rs` `Engine` runs phased invalidation (style → layout → composite → paint):
+3. `render/` `Engine` runs phased invalidation (style → layout → composite → paint):
    `restyle` diffs the new tree against the old one and only relayouts if something
    geometry-relevant changed; `update` keeps a parallel Taffy tree (text nodes carry a shaped Skia
    `Paragraph`, reused for both measuring and painting), recomputes `HitRegion`s and layers (one
@@ -58,7 +58,7 @@ Frame lifecycle:
    only the damaged rect (changed nodes, transitions, inputs, tooltip, moved layers), skipping
    subtrees whose ink is outside it. `tick` advances hover/pressed transitions (exponential
    smoothing, τ = 70 ms, real `dt`).
-4. `runtime.rs` `Runtime`: window-independent app state (tree, hit regions, pointer, event
+4. `runtime/` `Runtime`: window-independent app state (tree, hit regions, pointer, event
    dispatch by handler name via `dispatch(key, event, arg)`). Two drivers share it: `window.rs`
    (winit loop, runs with the GIL released via `py.detach`; the GIL is taken only to run a handler or
    rebuild the view; hover never touches Python) and `pilot.rs` (`Pilot`, headless, for interaction
@@ -79,12 +79,13 @@ full rebuilds — every event currently rebuilds the whole view.
 
 ## Extending
 
-- **New component:** compose primitives in `components.py` in pure Python whenever possible. Only
-  push to Rust what can't be expressed otherwise (new node kinds, render effects, layout).
+- **New component:** compose primitives in `python/aurora/components/` (one module per family) in
+  pure Python whenever possible. Only push to Rust what can't be expressed otherwise (new node
+  kinds, render effects, layout).
 - **New style property:** add the field to `spec::Style` and its parsing, its effect in
   `taffy_style` (layout) or `Painter::paint` (paint), and document it in `docs/reference.md`. If it
   makes a node paint outside its box or changes hit regions, also update `compute_ink` and
-  `same_geometry` in `render.rs` (otherwise partial repaints miss it).
+  `same_geometry` in `render/geom.rs` (otherwise partial repaints miss it).
 - **New node type:** new `spec::Kind` variant + its layout measurement + its painting.
 - Docs: ```` ```python live ```` blocks in `docs/*.md` are executed at build time and their
   rendered PNG (light + dark) is inserted below the code (`docs/hooks/livedocs.py`, wired into

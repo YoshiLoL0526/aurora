@@ -21,18 +21,40 @@ python/aurora/
 ├── elements.py      Element y primitivas (box, row, column, text, spacer)
 ├── canvas.py        canvas(), Canvas y Path: graba comandos de dibujo en un lote
 ├── charts.py        chart(): gráficos de línea, área, barras y dispersión
-├── components.py    Componentes con estilo (button, card, badge, stat), solo con primitivas
+├── components/      Componentes con estilo, solo con primitivas (un módulo por familia)
+│   ├── basic.py     Botón, tarjeta, insignia, métrica, separador y avatar
+│   ├── forms.py     Campos de texto, casillas, interruptores, radio y deslizador
+│   ├── navigation.py  Pestañas, páginas, selector segmentado y acordeón
+│   ├── overlays.py  Menú, diálogo, tooltip y desplegable (`select`)
+│   ├── feedback.py  Progreso, spinner, esqueleto y toast
+│   └── lists.py     Lista virtualizada; `_shared`, `_state` y `_dropdown` son internos
 ├── inspector.py     Panel del inspector y del profiler, acoplado a la vista con F12
 ├── signal.py        Estado reactivo
 ├── theme.py         Design tokens y temas MIDNIGHT / DAYLIGHT
+├── _icons.py        Iconos SVG compartidos (casilla, cheurón y flechas de orden)
 └── _core.pyi        Stubs del módulo nativo
 
 src/                 (crate aurora_core → módulo aurora._core)
 ├── lib.rs           Funciones expuestas a Python: render_png, run, wake, Pilot
 ├── spec.rs          Árbol de Python (dicts) → Node tipado; herencia de estilos de texto
 ├── color.rs         Parseo de colores e interpolación
-├── render.rs        Engine: layout (Taffy) + pintura (Skia) + capas + animación + hit-testing
-├── runtime.rs       Estado de la app en marcha: árbol, puntero, rueda, despacho de eventos, wake
+├── render/          Motor por fases del frame (un módulo por fase)
+│   ├── mod.rs       Engine: estado, update (layout y composición) y orquestación
+│   ├── style.rs     Fase de estilo y animaciones declarativas (transiciones, entradas/salidas)
+│   ├── layout.rs    Árbol de Taffy y su reconciliación incremental
+│   ├── geom.rs      Geometría, regiones de hit-testing, capas y zonas dañadas
+│   ├── paint.rs     Pintura por zonas (repintado parcial) y recorrido del árbol
+│   ├── draw.rs      Dibujo de cajas, imágenes, barras y anillo de foco
+│   ├── text.rs      Párrafos de Skia («shaping»), medición y campos de texto
+│   └── png.rs       Render a PNG sin ventana
+├── runtime/         Estado de la app en marcha (un módulo por dominio de entrada)
+│   ├── mod.rs       Runtime: árbol, despacho de eventos, wake y frame (update+paint)
+│   ├── pointer.rs   Hover, clics y arrastres (barras, gráficos y `on_drag`)
+│   ├── keyboard.rs  Manejadores `on_key`, Tab/Enter/Espacio y flechas
+│   ├── editing.rs   Campos de texto: edición, portapapeles, IME y cursor
+│   ├── focus.rs     Foco (`on_focus`/`on_blur`), Tab y revelado del nodo
+│   ├── wheel.rs     Rueda, zoom de gráficos y barras de desplazamiento
+│   └── clipboard.rs Portapapeles del sistema o en memoria
 ├── scroll.rs        Estado de los contenedores scroll: desplazamiento, suavizado, barra
 ├── inspect.rs       Inspector y profiler: modo selección, historial de frames, estado prestado a Python
 ├── keys.rs          KeyEvent y parseo de combinaciones ("ctrl+s", "mod+k")
@@ -40,7 +62,13 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── input.rs         Estado de los campos de texto y geometría de cursor y selección
 ├── image.rs         Decodificación de imágenes (raster y SVG), caché y encaje (fit)
 ├── canvas.rs        Lote de comandos de un canvas → Picture de Skia; cuándo volver a grabarlo
-├── chart.rs         Gráficos nativos: vista sin copia de los datos y grabado de ejes y series
+├── chart/           Gráficos nativos (un módulo por fase)
+│   ├── mod.rs       El modelo: `Chart`, `Series`, `ChartKind`
+│   ├── parse.rs     Vista sin copia de los búferes de Python → `Chart`
+│   ├── view.rs      Ventana visible (zoom/pan) y reducción de series (LTTB)
+│   ├── scale.rs     Escala de los ejes: pasos, ticks y etiquetas
+│   ├── paint.rs     Dibujo de ejes, rejilla, leyenda y series
+│   └── cache.rs     Grabado perezoso (`Charts`): cuándo volver a grabar
 ├── window.rs        Bucle de ventana (winit) sobre Runtime
 ├── surface/         Trait Surface: dónde se pinta y presenta cada frame
 │   ├── cpu.rs       Skia raster en el framebuffer de softbuffer
@@ -319,7 +347,7 @@ aparte y cada `set` despierta la ventana.
 ## Runtime, ventana y piloto
 
 El estado de una app en marcha —árbol, regiones de hit-testing, puntero, despacho de eventos—
-vive en `Runtime` (`src/runtime.rs`), que no sabe nada de ventanas. Hay dos "conductores":
+vive en `Runtime` (`src/runtime/`), que no sabe nada de ventanas. Hay dos "conductores":
 
 - `window.rs` traduce los eventos de winit a llamadas al `Runtime` y presenta el frame en el
   framebuffer.
@@ -399,7 +427,7 @@ la llama tras el layout y antes de pintar, como `on_scroll`, a través de `canva
 
 ## Gráficos
 
-Un nodo `chart` (`Kind::Chart`, `src/chart.rs`) guarda sus series como vistas sin copia de los
+Un nodo `chart` (`Kind::Chart`, `src/chart/`) guarda sus series como vistas sin copia de los
 búferes de Python (`chart::Column`): el núcleo lee su memoria con el GIL tomado, en el momento de
 grabar. El dibujo completo (ejes, rejilla, leyenda y series) se graba en un `Picture` que se
 repinta sin volver a Python, como el de un `canvas`; `Charts` decide cuándo volver a grabar: si el
@@ -470,8 +498,8 @@ burbujeo no cambia. Cada capa superior es también una capa de composición: se 
 
 ## Extender Aurora
 
-- **Un componente nuevo** casi nunca necesita Rust: se compone con primitivas en
-  `components.py`. Si se puede hacer así, hazlo así.
+- **Un componente nuevo** casi nunca necesita Rust: se compone con primitivas en la familia que le
+  corresponda dentro de `components/`. Si se puede hacer así, hazlo así.
 - **Una propiedad de estilo nueva** toca tres lugares: el campo en `spec::Style` y su parseo,
   su efecto en `taffy_style` (layout) o en `Painter::paint` (pintura), y su documentación en
   [`reference.md`](reference.md). Si hace que el nodo pinte fuera de su caja (como una sombra) o

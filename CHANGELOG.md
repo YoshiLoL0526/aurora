@@ -57,6 +57,18 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 - `examples/studio.py` estrena los tres: `field` en el formulario de nueva tarea, `menu` en las
   tarjetas del tablero y un acordeón de «Zona de peligro» en Ajustes.
 
+### Cambiado
+
+- **Reorganización interna en módulos** (misma API pública):
+  - `python/aurora/components.py` pasa a ser el paquete `python/aurora/components/`, con un
+    módulo por familia (`basic`, `forms`, `navigation`, `overlays`, `feedback` y `lists`).
+  - El núcleo nativo se reparte por fases y dominios de entrada: `src/render.rs` → `src/render/`,
+    `src/runtime.rs` → `src/runtime/` y `src/chart.rs` → `src/chart/`.
+  - Los iconos SVG y el parseo de las variables `AURORA_*` quedan compartidos en `_icons.py` y
+    `_flags.py`; `menu` y `select` comparten la mecánica del desplegable (`_dropdown.py`).
+  - Con esa unificación, el desplegable de `select` cierra con Esc/Enter «limpios» (sin
+    modificadores), como `menu` y `dialog`; antes también cerraba con Shift+Esc o Ctrl+Enter.
+
 ### Corregido
 
 - En un `textarea`, `Ctrl+Inicio`/`Ctrl+Fin` (Windows/Linux) y `Cmd+Inicio`/`Cmd+Fin`

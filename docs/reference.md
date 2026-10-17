@@ -540,8 +540,9 @@ Alias aceptados en las combinaciones: `esc`, `return`, `del`, `up`/`down`/`left`
 
 ## Componentes
 
-Construidos solo con primitivas: puedes leerlos en `python/aurora/components.py` y usarlos como
-plantilla para los tuyos. Todos aceptan propiedades de estilo extra, que sobrescriben las suyas.
+Construidos solo con primitivas: puedes leerlos en `python/aurora/components/` (un módulo por
+familia) y usarlos como plantilla para los tuyos. Todos aceptan propiedades de estilo extra, que
+sobrescriben las suyas.
 
 ### `button(label, on_click=None, *, variant="primary", key=None, **estilo)`
 
