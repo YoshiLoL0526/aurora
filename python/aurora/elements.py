@@ -12,7 +12,7 @@ añaden con corchetes, lo que deja leer la jerarquía como si fuera markup:
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any, Literal, Union
 
 from .theme import Theme
@@ -113,6 +113,16 @@ def _flatten(children: Child) -> Iterable[Element]:
     else:
         for child in children:
             yield from _flatten(child)
+
+
+# Claves de estilo que fijan el tamaño: con una de ellas no hace falta un alto por defecto.
+_SIZED = frozenset({"height", "grow", "min_height", "max_height"})
+
+
+def _default_height(style: Mapping[str, Any], height: float = 200) -> dict[str, Any]:
+    """`{"height": height}` si `style` no fija el tamaño (`height`, `grow`, `min_height`
+    o `max_height`); vacío si lo fija. Es el alto por defecto de `canvas` y `chart`."""
+    return {} if _SIZED & style.keys() else {"height": height}
 
 
 # --- Primitivas ------------------------------------------------------------

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from ._core import DragEvent
+from ._icons import _ARROW_DOWN, _ARROW_UP
 from .components import divider, virtual_list
 from .elements import Element, box, column, image, row, scroll, text
 from .signal import Signal
@@ -54,15 +55,6 @@ _GRAB: dict[tuple[str, str], float] = {}
 _ORDERS: dict[str, tuple[Sequence[Any], int, Sort, list[int]]] = {}
 
 _RESIZE_HANDLE = 8
-
-_ARROW_UP = (
-    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#8A91A8" '
-    b'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4-4 4 4"/></svg>'
-)
-_ARROW_DOWN = (
-    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#8A91A8" '
-    b'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>'
-)
 
 
 def _value(col: Column, index: int, item: Any) -> Any:

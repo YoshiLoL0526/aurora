@@ -25,7 +25,6 @@ Los `Signal` locales (creados dentro de una función) no se conservan.
 
 from __future__ import annotations
 
-import os
 import sys
 import threading
 import traceback
@@ -34,7 +33,7 @@ from pathlib import Path
 from types import BuiltinFunctionType, FunctionType, MethodType, ModuleType
 from typing import Any
 
-from . import _core
+from . import _core, _flags
 from .elements import Element, column, scroll, text
 from .signal import Signal
 
@@ -48,9 +47,7 @@ _PACKAGE = Path(__file__).resolve().parent
 
 def enabled(flag: bool | None) -> bool:
     """`flag` si se indica; si no, la variable de entorno `AURORA_RELOAD`."""
-    if flag is not None:
-        return flag
-    return os.environ.get("AURORA_RELOAD", "").strip().lower() in ("1", "true", "yes", "on")
+    return _flags.enabled(flag, "AURORA_RELOAD")
 
 
 class _Context(threading.local):

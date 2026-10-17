@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from . import _core
+from . import _core, _flags
 from .canvas import Canvas, canvas
 from .components import divider, tabs, virtual_list
 from .elements import Element, box, column, row, scroll, spacer, text
@@ -67,9 +67,7 @@ THEME = Theme(
 
 def enabled(flag: bool | None) -> bool:
     """`flag` si se indica; si no, la variable de entorno `AURORA_INSPECTOR`."""
-    if flag is not None:
-        return flag
-    return os.environ.get("AURORA_INSPECTOR", "").strip().lower() in ("1", "true", "yes", "on")
+    return _flags.enabled(flag, "AURORA_INSPECTOR")
 
 
 @dataclass(slots=True)

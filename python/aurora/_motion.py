@@ -11,10 +11,9 @@ prefiera que nada se mueva).
 
 from __future__ import annotations
 
-import os
 from dataclasses import replace
 
-from . import animate
+from . import _flags, animate
 from .animate import Effect, Transition, tween
 
 # Fundidos de color y opacidad en controles (checkbox, subrayado de tabs).
@@ -32,9 +31,7 @@ _active = True
 def enabled(motion: bool | None) -> bool:
     """`motion` si se indica; si no, la variable de entorno `AURORA_MOTION`
     (`0`, `false`, `no` u `off` la desactivan). Por defecto, activo."""
-    if motion is not None:
-        return bool(motion)
-    return os.environ.get("AURORA_MOTION", "").strip().lower() not in ("0", "false", "no", "off")
+    return _flags.enabled(motion, "AURORA_MOTION", default=True)
 
 
 def activate(on: bool) -> bool:

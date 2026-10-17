@@ -23,7 +23,7 @@ from array import array
 from collections.abc import Sequence
 from typing import Any, Literal
 
-from .elements import Element
+from .elements import Element, _default_height
 from .theme import Theme
 
 Kind = Literal["line", "area", "bar", "scatter"]
@@ -214,6 +214,4 @@ def chart(
         "label_color": label_color,
         "grid_color": grid_color,
     }
-    sized = {"height", "grow", "min_height", "max_height"}
-    defaults = {} if sized & style.keys() else {"height": 200}
-    return _Chart(options, **{**defaults, **style})
+    return _Chart(options, **{**_default_height(style), **style})

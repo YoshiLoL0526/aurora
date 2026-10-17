@@ -30,7 +30,7 @@ from contextlib import contextmanager
 from itertools import chain
 from typing import Any, Literal
 
-from .elements import Element
+from .elements import Element, _default_height
 from .signal import Frame, Signal, frames, fresh
 from .theme import Theme
 
@@ -409,6 +409,4 @@ def canvas(draw: Callable[[Canvas], Any], **style: Any) -> Element:
     """
     if not callable(draw):
         raise TypeError("canvas: draw debe ser una función que reciba un Canvas")
-    sized = {"height", "grow", "min_height", "max_height"}
-    defaults = {} if sized & style.keys() else {"height": 200}
-    return CanvasElement(draw, **{**defaults, **style})
+    return CanvasElement(draw, **{**_default_height(style), **style})
