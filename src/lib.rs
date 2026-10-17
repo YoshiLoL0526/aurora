@@ -5,6 +5,7 @@ mod chart;
 mod color;
 mod dialog;
 mod edit;
+mod identity;
 mod image;
 mod input;
 mod inspect;
@@ -79,6 +80,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tray::tray_show, m)?)?;
     m.add_function(wrap_pyfunction!(tray::tray_hide, m)?)?;
     m.add_function(wrap_pyfunction!(notify::notify, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::app_id_set, m)?)?;
+    m.add_function(wrap_pyfunction!(identity::app_id_register, m)?)?;
     m.add_function(wrap_pyfunction!(inspect::inspection, m)?)?;
     m.add_function(wrap_pyfunction!(inspect::inspect_open, m)?)?;
     m.add_function(wrap_pyfunction!(inspect::inspect_pick, m)?)?;

@@ -171,7 +171,10 @@ app.spawn(generar())
 
 `app.notify(title, body, icon=...)` la pinta el sistema (Windows, macOS, Linux) y funciona desde
 cualquier hilo, con o sin ventana. Si el sistema no las admite, se avisa por stderr y la app sigue;
-los límites por plataforma están en la [referencia](reference.md#notificaciones).
+los límites por plataforma están en la [referencia](reference.md#notificaciones). En Windows, el
+aviso lleva la identidad de tu app: una app **empaquetada** la registra sola (acceso directo en el
+menú Inicio), y en desarrollo puedes probarla con `app.register_app_id()` — sin identidad, Windows
+lo firma como «Windows PowerShell».
 
 ### Barra de menús
 

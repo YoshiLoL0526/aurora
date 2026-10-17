@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 import threading
 import traceback
+import unicodedata
 from collections.abc import Callable, Coroutine, Sequence
 from concurrent.futures import Future
 from os import PathLike
+from pathlib import Path as _Path
 from types import ModuleType
 from typing import Any, Literal, TypeVar
 
@@ -115,6 +118,22 @@ __version__ = _core.__version__
 T = TypeVar("T")
 
 
+def _default_app_id(title: str) -> str:
+    """El AUMID por defecto de una app empaquetada, a partir de su título."""
+    plain = unicodedata.normalize("NFKD", title)
+    plain = "".join(c for c in plain if not unicodedata.combining(c))
+    slug = re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
+    return f"aurora.{slug or 'app'}"
+
+
+def _script_path() -> str | None:
+    """La ruta del script en marcha (para el acceso directo en desarrollo)."""
+    script = sys.argv[0] if sys.argv else ""
+    if script and _Path(script).suffix == ".py" and _Path(script).exists():
+        return str(_Path(script).resolve())
+    return None
+
+
 class App:
     """Punto de entrada de una aplicación.
 
@@ -130,6 +149,10 @@ class App:
     `aurora.menus`: `App(view, menu=menus.bar(menus.submenu("Archivo", ...)))`.
     En Linux no hay barra nativa: para eso está el componente `menu` dentro de
     la interfaz.
+
+    `app_id` es la identidad de la app en Windows (su *AppUserModelID*): con
+    ella las notificaciones salen con su nombre y no con «Windows PowerShell»
+    (ver `notify`). Una app empaquetada la deriva del título sola.
 
     `reload=True` activa el hot reload en `run()`: al guardar el script o un
     módulo local, la vista se reconstruye con el código nuevo sin perder el
@@ -150,6 +173,7 @@ class App:
         size: tuple[float, float] = (960, 640),
         theme: Theme | Callable[[], Theme] = MIDNIGHT,
         menu: Sequence[dict[str, Any]] | None = None,
+        app_id: str | None = None,
         inspector: bool | None = None,
         reload: bool | None = None,
         motion: bool | None = None,
@@ -159,6 +183,13 @@ class App:
         self.size = size
         self.theme = theme
         self.menu = list(menu) if menu is not None else None
+        # Identidad en Windows (AUMID): una app empaquetada (`sys.frozen`) la
+        # deriva del título y la registra al arrancar, así sus notificaciones
+        # salen con su nombre y no con «Windows PowerShell». Un script en
+        # desarrollo usa la identidad de reserva del sistema (ver `notify`).
+        if app_id is None and getattr(sys, "frozen", False):
+            app_id = _default_app_id(title)
+        self.app_id = app_id
         self.inspector = _inspector.enabled(inspector)
         self._inspector = _inspector.Inspector()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -280,10 +311,43 @@ class App:
         Se puede llamar desde cualquier hilo —por ejemplo desde una tarea de
         `app.spawn()` con la ventana cerrada— y también sin app en marcha. Si
         el sistema no admite notificaciones (Linux sin demonio, macOS sin app
-        firmada, Windows sin AppUserModelID registrado), se avisa por stderr y
-        la app sigue. En esta versión no hay callback de clic.
+        firmada), se avisa por stderr y la app sigue. En Windows, el aviso lleva
+        la identidad (`app_id`) de la app: una empaquetada la registra sola
+        (`sys.frozen`); en un script, sin identidad, Windows lo firma como
+        «Windows PowerShell» (ver `register_app_id`). En esta versión no hay
+        callback de clic.
         """
-        _core.notify(title, body, icon)
+        _core.notify(title, body, icon, self.app_id)
+
+    def register_app_id(self, name: str | None = None) -> bool:
+        """Registra la identidad de la app en Windows (acceso directo del menú Inicio).
+
+        Es lo que Windows exige para aceptar el `app_id` de una app sin
+        instalador: de ahí cuelgan las notificaciones con el nombre de la app y
+        la agrupación de la barra de tareas. `run()` lo hace solo en apps
+        empaquetadas (`sys.frozen`); llámalo tú si distribuyes de otra forma (o
+        para probar la atribución en desarrollo). `name` es el nombre del acceso
+        directo: por defecto, el del ejecutable (o el del script). Devuelve
+        `False` fuera de Windows o si no se pudo registrar (el motivo va por
+        stderr). Lanza `ValueError` si no hay `app_id`.
+        """
+        if self.app_id is None:
+            raise ValueError("para registrar la identidad hace falta `app_id`")
+        return self._register_app_id_now(name)
+
+    def _register_app_id_now(self, name: str | None = None) -> bool:
+        assert self.app_id is not None
+        frozen = getattr(sys, "frozen", False)
+        target = sys.executable
+        arguments = None if frozen else _script_path()
+        if name is None:
+            if frozen:
+                name = _Path(target).stem
+            elif arguments is not None:
+                name = _Path(arguments).stem
+            else:
+                name = self.app_id
+        return _core.app_id_register(self.app_id, name, target, arguments)
 
     def _register(self, window: Window) -> int:
         window_id = self._next_id
@@ -410,6 +474,13 @@ class App:
             return
         if self.running:
             raise RuntimeError("la app ya está en marcha")
+        if self.app_id is not None:
+            # La identidad del proceso (barra de tareas y avisos); en una app
+            # empaquetada, además se registra con su acceso directo en el menú
+            # Inicio, que es lo que Windows pide para aceptarla.
+            _core.app_id_set(self.app_id)
+            if getattr(sys, "frozen", False):
+                self._register_app_id_now()
         if self.reload:
             try:
                 self.watch().start()

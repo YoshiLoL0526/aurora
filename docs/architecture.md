@@ -73,6 +73,7 @@ src/                 (crate aurora_core → módulo aurora._core)
 ├── dialog.rs        Diálogos nativos de archivo (rfd): abrir, guardar y carpetas
 ├── tray.rs          Bandeja del sistema (tray-icon): icono, tooltip y menú
 ├── notify.rs        Notificaciones del sistema (notify-rust): título, cuerpo e icono
+├── identity.rs      Identidad de la app en Windows (AUMID) y acceso directo del menú Inicio
 ├── menu.rs          Menús nativos: la descripción de `aurora.menus` → menú de `muda`
 ├── surface/         Trait Surface: dónde se pinta y presenta cada frame
 │   ├── cpu.rs       Skia raster en el framebuffer de softbuffer
@@ -528,7 +529,9 @@ Rust ejecuta**, y las APIs del sistema se usan desde el hilo del bucle.
   aviso el sistema (Centro de notificaciones en Windows y macOS, libnotify/D-Bus en Linux). Si hay
   bucle, el aviso viaja como comando y se envía en su hilo (macOS lo prefiere); sin bucle, en el
   hilo que llama. El icono se pasa como `icon` en el escritorio Linux y como `image_path` en
-  Windows y macOS.
+  Windows y macOS. La identidad del aviso en Windows (AUMID) vive en `identity.rs`: fija el AUMID
+  del proceso y registra la app con un acceso directo del menú Inicio (`IShellLinkW` +
+  `IPropertyStore`), que es lo que Windows exige para aceptar el AUMID de una app sin instalador.
 
 ## Capas
 

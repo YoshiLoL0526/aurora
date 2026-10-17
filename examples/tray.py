@@ -22,7 +22,8 @@ recordatorios = Signal(
 
 def añadir() -> None:
     recordatorios.set([*recordatorios(), f"Recordatorio {len(recordatorios()) + 1}"])
-    # La notificación la pinta el sistema aunque la ventana esté cerrada.
+    # La notificación la pinta el sistema aunque la ventana esté cerrada; en
+    # una app empaquetada lleva la identidad de la app (la registra sola).
     app.notify(
         "Recordatorio añadido",
         f"Ya hay {len(recordatorios())} en la lista",

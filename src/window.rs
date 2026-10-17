@@ -970,10 +970,10 @@ pub fn run(
             use winit::platform::windows::EventLoopBuilderExtWindows;
             let haccel = crate::menu::haccel(bar);
             builder.with_msg_hook(move |msg| {
-                use windows_sys::Win32::UI::WindowsAndMessaging::{MSG, TranslateAcceleratorW};
+                use windows::Win32::UI::WindowsAndMessaging::{HACCEL, MSG, TranslateAcceleratorW};
                 unsafe {
                     let msg = msg as *const MSG;
-                    TranslateAcceleratorW((*msg).hwnd, haccel as _, msg) == 1
+                    TranslateAcceleratorW((*msg).hwnd, HACCEL(haccel as _), msg) != 0
                 }
             });
         }

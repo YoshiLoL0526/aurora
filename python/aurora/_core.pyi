@@ -93,11 +93,33 @@ def tray_show(
 def tray_hide() -> None:
     """Quita la bandeja del sistema. Segura desde cualquier hilo."""
 
-def notify(summary: str, body: str = "", icon: str | PathLike[str] | None = None) -> None:
+def notify(
+    summary: str,
+    body: str = "",
+    icon: str | PathLike[str] | None = None,
+    app_id: str | None = None,
+) -> None:
     """Muestra una notificación del sistema. Segura desde cualquier hilo.
 
     Sin bucle en marcha se envía en el hilo que llama; si el sistema no las
-    admite, se avisa por stderr.
+    admite, se avisa por stderr. En Windows, `app_id` es el AUMID de la app:
+    sin él el aviso lo firma la identidad de reserva de PowerShell.
+    """
+
+def app_id_set(app_id: str) -> None:
+    """Fija la identidad (AUMID) de la app en el proceso. Fuera de Windows, no-op."""
+
+def app_id_register(
+    app_id: str,
+    name: str,
+    target: str | PathLike[str],
+    arguments: str | None = None,
+) -> bool:
+    """Registra la identidad con un acceso directo del menú Inicio (Windows).
+
+    Crea (o actualiza) `%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\<name>.lnk`
+    apuntando a `target` con `app_id`. Devuelve `False` fuera de Windows; los
+    fallos también devuelven `False` y el motivo va por stderr.
     """
 
 def inspection() -> dict[str, Any] | None:

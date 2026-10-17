@@ -38,6 +38,7 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 | `size` | `tuple[float, float]` | Tamaño inicial en píxeles lógicos (independientes del DPI). |
 | `theme` | `Theme \| Callable[[], Theme]` | Tema fijo, o un `Signal[Theme]` para cambiarlo en caliente. |
 | `menu` | `Sequence[dict] \| None` | La barra de menús nativa (Windows y macOS), descrita con [`menus`](#menús-nativos): `App(view, menu=menus.bar(...))`. En Linux no hay barra nativa. |
+| `app_id` | `str \| None` | (Windows) El *AppUserModelID*: la identidad con la que Windows firma las [notificaciones](#notificaciones) y agrupa la barra de tareas. En una app empaquetada se deriva del título si no la indicas. |
 | `inspector` | `bool \| None` | Permite abrir con F12 el [inspector y profiler de frames](#inspector-y-profiler-de-frames). Con `None` (por defecto) lo decide la variable de entorno `AURORA_INSPECTOR` (`1`, `true`, `yes` u `on` lo activan). |
 | `reload` | `bool \| None` | Activa el [hot reload](#hot-reload) en `run()`. Con `None` (por defecto) lo decide la variable de entorno `AURORA_RELOAD`, como `inspector`. |
 | `motion` | `bool \| None` | Con `False`, los componentes no animan por defecto ([switchs, casillas, pestañas y menús](#animaciones)): sus cambios son inmediatos. Con `None` (por defecto) lo decide `AURORA_MOTION` (`0`, `false`, `no` u `off` lo desactivan). |
@@ -48,6 +49,8 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 | `window(view, *, title="Aurora", size=None, resizable=True, on_close=None)` | Crea una ventana adicional con su propia vista (ver [Window](#window)). `size` por defecto es el de la ventana principal. |
 | `windows()` | Las ventanas creadas con `window(...)`, en orden de creación (sin la principal). |
 | `main` | La ventana principal, como un [`Window`](#window) (ver abajo). |
+| `notify(title, body="", *, icon=None)` | Muestra una [notificación del sistema](#notificaciones). |
+| `register_app_id(name=None)` | (Windows) Registra la identidad de la app con un acceso directo del menú Inicio (ver [Notificaciones](#notificaciones)). |
 | `quit()` | Cierra todas las ventanas y termina la app. Seguro desde cualquier hilo. |
 | `render_png(path, *, size=None, scale=2.0)` | Renderiza la vista a PNG sin abrir ventana. `scale` es la densidad de píxeles (2.0 ≈ pantalla Retina). |
 | `pilot(*, size=None, scale=1.0, inspector=False)` | Ejecuta la app sin ventana y devuelve un [`Pilot`](#pilot-tests-de-interacción) para simular interacción en tests. Con `inspector=True`, el inspector se abre con `pilot.press("f12")` como en la ventana. |
@@ -153,14 +156,26 @@ app.notify("Informe generado", "datos-2026.csv está en tu carpeta de descargas"
 
 | API | Descripción |
 |---|---|
-| `app.notify(title, body="", *, icon=None)` | Muestra una notificación del sistema. `icon` es una ruta a un PNG/SVG (donde el sistema lo admita). |
+| `app.notify(title, body="", *, icon=None)` | Muestra una notificación del sistema, con la identidad de la app. `icon` es una ruta a un PNG/SVG (donde el sistema lo admita). |
+| `app.register_app_id(name=None)` | (Windows) Registra la identidad de la app con un acceso directo del menú Inicio: `%APPDATA%\...\Start Menu\Programs\<name>.lnk`. Devuelve `False` fuera de Windows o si no se pudo. |
 
 Se puede llamar desde cualquier hilo —por ejemplo desde una tarea de `app.spawn()` con la ventana
 cerrada— y también sin app en marcha. Si el sistema no admite notificaciones, se avisa por stderr
-y la app sigue: en Linux hace falta un demonio de notificaciones (GNOME y KDE lo traen), en macOS
-una app firmada (un script suelto puede no poder mostrarlas) y en Windows el aviso sale con el
-nombre del ejecutable salvo que la app registre un AppUserModelID. En esta versión no hay callback
-de clic.
+y la app sigue: en Linux hace falta un demonio de notificaciones (GNOME y KDE lo traen) y en macOS
+una app firmada (un script suelto puede no poder mostrarlas). En esta versión no hay callback de
+clic.
+
+**Windows y la identidad del aviso.** Windows firma cada notificación con el *AppUserModelID*
+(AUMID) de quien la envía; sin uno propio, la identidad de reserva es la de PowerShell y el aviso
+sale como **«Windows PowerShell»**. Por eso:
+
+- `App(..., app_id="Mi.Aplicacion")` fija la identidad (avisos y agrupación de la barra de
+  tareas). En una app **empaquetada** (`sys.frozen`, es decir `aurora build`), si no la indicas se
+  deriva del título (`aurora.mi-aplicacion`) **y se registra sola** al arrancar.
+- El registro es un **acceso directo del menú Inicio** con esa identidad: es lo que Windows exige
+  a las apps sin instalador (y lo que le da nombre e icono al aviso). `app.register_app_id()` lo
+  hace a mano; en desarrollo apunta a `python.exe` + el script, útil para probar la atribución.
+  En un script sin identidad, el aviso lo firma «Windows PowerShell» (cosmético).
 
 ## Menús nativos
 

@@ -19,6 +19,9 @@ pub struct Notify {
     pub body: String,
     /// Un archivo de imagen (PNG/SVG); donde el sistema no lo admite, se ignora.
     pub icon: Option<PathBuf>,
+    /// La identidad de la app en Windows (AUMID): sin ella el aviso lo firma
+    /// el AUMID de reserva de PowerShell.
+    pub app_id: Option<String>,
 }
 
 /// Envía la notificación en el hilo actual.
@@ -34,17 +37,24 @@ pub fn send(config: &Notify) -> Result<(), String> {
         #[cfg(not(all(unix, not(target_os = "macos"))))]
         notification.image_path(&path);
     }
+    #[cfg(target_os = "windows")]
+    if let Some(app_id) = &config.app_id {
+        notification.app_id(app_id);
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = &config.app_id;
     notification.show().map(drop).map_err(|err| err.to_string())
 }
 
 /// Muestra una notificación del sistema. Segura desde cualquier hilo.
 #[pyfunction]
-#[pyo3(signature = (summary, body = String::new(), icon = None))]
-pub fn notify(summary: String, body: String, icon: Option<PathBuf>) {
+#[pyo3(signature = (summary, body = String::new(), icon = None, app_id = None))]
+pub fn notify(summary: String, body: String, icon: Option<PathBuf>, app_id: Option<String>) {
     let config = Notify {
         summary,
         body,
         icon,
+        app_id,
     };
     if window::running() {
         window::send(Command::Notify(config));

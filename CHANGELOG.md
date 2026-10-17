@@ -53,9 +53,13 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   (Centro de notificaciones en Windows y macOS, libnotify/D-Bus en Linux y BSD, con `notify-rust` y
   sin dependencias C). Se puede llamar desde cualquier hilo —también desde `app.spawn()` con la
   ventana cerrada— y sin app en marcha; si el sistema no las admite, se avisa por stderr y la app
-  sigue. En esta versión no hay callback de clic; los límites por plataforma (demonio en Linux,
-  app firmada en macOS, AppUserModelID en Windows) están en la referencia. `examples/tray.py`
-  notifica al añadir un recordatorio.
+  sigue. En esta versión no hay callback de clic. `examples/tray.py` notifica al añadir un
+  recordatorio.
+  - **Windows**: los avisos llevan la identidad de la app (`App(app_id=...)`); en una app
+    empaquetada (`sys.frozen`) se deriva del título y se registra sola al arrancar con un acceso
+    directo del menú Inicio —lo que Windows exige a las apps sin instalador—, así que dejan de
+    salir firmados como «Windows PowerShell». `app.register_app_id()` lo hace a mano (en
+    desarrollo apunta a `python.exe` + el script) y devuelve `False` fuera de Windows.
 
 ### Cambiado
 
