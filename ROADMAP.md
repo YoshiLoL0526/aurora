@@ -68,7 +68,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ⏳ Accesibilidad completa con AccessKit (lectores de pantalla, navegación por teclado)
 - ⏳ Multi-ventana, diálogos nativos (abrir/guardar archivo), bandeja del sistema, menús
 - ⏳ API estable con política de deprecación documentada
-- ⏳ Wheels precompiladas en PyPI para Windows, macOS (x86_64/arm64) y Linux
+- ✅ Wheels precompiladas en PyPI para Windows, macOS (x86_64/arm64) y Linux
 
 ---
 

@@ -23,7 +23,22 @@ Cada paso es un programa completo que puedes ejecutar. Si algo no queda claro, l
 
 ## 1. Instalación
 
-Necesitas Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
+Aurora se publica en PyPI como **`aurora-ui`**. Necesitas **Python ≥ 3.11**:
+
+```bash
+pip install aurora-ui      # o, con uv en tu proyecto: uv add aurora-ui
+```
+
+Los wheels traen el núcleo nativo ya compilado para Windows, macOS (x64 y arm64) y Linux x86_64,
+así que no hace falta Rust. En Linux, fontconfig y freetype (los traen casi todas las
+distribuciones; en Debian/Ubuntu son `libfontconfig1` y `libfreetype6`).
+
+Crea tu archivo `mi_app.py` con el contador de la [página principal](index.md) y ejecútalo con
+`python mi_app.py` (o `uv run mi_app.py` si usas uv).
+
+Si vas a **trabajar sobre Aurora** (o compilar para otra plataforma), clona el repositorio;
+necesitarás [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)), y en Linux los
+paquetes de desarrollo (`libfontconfig-dev` y `libfreetype-dev`):
 
 ```bash
 git clone https://github.com/YoshiLoL0526/aurora.git
@@ -31,8 +46,8 @@ cd aurora
 uv sync
 ```
 
-`uv sync` compila el núcleo nativo e instala Aurora en modo editable dentro de `.venv`. Crea tu
-archivo en cualquier carpeta del proyecto y ejecútalo con `uv run mi_app.py`.
+`uv sync` compila el núcleo nativo e instala Aurora en modo editable dentro de `.venv`; dentro
+del repositorio, ejecuta tus scripts con `uv run mi_app.py`.
 
 ## 2. Una ventana
 
@@ -643,9 +658,11 @@ Para que otros usen el monitor sin instalar Python, empaquétalo en un ejecutabl
 el empaquetador (una dependencia opcional) y luego un solo comando:
 
 ```bash
-uv add --dev "aurora-ui[build]"
-uv run aurora build monitor.py --name Monitor
+pip install "aurora-ui[build]"
+aurora build monitor.py --name Monitor
 ```
+
+Con uv: `uv add --dev "aurora-ui[build]"` y `uv run aurora build monitor.py --name Monitor`.
 
 El resultado queda en `dist/` (`Monitor.exe` en Windows, `Monitor.app` en macOS): un único archivo
 que puedes copiar a otro equipo con el mismo sistema.

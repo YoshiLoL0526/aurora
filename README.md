@@ -76,8 +76,25 @@ App(view, title="Contador").run()
 
 ## Inicio rápido
 
-**Requisitos:** Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
-En Linux también `libfontconfig-dev` y `libfreetype-dev`.
+**Requisitos:** Python ≥ 3.11. En Linux, fontconfig y freetype (los traen casi todas las
+distribuciones; en Debian/Ubuntu son `libfontconfig1` y `libfreetype6`).
+
+```bash
+pip install aurora-ui       # o, con uv: uv add aurora-ui
+```
+
+Los wheels incluyen el núcleo nativo ya compilado para Windows, macOS (x64 y arm64) y Linux
+x86_64, así que no necesitas Rust. Guarda esto como `mi_app.py` y ejecútalo con `python mi_app.py`:
+
+```python
+from aurora import App, text
+
+App(lambda: text("Hola, Aurora", size=32, weight=700), title="Mi app").run()
+```
+
+¿Vas a trabajar sobre el propio Aurora? Clona el repositorio; para eso sí hacen falta
+[uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)), y en Linux los paquetes de
+desarrollo (`libfontconfig-dev` y `libfreetype-dev`):
 
 ```bash
 git clone https://github.com/YoshiLoL0526/aurora.git
@@ -90,20 +107,22 @@ uv run examples/studio.py        # la demo completa
 > La primera compilación descarga binarios precompilados de Skia y tarda unos minutos.
 > Después solo se recompila el crate propio, y únicamente cuando cambias código Rust.
 
-¿Prefieres pip? `pip install maturin && maturin develop --release`.
+En el repositorio también puedes usar pip en lugar de uv:
+`pip install maturin && maturin develop --release`.
 
 Mientras desarrollas, arranca la app con **hot reload**: al guardar, la ventana se actualiza con
 el código nuevo sin perder el estado (ver [hot reload](docs/reference.md#hot-reload)):
 
 ```bash
-uv run aurora dev examples/hello.py
+aurora dev mi_app.py
 ```
 
 Para repartir tu app, empaquétala en un ejecutable con un comando (requiere el extra
 `aurora-ui[build]`; ver [empaquetado](docs/reference.md#empaquetado-aurora-build)):
 
 ```bash
-uv run aurora build app.py --icon assets/icon.ico --include assets
+pip install "aurora-ui[build]"
+aurora build mi_app.py --icon assets/icon.ico --include assets
 ```
 
 ## Un vistazo a la API

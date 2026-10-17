@@ -6,6 +6,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 [Versionado Semántico](https://semver.org/lang/es/). Mientras la versión sea `0.x`, cualquier
 versión menor puede incluir cambios incompatibles, que siempre se señalarán aquí.
 
+## [Sin publicar]
+
+### Cambiado
+
+- **La documentación explica cómo instalar el paquete publicado**: el README, el inicio y la guía
+  enseñan `pip install aurora-ui` (o `uv add aurora-ui`) como primera vía —los wheels ya traen el
+  núcleo compilado, sin Rust ni compilar nada— y dejan el clonado del repositorio (uv + Rust) para
+  trabajar sobre Aurora. El [roadmap](https://github.com/YoshiLoL0526/aurora/blob/main/ROADMAP.md)
+  marca las wheels en PyPI como hechas.
+
 ## [0.4.0] — 2026-10-17
 
 ### Añadido
@@ -366,6 +376,7 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
+[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.1.0...v0.2.0

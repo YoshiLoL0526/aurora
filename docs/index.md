@@ -72,8 +72,16 @@ App(view, title="Contador").run()
 
 ## Inicio rápido
 
-Necesitas Python ≥ 3.11, [uv](https://docs.astral.sh/uv/) y Rust ([rustup](https://rustup.rs)).
-En Linux también `libfontconfig-dev` y `libfreetype-dev`.
+Necesitas Python ≥ 3.11 (y fontconfig/freetype en Linux).
+
+```bash
+pip install aurora-ui       # o, con uv: uv add aurora-ui
+```
+
+Los wheels incluyen el núcleo ya compilado: el contador de arriba es un programa completo que
+puedes guardar en `mi_app.py` y ejecutar con `python mi_app.py`.
+
+¿Trabajas sobre el propio Aurora? Clona el repositorio (necesitarás uv y Rust):
 
 ```bash
 git clone https://github.com/YoshiLoL0526/aurora.git
