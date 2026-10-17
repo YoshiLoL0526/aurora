@@ -1,7 +1,7 @@
 //! Animaciones declarativas: curvas de tiempo (muelle físico o interpolación
 //! con easing) y pistas que llevan un valor de cuatro componentes de un origen
 //! a un destino. El estado de cada nodo animado vive en el `Engine` (ver
-//! `render.rs`); aquí solo está la matemática y el parseo de lo que declara Python.
+//! `render/`); aquí solo está la matemática y el parseo de lo que declara Python.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
