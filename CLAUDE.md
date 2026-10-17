@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Aurora (`aurora-ui`, pre-alpha v0.2) is a declarative, reactive desktop UI library: the public API is
+Aurora (`aurora-ui`, pre-alpha v0.4) is a declarative, reactive desktop UI library: the public API is
 Python (`python/aurora/`), and layout/render/animation/events run in a native Rust core
 (`src/`, built as the extension module `aurora._core` via PyO3 + maturin). Stack: Skia (`skia-safe`)
 for painting and text, Taffy for flexbox layout, winit + softbuffer for the window (CPU raster).
