@@ -52,7 +52,11 @@ class Element:
         for k, v in props.items():
             if v is None:
                 continue
-            if k[:3] == "on_":
+            if k == "on_context_menu" and not callable(v):
+                # Una lista describe el menú contextual; el núcleo la pide al
+                # abrirlo, así que se envuelve en un callable.
+                handlers["context_menu"] = lambda menu=v: menu
+            elif k[:3] == "on_":
                 handlers[k[3:]] = v
             else:
                 style[_ALIASES.get(k, k)] = v

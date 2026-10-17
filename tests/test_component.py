@@ -127,6 +127,38 @@ def test_entries_not_used_are_forgotten():
     assert len(item.cache) == 2
 
 
+def test_two_builders_keep_their_own_memoization():
+    # Cada ventana (o piloto) es un dueño distinto: reconstruir una no puede
+    # olvidar lo que memorizó la otra.
+    item, calls = _counting()
+    a = Signal(0)
+    b = Signal(0)
+    pilot_a = App(lambda: column()[item("x"), text(f"{a()}")], size=(200, 100)).pilot()
+    pilot_b = App(lambda: column()[item("y"), text(f"{b()}")], size=(200, 100)).pilot()
+    assert calls == ["x", "y"]
+
+    a.set(1)
+    pilot_a.frame()
+    b.set(1)
+    pilot_b.frame()
+    # Ninguna reconstrucción volvió a llamar a los componentes: siguen frescos.
+    assert calls == ["x", "y"]
+
+
+def test_a_component_shared_by_two_builders_has_an_entry_each():
+    item, calls = _counting()
+    n = Signal(0)
+    pilot_a = App(lambda: column()[item("s"), text(f"a{n()}")], size=(200, 100)).pilot()
+    pilot_b = App(lambda: column()[item("s"), text(f"b{n()}")], size=(200, 100)).pilot()
+    assert calls == ["s", "s"]  # una construcción por dueño
+
+    n.set(1)
+    pilot_a.frame()
+    pilot_b.frame()
+    assert calls == ["s", "s"]  # cada dueño reutiliza la suya
+    assert pilot_a.rect("item-s") == pilot_b.rect("item-s")
+
+
 def test_must_return_an_element():
     @component
     def broken():

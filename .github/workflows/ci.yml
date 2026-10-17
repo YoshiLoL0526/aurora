@@ -104,6 +104,9 @@ jobs:
           uv run examples/charts.py --png charts.png
           uv run examples/table.py --png table.png
           uv run examples/animate.py --png animate.png
+          uv run examples/windows.py --png windows.png
+          uv run examples/notepad.py --png notepad.png
+          uv run examples/tray.py --png tray.png
       - name: Subir capturas
         if: always()
         uses: actions/upload-artifact@v7

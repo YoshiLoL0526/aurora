@@ -7,7 +7,7 @@
 //! entrada: `pointer`, `keyboard`, `editing`, `focus`, `wheel` y `clipboard`.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use pyo3::types::{PyDict, PyString};
@@ -38,14 +38,15 @@ pub use self::pointer::DragEvent;
 
 use self::pointer::{Drag, Grip, Pan};
 
-/// Lo activa `wake()` desde cualquier hilo; el siguiente frame lo consume y
-/// reconstruye la vista.
-static WAKE_PENDING: AtomicBool = AtomicBool::new(false);
+/// Sube con cada `wake()`. Cada `Runtime` recuerda la última que atendió: una
+/// marca global (y no una bandera) deja que varias ventanas compartan el mismo
+/// `wake()` sin que la primera que reconstruya la consuma para las demás.
+static WAKE_EPOCH: AtomicU64 = AtomicU64::new(0);
 
 /// Marca la vista como desactualizada y despierta el bucle de eventos si hay
 /// uno en marcha. Seguro desde cualquier hilo; sin bucle no hace nada más.
 pub fn wake() {
-    WAKE_PENDING.store(true, Ordering::Release);
+    WAKE_EPOCH.fetch_add(1, Ordering::Release);
     crate::window::notify();
 }
 
@@ -112,6 +113,8 @@ pub struct Runtime {
     pub engine: Engine,
     tree: Option<Node>,
     dirty: bool,
+    /// Última época de `wake()` atendida por esta ventana.
+    wake_seen: u64,
     /// Última posición conocida del puntero (píxeles lógicos).
     pointer: Option<(f32, f32)>,
     /// Arrastre en curso del pulgar de una barra de desplazamiento.
@@ -163,6 +166,7 @@ impl Runtime {
             engine: Engine::new(),
             tree: None,
             dirty: true,
+            wake_seen: 0,
             pointer: None,
             drag: None,
             pan: None,
@@ -198,7 +202,7 @@ impl Runtime {
 
     /// Si el próximo `sync` reconstruirá la vista (un manejador o un `Signal` la invalidó).
     pub fn needs_sync(&self) -> bool {
-        self.dirty || WAKE_PENDING.load(Ordering::Acquire)
+        self.dirty || self.wake_seen != WAKE_EPOCH.load(Ordering::Acquire)
     }
 
     /// Pinta el frame. Entre la composición (que fija el desplazamiento y los
@@ -278,7 +282,9 @@ impl Runtime {
     /// Reconstruye la vista si algo la invalidó. Si la vista falla, se
     /// conserva el árbol anterior y se devuelve el error.
     pub fn sync(&mut self) -> PyResult<()> {
-        if WAKE_PENDING.swap(false, Ordering::AcqRel) {
+        let epoch = WAKE_EPOCH.load(Ordering::Acquire);
+        if epoch != self.wake_seen {
+            self.wake_seen = epoch;
             self.dirty = true;
         }
         self.stats.build = Duration::ZERO;
@@ -402,6 +408,16 @@ impl Runtime {
         }
         let key = tip.key.as_ref()?;
         self.tree.as_ref()?.find(key)?.style.tooltip.clone()
+    }
+
+    /// La descripción del menú contextual (`on_context_menu`) del primer
+    /// ancestro bajo el puntero que la tenga, si la hay.
+    pub fn context_menu(&self) -> Option<&Py<PyAny>> {
+        let (x, y) = self.pointer?;
+        let tree = self.tree.as_ref()?;
+        ancestors(&self.engine.regions, topmost(&self.engine.regions, x, y))
+            .filter_map(|region| tree.find(&region.key))
+            .find_map(|node| node.handler("context_menu"))
     }
 }
 

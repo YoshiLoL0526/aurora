@@ -11,6 +11,9 @@ sin abrir ventana, útil para ver el resultado en un servidor o en CI.
 | [`charts.py`](charts.py) | Gráficos nativos con `chart`: línea de dos series (polars), área que se actualiza con datos mutados en sitio, barras por categoría con la forma elegible en un `segmented`, dispersión y una señal de un millón de puntos con zoom y pan. | `uv run examples/charts.py` |
 | [`table.py`](table.py) | Tabla de 100 000 clientes con `table`: ordenación por columna, columnas redimensionables arrastrando el borde de la cabecera, filas virtualizadas, celdas con `avatar` y `badge`, búsqueda y selección de fila. | `uv run examples/table.py` |
 | [`animate.py`](animate.py) | Animaciones declarativas: lista de tareas que se reordena, filas que entran, salen y funden su color con suavidad, barra de progreso que crece y un `dialog` con su animación integrada. | `uv run examples/animate.py` |
+| [`windows.py`](windows.py) | Escritorio de verdad: la lista de notas en una ventana y el detalle en otra, con los `Signal` compartidos, el diálogo nativo de abrir archivo, menús contextuales en las tarjetas y barra de menús con atajos. | `uv run examples/windows.py` |
+| [`notepad.py`](notepad.py) | Bloc de notas: barra de menús con atajos (`mod+o`/`mod+s`/`mod+n`), diálogos nativos de abrir y guardar, título que refleja el archivo y los cambios sin guardar, y confirmación al salir (menú y X de la ventana). | `uv run examples/notepad.py` |
+| [`tray.py`](tray.py) | Vive en la bandeja: cerrar la ventana no termina la app (se reabre desde el icono o el menú), menú de bandeja con submenú y «Salir», notificación del sistema al añadir un recordatorio, y `app.main` para mostrar/ocultar la principal. | `uv run examples/tray.py` |
 | [`brand.py`](brand.py) | Genera el banner y el logo del README con la propia librería. | `uv run examples/brand.py` |
 
 ```bash

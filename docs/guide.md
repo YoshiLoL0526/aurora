@@ -70,6 +70,153 @@ Tres ideas que se mantienen durante toda la guía:
 - **Los tamaños son lógicos.** `size=32` se ve igual de grande en una pantalla normal y en una
   Retina.
 
+### Más de una ventana
+
+Para una segunda ventana (un detalle, unos ajustes, una paleta de comandos) no cambia nada del
+modelo: cada ventana tiene su propia vista y todas comparten los `Signal` y el tema.
+
+```python
+app = App(monitor, title="Monitor", size=(900, 600))
+detalle = app.window(detalle_view, title="Detalle del servicio", size=(420, 320))
+
+
+def abrir(servicio):
+    detalle.open()
+
+
+def cerrar():
+    detalle.close()
+```
+
+- Las ventanas creadas antes de `run()` se abren al arrancar; las creadas en marcha, al momento.
+- Un `Signal` que cambie se ve en **todas** las ventanas a la vez.
+- `detalle.title` y `detalle.size` se cambian en marcha, desde cualquier hilo, y `detalle.close()`
+  / `.open()` la cierran y la vuelven a abrir sin perder su vista.
+- `on_close` permite cancelar el cierre devolviendo `False` (útil para pedir confirmación).
+- La app termina al cerrarse su última ventana; `app.quit()` la cierra desde cualquier sitio.
+  La principal también es un `Window`: `app.main` (título y tamaño en marcha, cerrarla y
+  reabrirla, `on_close` que confirme). `examples/windows.py`, `examples/notepad.py` y
+  `examples/tray.py` enseñan las tres piezas en marcha.
+
+### Abrir y guardar archivos
+
+Para el botón «Abrir…» de verdad, los diálogos nativos del sistema (síncronos, con la app en
+espera mientras están abiertos):
+
+```python
+from pathlib import Path
+
+from aurora import dialogs
+
+contenido = Signal("")
+
+
+def abrir() -> None:
+    ruta = dialogs.open_file(title="Abrir nota", filters=[("Texto", ["txt", "md"])])
+    if ruta is not None:
+        contenido.set(Path(ruta).read_text(encoding="utf-8"))
+
+
+def guardar() -> None:
+    ruta = dialogs.save_file(default_name="nota.txt", filters=[("Texto", ["txt"])])
+    if ruta is not None:
+        Path(ruta).write_text(contenido(), encoding="utf-8")
+```
+
+`dialogs.open_files()` elige varios a la vez y `dialogs.pick_folder()` una carpeta. En los tests,
+sustitúyelas por un doble: `monkeypatch.setattr(dialogs, "open_file", lambda **_: "nota.txt")`.
+
+### Bandeja del sistema
+
+Para que la app siga disponible con la ventana cerrada —o viva solo en la bandeja—, ponele un
+icono en la bandeja del sistema:
+
+```python
+from aurora import menus
+
+app.tray(
+    icon="icono.png",
+    tooltip="Notas",
+    menu=[
+        menus.item("Abrir ventana", lambda: ventana.open()),
+        menus.item("Nueva nota", nueva_nota),
+        menus.separator(),
+        menus.item("Salir", app.quit),
+    ],
+)
+```
+
+Con bandeja, la app ya no termina al cerrarse su última ventana: sigue en segundo plano hasta
+`app.quit()` (o `app.tray_hide()` para volver al comportamiento normal). El menú se describe con
+`menus.item(label, fn)`, `menus.separator()` y `menus.submenu(label, ...)` — la misma descripción
+que usan la barra y los menús contextuales—. El icono puede ser una ruta o bytes de un PNG/SVG.
+En GNOME hace falta la extensión AppIndicator para ver bandejas.
+
+Para mostrar u ocultar la ventana desde la bandeja, `app.main` es la principal como un `Window`:
+`app.main.close()` la cierra (la app sigue) y `app.main.open()` la vuelve a abrir.
+`examples/tray.py` es el ejemplo completo.
+
+### Notificaciones
+
+Para avisar de algo cuando la ventana no está delante —o está cerrada, si vives en la bandeja—:
+
+```python
+async def generar() -> None:
+    await crear_informe()
+    app.notify("Informe generado", "ya está en tu carpeta de descargas")
+
+
+app.spawn(generar())
+```
+
+`app.notify(title, body, icon=...)` la pinta el sistema (Windows, macOS, Linux) y funciona desde
+cualquier hilo, con o sin ventana. Si el sistema no las admite, se avisa por stderr y la app sigue;
+los límites por plataforma están en la [referencia](reference.md#notificaciones).
+
+### Barra de menús
+
+`App(view, menu=menus.bar(...))` pone la barra de menús nativa (Windows y macOS), con atajos del
+sistema y entradas estándar:
+
+```python
+app = App(
+    view,
+    menu=menus.bar(
+        menus.submenu(
+            "Archivo",
+            menus.item("Abrir…", abrir, shortcut="mod+o"),
+            menus.separator(),
+            menus.item("Salir", app.quit, shortcut="mod+q"),
+        ),
+        menus.submenu("Edición", menus.predefined("copy"), menus.predefined("paste")),
+    ),
+)
+```
+
+`shortcut` es un atajo del sistema: `"mod+s"` (`mod` es Control fuera de macOS y Comando en macOS),
+`"ctrl+shift+p"`, `"f5"`… Los gestiona el sistema, así que no los repitas en `on_key`. En macOS el
+núcleo añade delante el submenú estándar de la app (Acerca de, Ocultar, Salir…). En Linux no hay
+barra nativa: ese hueco lo cubre el componente `menu` dentro de la interfaz.
+
+### Menús contextuales
+
+Cualquier elemento acepta `on_context_menu` (clic derecho): una lista de entradas o un callable
+que la devuelve, que se evalúa al abrir el menú — así el menú puede depender del estado:
+
+```python
+def contexto() -> list[dict]:
+    return [
+        menus.item("Renombrar", renombrar),
+        menus.separator(),
+        menus.item("Eliminar", eliminar, enabled=hay_seleccion()),
+    ]
+
+
+fila = card(on_context_menu=contexto)[...]
+```
+
+Es nativo en Windows y macOS; en Linux no aparece (los menús nativos necesitan GTK).
+
 ## 3. Layout: filas, columnas y espacio
 
 Los hijos se añaden con corchetes. `row` los coloca en horizontal y `column` en vertical:

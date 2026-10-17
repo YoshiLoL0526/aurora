@@ -1,5 +1,6 @@
 """Stubs del módulo nativo (Rust). La API pública está en `aurora`; esto es interno."""
 
+from os import PathLike
 from typing import Any, Callable
 
 __version__: str
@@ -8,21 +9,96 @@ def render_png(tree: dict[str, Any], width: float, height: float, path: str, sca
     """Renderiza un árbol de vista serializado a un archivo PNG, sin ventana."""
 
 def run(
-    build: Callable[[], dict[str, Any]],
-    title: str = "Aurora",
-    width: float = 960.0,
-    height: float = 640.0,
+    windows: list[dict[str, Any]],
     backend: str = "auto",
     inspector: bool = False,
+    keep_alive: bool = False,
+    menu: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Abre una ventana y ejecuta el bucle de eventos hasta que se cierre.
+    """Abre las ventanas y ejecuta el bucle de eventos hasta que se cierren.
 
+    `windows`: una lista de dicts con `id`, `build`, `title`, `size`
+    (`(ancho, alto)`), `resizable`, `on_close` y `on_closed`; la primera es la
+    principal: si no se puede crear, `run` falla (`RuntimeError`).
     `backend`: `"auto"`, `"gpu"` o `"cpu"` (`ValueError` con otro valor).
     `inspector`: F12 abre el inspector del árbol y el profiler de frames.
+    `keep_alive`: la app sigue viva (sin ventanas) hasta que se llame a `quit()`.
+    `menu`: la barra de menús de la app (la descripción de `aurora.menus`);
+    en Windows y macOS.
     """
+
+def window_open(
+    id: int,
+    build: Callable[[], dict[str, Any]],
+    title: str,
+    size: tuple[float, float],
+    resizable: bool = True,
+    on_close: Callable[[], Any] | None = None,
+    on_closed: Callable[[int], Any] | None = None,
+) -> None:
+    """Abre una ventana nueva (segura desde cualquier hilo; la abre el bucle)."""
+
+def window_close(id: int) -> None:
+    """Cierra la ventana con esa id (segura desde cualquier hilo)."""
+
+def window_set(id: int, title: str | None = None, size: tuple[float, float] | None = None) -> None:
+    """Cambia el título, el tamaño o ambos de una ventana abierta."""
+
+def quit() -> None:
+    """Cierra todas las ventanas y termina la app. Segura desde cualquier hilo."""
 
 def wake() -> None:
     """Pide reconstruir la vista y despierta el bucle de eventos. Seguro desde cualquier hilo."""
+
+def open_file(
+    title: str | None = None,
+    directory: str | PathLike[str] | None = None,
+    filters: list[tuple[str, list[str]]] | None = None,
+) -> str | None:
+    """Pide un archivo existente (diálogo nativo, síncrono). Ruta o `None`."""
+
+def open_files(
+    title: str | None = None,
+    directory: str | PathLike[str] | None = None,
+    filters: list[tuple[str, list[str]]] | None = None,
+) -> list[str]:
+    """Pide varios archivos existentes (diálogo nativo, síncrono). Rutas o lista vacía."""
+
+def save_file(
+    title: str | None = None,
+    directory: str | PathLike[str] | None = None,
+    default_name: str | None = None,
+    filters: list[tuple[str, list[str]]] | None = None,
+) -> str | None:
+    """Pide dónde guardar (diálogo nativo, síncrono). Ruta o `None`; no escribe nada."""
+
+def pick_folder(title: str | None = None, directory: str | PathLike[str] | None = None) -> str | None:
+    """Pide una carpeta (diálogo nativo, síncrono). Ruta o `None`."""
+
+def tray_show(
+    icon: str | PathLike[str] | bytes,
+    tooltip: str | None = None,
+    menu: list[dict[str, Any]] | None = None,
+    on_click: Callable[[str], Any] | None = None,
+    on_double_click: Callable[[str], Any] | None = None,
+    template: bool = False,
+) -> None:
+    """Pone (o reemplaza) la bandeja del sistema. Segura desde cualquier hilo.
+
+    `icon`: ruta (`str` o `Path`) o bytes de un PNG/SVG. `menu`: la descripción
+    de `aurora.menus`. `on_click`/`on_double_click` reciben `"left"`, `"right"`
+    o `"middle"`.
+    """
+
+def tray_hide() -> None:
+    """Quita la bandeja del sistema. Segura desde cualquier hilo."""
+
+def notify(summary: str, body: str = "", icon: str | PathLike[str] | None = None) -> None:
+    """Muestra una notificación del sistema. Segura desde cualquier hilo.
+
+    Sin bucle en marcha se envía en el hilo que llama; si el sistema no las
+    admite, se avisa por stderr.
+    """
 
 def inspection() -> dict[str, Any] | None:
     """Estado del inspector de la app que construye la vista o ejecuta un manejador:

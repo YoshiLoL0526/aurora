@@ -50,6 +50,43 @@ Código: [`examples/charts.py`](../examples/charts.py).
 forma.set("area")
 ```
 
+## Varias ventanas
+
+Lista de notas en la principal y detalle en una segunda ventana, compartiendo los `Signal`, con el
+diálogo nativo de abrir archivo, menús contextuales en las tarjetas y barra de menús con atajos.
+(En la captura headless solo se ve la principal.) Código:
+[`examples/windows.py`](../examples/windows.py).
+
+```python live file=examples/windows.py alt="Lista de notas en la ventana principal"
+```
+
+```python live file=examples/windows.py theme=dark alt="La misma lista con otra nota seleccionada"
+seleccion.set(2)
+```
+
+## Bloc de notas
+
+Barra de menús con atajos del sistema (`mod+o`, `mod+s`, `mod+n`), diálogos nativos de abrir y
+guardar, y confirmación al salir si hay cambios sin guardar —tanto desde el menú como desde la X.
+Código: [`examples/notepad.py`](../examples/notepad.py).
+
+```python live file=examples/notepad.py alt="Bloc de notas vacío"
+```
+
+```python live file=examples/notepad.py theme=dark alt="Bloc de notas con un documento sin guardar"
+contenido.set("Notas de la reunión\n\n- Roadmap hacia la 1.0\n- Ejemplos nuevos")
+```
+
+## Bandeja del sistema
+
+Cerrar la ventana no termina la app: sigue en la bandeja (se reabre con `app.main.open()` desde el
+menú del icono) y solo «Salir» la termina. Al añadir un recordatorio, `app.notify` muestra una
+**notificación del sistema** aunque la ventana esté cerrada. Código:
+[`examples/tray.py`](../examples/tray.py).
+
+```python live file=examples/tray.py alt="Recordatorios con la app viviendo en la bandeja"
+```
+
 ## Tabla
 
 100 000 clientes con ordenación por columna, columnas redimensionables, filas virtualizadas y

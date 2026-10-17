@@ -32,7 +32,7 @@ resto con un motor nativo escrito en Rust: layout, tipografía, render, animacio
 
 Nace de una frustración concreta: para que una app de escritorio en Python *se vea bien*, hoy lo
 habitual es montar React + WebView + un backend HTTP, o aceptar la estética de toolkits de otra época.
-Aurora apuesta por un camino distinto: **una sola tecnología (Python), una sola ventana nativa y un
+Aurora apuesta por un camino distinto: **una sola tecnología (Python), ventanas nativas de verdad y un
 aspecto moderno desde la primera línea**.
 
 ```python
@@ -71,6 +71,8 @@ App(view, title="Contador").run()
 | **🔁 Reactiva** | El estado vive en `Signal`s y la interfaz se mantiene sincronizada sola. |
 | **🎨 Temas con tokens** | `bg="$primary"` en lugar de colores sueltos. Cambia de tema claro a oscuro en caliente con un `Signal[Theme]`. |
 | **⌨️ Apps de verdad** | Scroll con inercia, teclado y foco con Tab, campos de texto con selección, portapapeles, deshacer e IME, imágenes y SVG, y componentes como `select`, `tabs`, `switch` o `tooltip`. |
+| **🪟 Varias ventanas** | `app.window(view, title=..., size=...)` abre ventanas adicionales que comparten los `Signal` y el tema: detalle, ajustes o paleta de comandos, cada una con su vista y su ciclo de vida. |
+| **📌 Escritorio de verdad** | `app.tray(icon, menu=...)` pone una bandeja del sistema que mantiene la app viva sin ventanas; `App(menu=...)` añade la barra de menús nativa (Windows y macOS) con atajos, `on_context_menu` los menús contextuales, `app.notify(...)` notificaciones del sistema y `aurora.dialogs` abre y guarda archivos con los diálogos del sistema. |
 | **📊 Gráficos con tus datos** | `chart()` dibuja líneas, áreas, barras y dispersión a partir de arrays de numpy o de polars **sin copiarlos**, con los ejes, la rejilla y la leyenda calculados solos. Millones de puntos (reducidos con LTTB en Rust), con zoom de rueda y pan arrastrando. |
 | **🧪 Testeable sin pantalla** | `app.render_png()` renderiza cualquier vista sin abrir ventana, y `app.pilot()` simula clics, teclas y rueda con el mismo motor que la ventana: tests de interacción, CI y documentación visual. |
 
@@ -219,7 +221,7 @@ Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap]
 
 - **Vista completa por evento**: cada cambio vuelve a llamar a `view()`. Las ramas marcadas con
   `@component` que no cambiaron se reutilizan, pero el resto se reconstruye.
-- Todavía sin accesibilidad ni multi-ventana.
+- Todavía sin accesibilidad.
 
 ## Documentación
 

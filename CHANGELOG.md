@@ -8,6 +8,55 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Varias ventanas**: `App.window(view, title=..., size=...)` crea ventanas adicionales, cada una
+  con su vista; `app.windows()` las lista. Comparten el tema y los `Signal` (un cambio se ve en
+  todas) y el inspector (F12) es independiente en cada una.
+  - `Window.open()`/`close()` las gobiernan en marcha desde cualquier hilo; `title` y `size` se
+    cambian al momento; `is_open` dice su estado. `on_close` permite cancelar el cierre (por
+    ejemplo, para pedir confirmación).
+  - La app termina al cerrarse su última ventana; `app.quit()` la cierra cuando haga falta y
+    `run(keep_alive=True)` la mantiene viva sin ventanas.
+  - `Window.pilot()` y `Window.render_png()` reutilizan los mismos ayudantes sin pantalla que
+    `App`, y `examples/windows.py` enseña lista + detalle en dos ventanas.
+  - Interno: `window.rs` se reparte en host + una `View` por ventana; `wake()` pasa a una época
+    compartida por todas las ventanas, y lo memorizado por `@component` se guarda por dueño
+    (App/Window/Pilot) para que dos ventanas no se pisen las memorizaciones.
+- **Diálogos nativos de archivo**: `aurora.dialogs` (`open_file`, `open_files`, `save_file`,
+  `pick_folder`) abre los diálogos del sistema para elegir archivos o carpetas. Son síncronos, la
+  ventana desde la que se llaman es su padre (salen modales sobre ella) y durante el diálogo se
+  suelta el GIL, así que los hilos y las corrutinas de `app.spawn` siguen trabajando. En Linux
+  usan el XDG Desktop Portal (o `zenity`); en los tests se sustituyen por un doble.
+- **Bandeja del sistema**: `app.tray(icon, tooltip=..., menu=..., on_click=...)` pone un icono en
+  la bandeja con su menú (`aurora.menus`: opciones, separadores y submenús) y `app.tray_hide()` lo
+  quita. Mientras hay bandeja, la app sigue viva aunque se cierren todas las ventanas (hasta
+  `app.quit()`). En Linux usa StatusNotifierItem (sin GTK; en GNOME hace falta la extensión
+  AppIndicator).
+- **Menús nativos**: `App(view, menu=menus.bar(...))` pone la barra de menús (Windows y macOS) con
+  atajos del sistema (`shortcut="mod+o"`) y entradas estándar (`menus.predefined("copy")`); en
+  macOS se añade delante el submenú estándar de la app. `on_context_menu` (lista o callable) abre
+  un menú contextual nativo con el clic derecho. En Linux no hay menús nativos (requieren GTK):
+  ese hueco lo cubre el componente `menu` dentro de la app.
+- **La ventana principal tiene mango**: `app.main` es un `Window` como los demás — cambia el
+  `title` o el `size` en marcha, ciérrala y reábrela (`app.main.close()`/`open()`, el patrón de la
+  bandeja) o ponle un `on_close` que cancele el cierre. `app.windows()` sigue devolviendo solo las
+  adicionales, y la vista de la principal sigue siendo la de la `App` (el hot reload la mantiene).
+- **Ejemplos nuevos**: `examples/notepad.py` (barra de menús con atajos `mod+o`/`mod+s`/`mod+n`,
+  diálogos de abrir y guardar, título con el archivo y los cambios sin guardar, y confirmación al
+  salir desde el menú y desde la X) y `examples/tray.py` (la app vive en la bandeja: cerrar la
+  ventana no la termina, se reabre desde el icono y solo «Salir» la acaba), con su icono generado
+  por la propia librería (`examples/icon.png`). Ambos se renderizan en CI y tienen galería.
+  - `dialogs` y `app.tray(...)` aceptan además rutas `Path` (no solo `str`) para el directorio y el
+    icono.
+- **Notificaciones del sistema**: `app.notify(title, body, icon=...)` muestra un aviso del sistema
+  (Centro de notificaciones en Windows y macOS, libnotify/D-Bus en Linux y BSD, con `notify-rust` y
+  sin dependencias C). Se puede llamar desde cualquier hilo —también desde `app.spawn()` con la
+  ventana cerrada— y sin app en marcha; si el sistema no las admite, se avisa por stderr y la app
+  sigue. En esta versión no hay callback de clic; los límites por plataforma (demonio en Linux,
+  app firmada en macOS, AppUserModelID en Windows) están en la referencia. `examples/tray.py`
+  notifica al añadir un recordatorio.
+
 ### Cambiado
 
 - **La documentación explica cómo instalar el paquete publicado**: el README, el inicio y la guía

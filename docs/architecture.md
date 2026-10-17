@@ -69,7 +69,11 @@ src/                 (crate aurora_core → módulo aurora._core)
 │   ├── scale.rs     Escala de los ejes: pasos, ticks y etiquetas
 │   ├── paint.rs     Dibujo de ejes, rejilla, leyenda y series
 │   └── cache.rs     Grabado perezoso (`Charts`): cuándo volver a grabar
-├── window.rs        Bucle de ventana (winit) sobre Runtime
+├── window.rs        Bucle de ventanas (winit): host, comandos y una View por ventana
+├── dialog.rs        Diálogos nativos de archivo (rfd): abrir, guardar y carpetas
+├── tray.rs          Bandeja del sistema (tray-icon): icono, tooltip y menú
+├── notify.rs        Notificaciones del sistema (notify-rust): título, cuerpo e icono
+├── menu.rs          Menús nativos: la descripción de `aurora.menus` → menú de `muda`
 ├── surface/         Trait Surface: dónde se pinta y presenta cada frame
 │   ├── cpu.rs       Skia raster en el framebuffer de softbuffer
 │   ├── vulkan.rs    Skia Ganesh sobre Vulkan (vulkano), Windows y Linux
@@ -175,8 +179,11 @@ ramas que no cambiaron:
   anidado añade sus dependencias al que lo contiene.
 - **Memoria por argumentos.** La llamada se reutiliza si sus argumentos (hashables) coinciden con
   una entrada cuyas dependencias siguen en la misma versión: devuelve el mismo `Element`, cuya
-  raíz guarda en `_memo` la serialización (válida para el mismo tema). Cada reconstrucción es una
-  generación, y las entradas que no se usaron en ella se descartan.
+  raíz guarda en `_memo` la serialización (válida para el mismo tema). Lo memorizado se guarda
+  **por dueño** —la `App`, cada `Window`, un `Pilot`—, así dos ventanas que comparten un
+  componente tienen su entrada propia y la reconstrucción de una no olvida lo de la otra. Cada
+  reconstrucción de un dueño es una generación, y al terminar se descartan las entradas que ese
+  dueño no usó.
 - **Parseo memorizado.** El dict de un componente lleva `memo: True` y llega a Rust como el mismo
   objeto. `spec::Parser`, que vive en el `Runtime`, guarda el `Node` de cada uno por dirección
   (sosteniendo una referencia, para que la dirección no se reutilice) junto con la key de su raíz
@@ -338,22 +345,29 @@ se heredan del contenedor más cercano que los define. La herencia se resuelve u
 para reconstruir la vista o ejecutar un callback. Esto permite que otros hilos de Python trabajen
 mientras la ventana está abierta.
 
-Cuando un `Signal` cambia, llama a `_core.wake()`, que se puede invocar desde cualquier hilo:
-activa una marca atómica (la vista está desactualizada) y envía un evento propio al bucle de winit
-a través de un `EventLoopProxy`. El bucle pide un frame y `Runtime::sync` consume la marca y
-reconstruye. `App.spawn()` usa esto para las corrutinas: corren en un bucle `asyncio` en un hilo
-aparte y cada `set` despierta la ventana.
+Cuando un `Signal` cambia, llama a `_core.wake()`, que se puede invocar desde cualquier hilo: sube
+una **época** global (un contador atómico) y envía un evento propio al bucle de winit a través de
+un `EventLoopProxy`. Cada ventana recuerda la época que atendió, así una marca despierta y
+reconstruye **todas** las ventanas —lo correcto cuando comparten `Signal`— sin que la primera que
+pinte la consuma para las demás. `App.spawn()` usa esto para las corrutinas: corren en un bucle
+`asyncio` en un hilo aparte y cada `set` despierta la ventana.
 
-## Runtime, ventana y piloto
+## Runtime, ventanas y piloto
 
 El estado de una app en marcha —árbol, regiones de hit-testing, puntero, despacho de eventos—
 vive en `Runtime` (`src/runtime/`), que no sabe nada de ventanas. Hay dos "conductores":
 
 - `window.rs` traduce los eventos de winit a llamadas al `Runtime` y presenta el frame en el
-  framebuffer.
+  framebuffer. El bucle es **uno solo para todas las ventanas**: `Host` guarda una `View` por
+  `WindowId` (ventana, superficie y `Runtime`). Python pide abrir, cerrar, cambiar el título o el
+  tamaño con comandos (`_core.window_open`…), que viajan por el `EventLoopProxy` y son seguros
+  desde cualquier hilo; la configuración de una ventana nueva espera en un registro (`PENDING`)
+  hasta que el bucle la crea. La app termina al cerrarse su última ventana, salvo que viva sin
+  ventanas (`keep_alive`, para la bandeja del sistema); `App.quit()` cierra todo. El `on_close`
+  de una ventana decide si el cierre sigue adelante.
 - `pilot.rs` (`Pilot`, expuesto como `app.pilot()`) simula el puntero y pinta en una superficie
   en memoria. Como comparte el `Runtime`, un test de interacción ejercita exactamente la misma
-  lógica que la ventana.
+  lógica que la ventana; `Window.pilot()` hace lo mismo sobre la vista de esa ventana.
 
 Los manejadores se guardan por nombre (`handlers: {"click": fn}`) y se despachan con
 `Runtime::dispatch(key, evento, arg)`: añadir un evento nuevo no requiere tocar el bucle.
@@ -487,6 +501,34 @@ puntero (`Tip` en el `Engine`); el reloj real (`advance_clock`) acumula tiempo y
 retardo, la burbuja aparece con el mismo suavizado que el hover. La ventana duerme hasta ese
 momento con `next_wakeup`, como con el parpadeo del cursor. Se pinta al final del frame, encima de
 las capas, y no registra `HitRegion`: no intercepta el ratón.
+
+## Escritorio: diálogos, bandeja y menús
+
+La integración con el escritorio vive en módulos que comparten una idea: **Python describe,
+Rust ejecuta**, y las APIs del sistema se usan desde el hilo del bucle.
+
+- **Diálogos** (`dialog.rs`, `rfd`): `aurora.dialogs` abre los diálogos nativos de abrir/guardar
+  archivo y carpetas. Son síncronos —el diálogo corre su propio bucle de mensajes mientras el de
+  la app espera— y el GIL se suelta (`Python::detach`), así que los hilos y las corrutinas de
+  Python siguen trabajando. El padre del diálogo es la **ventana en curso**: un thread-local que
+  `window.rs` mantiene mientras el `Runtime` de una ventana construye su vista o corre un
+  manejador.
+- **Bandeja** (`tray.rs`, `tray-icon`): el icono se decodifica con Skia (ruta o bytes) y se crea
+  en el hilo del bucle —al arrancar, o al atender el comando `TrayShow`—, que en Windows y macOS
+  es obligatorio; en macOS además se despierta el `CFRunLoop` para que aparezca al momento. Los
+  eventos del icono y de su menú llegan por el `EventLoopProxy` como cualquier comando. En Linux
+  usa StatusNotifierItem (`ksni`): sin GTK y con su propio hilo de trabajo.
+- **Menús** (`menu.rs`): la descripción de `aurora.menus` (dicts, como las vistas) se convierte en
+  un menú de `muda`; cada acción se guarda por el id del ítem y el `MenuEvent` del bucle llama a
+  la que toca. La **barra** se construye antes de crear el bucle —su HACCEL va en el hook de
+  mensajes de Windows, que traduce los atajos con `TranslateAcceleratorW`; en macOS la gestiona
+  AppKit— y se cuelga de cada ventana al crearse (en macOS, de la aplicación). Los **contextuales**
+  se construyen al abrirse, en el hilo del bucle, y sus acciones viven hasta el siguiente.
+- **Notificaciones** (`notify.rs`, `notify-rust`): `app.notify(title, body, icon=...)` pinta el
+  aviso el sistema (Centro de notificaciones en Windows y macOS, libnotify/D-Bus en Linux). Si hay
+  bucle, el aviso viaja como comando y se envía en su hilo (macOS lo prefiere); sin bucle, en el
+  hilo que llama. El icono se pasa como `icon` en el escritorio Linux y como `image_path` en
+  Windows y macOS.
 
 ## Capas
 

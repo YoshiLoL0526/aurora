@@ -12,13 +12,20 @@ rama, y el núcleo reconoce el dict y reutiliza el nodo ya parseado.
 
 Las dependencias de un componente anidado cuentan también para el que lo
 contiene: si cambia el de dentro, se reconstruye el de fuera.
+
+Cada reconstrucción es una sesión **de su dueño** (la `App`, una `Window`, un
+`Pilot`…): lo memorizado se guarda por dueño, así dos ventanas que comparten un
+componente no se pisan las memorizaciones al reconstruir la una a la otra. Al
+terminar la sesión se olvidan las entradas que ese dueño no usó (componentes
+que ya no están en su vista).
 """
 
 from __future__ import annotations
 
 import functools
+import threading
 import weakref
-from collections.abc import Callable, Hashable
+from collections.abc import Callable
 from typing import Any, Generic, ParamSpec
 
 from .elements import Element
@@ -26,10 +33,24 @@ from .signal import Frame, Signal, current_frame, frames, fresh
 
 P = ParamSpec("P")
 
-# Cada reconstrucción de la vista es una generación: al terminar se olvidan las
-# entradas que no se usaron (componentes que ya no están en la vista).
-_generation = 0
+# Pila de sesiones de construcción `(dueño, sesión)`. Por hilo: construir la
+# vista es cosa del hilo de su runtime, pero un `Signal` se puede leer desde
+# cualquiera (como `frames()`).
+_local = threading.local()
+_next_session = 0
 _components: weakref.WeakSet[Component[...]] = weakref.WeakSet()
+
+
+def _sessions() -> list[tuple[Any, int]]:
+    stack = getattr(_local, "sessions", None)
+    if stack is None:
+        stack = _local.sessions = []
+    return stack
+
+
+def _current_session() -> tuple[Any, int]:
+    stack = _sessions()
+    return stack[-1] if stack else (None, 0)
 
 
 class Entry:
@@ -42,12 +63,12 @@ class Entry:
         self.deps: dict[Signal[Any], int] = frame.deps
         # Componentes anidados: siguen vivos mientras este se reutilice.
         self.children: list[Entry] = frame.children
-        self.generation = _generation
+        self.generation = _current_session()[1]
         self.spec: dict[str, Any] | None = None
         self.theme: Any = None
 
     def touch(self) -> None:
-        self.generation = _generation
+        self.generation = _current_session()[1]
         for child in self.children:
             child.touch()
 
@@ -87,15 +108,17 @@ class Component(Generic[P]):
     def __init__(self, fn: Callable[P, Element]) -> None:
         self.fn = fn
         self.name: str = getattr(fn, "__name__", repr(fn))
-        self.cache: dict[Hashable, Entry] = {}
+        # Clave: `(dueño, argumentos, kwargs)`; ver `__call__`.
+        self.cache: dict[tuple[Any, ...], Entry] = {}
         functools.update_wrapper(self, fn)
         _components.add(self)
 
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Element:
-        key: Hashable | None = (args, tuple(sorted(kwargs.items())))
+        owner, _ = _current_session()
         try:
+            key: tuple[Any, ...] | None = (owner, args, tuple(sorted(kwargs.items())))
             entry = self.cache.get(key)
-        except TypeError:  # argumentos no hashables: no se memoriza
+        except TypeError:  # argumentos (o dueño) no hashables: no se memoriza
             key, entry = None, None
         if entry is not None and fresh(entry.deps):
             entry.touch()
@@ -137,12 +160,20 @@ def component(fn: Callable[P, Element]) -> Component[P]:
     return Component(fn)
 
 
-def begin_build() -> None:
-    global _generation
-    _generation += 1
+def begin_build(owner: Any) -> None:
+    """Abre una sesión de construcción para `owner` (una `App`, una `Window`, un `Pilot`)."""
+    global _next_session
+    _next_session += 1
+    _sessions().append((owner, _next_session))
 
 
 def end_build() -> None:
-    """Olvida las entradas que no se usaron en esta reconstrucción."""
+    """Cierra la sesión y olvida lo que su dueño no usó en esta reconstrucción."""
+    stack = _sessions()
+    owner, session = stack.pop() if stack else (None, 0)
     for comp in list(_components):
-        comp.cache = {k: e for k, e in comp.cache.items() if e.generation == _generation}
+        comp.cache = {
+            key: entry
+            for key, entry in comp.cache.items()
+            if key[0] is not owner or entry.generation == session
+        }

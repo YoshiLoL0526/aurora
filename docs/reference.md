@@ -4,6 +4,11 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 [guía](guide.md).
 
 - [App](#app)
+- [Window (ventanas adicionales)](#window)
+- [Diálogos nativos](#diálogos-nativos)
+- [Bandeja del sistema](#bandeja-del-sistema)
+- [Notificaciones](#notificaciones)
+- [Menús nativos](#menús-nativos)
 - [Signal](#signal)
 - [component](#component)
 - [Pilot (tests de interacción)](#pilot-tests-de-interacción)
@@ -32,13 +37,18 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 | `title` | `str` | Título de la ventana. |
 | `size` | `tuple[float, float]` | Tamaño inicial en píxeles lógicos (independientes del DPI). |
 | `theme` | `Theme \| Callable[[], Theme]` | Tema fijo, o un `Signal[Theme]` para cambiarlo en caliente. |
+| `menu` | `Sequence[dict] \| None` | La barra de menús nativa (Windows y macOS), descrita con [`menus`](#menús-nativos): `App(view, menu=menus.bar(...))`. En Linux no hay barra nativa. |
 | `inspector` | `bool \| None` | Permite abrir con F12 el [inspector y profiler de frames](#inspector-y-profiler-de-frames). Con `None` (por defecto) lo decide la variable de entorno `AURORA_INSPECTOR` (`1`, `true`, `yes` u `on` lo activan). |
 | `reload` | `bool \| None` | Activa el [hot reload](#hot-reload) en `run()`. Con `None` (por defecto) lo decide la variable de entorno `AURORA_RELOAD`, como `inspector`. |
 | `motion` | `bool \| None` | Con `False`, los componentes no animan por defecto ([switchs, casillas, pestañas y menús](#animaciones)): sus cambios son inmediatos. Con `None` (por defecto) lo decide `AURORA_MOTION` (`0`, `false`, `no` u `off` lo desactivan). |
 
 | Método | Descripción |
 |---|---|
-| `run(*, backend="auto")` | Abre la ventana y bloquea hasta que se cierra. `backend` elige dónde se pinta: `"gpu"` (Vulkan en Windows y Linux, Metal en macOS), `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de entorno `AURORA_BACKEND` (`gpu`/`cpu`) lo fuerza. `"gpu"` sin GPU disponible lanza `RuntimeError`; un valor desconocido, `ValueError`. |
+| `run(*, backend="auto", keep_alive=None)` | Abre las ventanas y bloquea hasta que se cierren todas. `backend` elige dónde se pinta: `"gpu"` (Vulkan en Windows y Linux, Metal en macOS), `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de entorno `AURORA_BACKEND` (`gpu`/`cpu`) lo fuerza. `"gpu"` sin GPU disponible lanza `RuntimeError`; un valor desconocido, `ValueError`. `keep_alive=True` mantiene la app en marcha aunque no queden ventanas (para la bandeja del sistema) hasta que se llame a `quit()`. |
+| `window(view, *, title="Aurora", size=None, resizable=True, on_close=None)` | Crea una ventana adicional con su propia vista (ver [Window](#window)). `size` por defecto es el de la ventana principal. |
+| `windows()` | Las ventanas creadas con `window(...)`, en orden de creación (sin la principal). |
+| `main` | La ventana principal, como un [`Window`](#window) (ver abajo). |
+| `quit()` | Cierra todas las ventanas y termina la app. Seguro desde cualquier hilo. |
 | `render_png(path, *, size=None, scale=2.0)` | Renderiza la vista a PNG sin abrir ventana. `scale` es la densidad de píxeles (2.0 ≈ pantalla Retina). |
 | `pilot(*, size=None, scale=1.0, inspector=False)` | Ejecuta la app sin ventana y devuelve un [`Pilot`](#pilot-tests-de-interacción) para simular interacción en tests. Con `inspector=True`, el inspector se abre con `pilot.press("f12")` como en la ventana. |
 | `watch(main=None)` | Activa el [hot reload](#hot-reload) del módulo `main` (por defecto, `__main__`) sin vigilar los archivos y devuelve su `Reloader`. Para probarlo con `pilot()`: `reloader.check()` detecta lo guardado y el siguiente frame lo aplica. |
@@ -46,6 +56,161 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 
 El elemento raíz siempre ocupa la ventana completa. Si no defines `bg`, `color` o `font_family`
 en la raíz, se toman del tema (`$background`, `$text` y la fuente del tema).
+
+## Window
+
+```python
+app = App(view, title="Notas", size=(420, 380))
+detalle = app.window(detalle_view, title="Detalle", size=(320, 240))
+```
+
+Una ventana adicional, creada con [`App.window(...)`](#app). Tiene su propia vista y comparte con
+la app el tema, el movimiento y los `Signal`: un cambio se ve en todas las ventanas a la vez. Las
+creadas antes de `run()` se abren al arrancar; las creadas en marcha, al momento.
+
+La ventana principal también se maneja así, a través de **`app.main`** (mismo `Window`, misma
+API): `app.main.title = "…"` en marcha, `app.main.close()` para ocultarla si hay bandeja,
+`app.main.open()` para volver a abrirla, o `app.main.on_close = fn` para confirmar antes de
+cerrar. Su vista es la de la `App` (el hot reload la mantiene).
+
+| Miembro | Descripción |
+|---|---|
+| `view` | La función de la vista de esta ventana (se puede sustituir). |
+| `title` | El título. Asignarlo en marcha lo cambia al momento; seguro desde cualquier hilo. |
+| `size` | `(ancho, alto)` en píxeles lógicos. Asignarlo en marcha redimensiona la ventana. |
+| `resizable` | Si el usuario puede redimensionarla (se aplica al abrirla). |
+| `on_close` | Se llama al intentar cerrarla (el botón del sistema o `close()`); si devuelve un valor falso, el cierre se cancela —por ejemplo, para pedir confirmación con un `dialog`. |
+| `is_open` | Si la ventana está abierta (o pendiente de abrir al arrancar la app). |
+| `open()` / `close()` | La abre o la cierra sin olvidar su vista; seguras desde cualquier hilo. |
+| `render_png(path, *, size=None, scale=2.0)` | Su vista a PNG, como `App.render_png`. |
+| `pilot(*, size=None, scale=1.0, inspector=False)` | Su vista con un [`Pilot`](#pilot-tests-de-interacción) para tests de interacción. |
+
+La app termina al cerrarse su última ventana (o con `app.quit()`), y el inspector (F12) es
+independiente en cada ventana. Un ejemplo completo: [`examples/windows.py`](../examples/windows.py).
+
+## Diálogos nativos
+
+```python
+from aurora import dialogs
+
+ruta = dialogs.open_file(title="Abrir informe", filters=[("Texto", ["txt", "md"])])
+```
+
+Los diálogos del sistema para elegir archivos o carpetas:
+
+| Función | Descripción |
+|---|---|
+| `open_file(*, title=None, directory=None, filters=None)` | Pide un archivo existente; devuelve su ruta o `None` si se cancela. |
+| `open_files(*, title=None, directory=None, filters=None)` | Igual, con selección múltiple; devuelve una lista (vacía si se cancela). |
+| `save_file(*, title=None, directory=None, default_name=None, filters=None)` | Pide dónde guardar y devuelve la ruta, o `None`. No escribe nada: guardar el contenido es cosa de quien llama. |
+| `pick_folder(*, title=None, directory=None)` | Pide una carpeta; devuelve su ruta o `None`. |
+
+`filters` son pares `(nombre, extensiones)`: `[("Imágenes", ["png", "jpg"]), ("Todo", ["*"])]`.
+
+Son **síncronas**: con el diálogo abierto la app espera (el sistema corre su propio bucle de
+mensajes) y el GIL se suelta, así que los hilos y las corrutinas de `app.spawn` siguen trabajando.
+La ventana desde la que se llaman (su vista o uno de sus manejadores) es su padre: el diálogo sale
+modal sobre ella. Los pinta el sistema: en Linux usan el portal de escritorio (o `zenity` si no
+hay portal) y en macOS aparecen con la app en primer plano. En los tests, sustitúyelas por un doble
+—`monkeypatch.setattr(dialogs, "open_file", ...)`—: un test sin pantalla no puede abrir uno de
+verdad.
+
+## Bandeja del sistema
+
+```python
+from aurora import menus
+
+app.tray(
+    icon="icono.png",
+    tooltip="Notas",
+    menu=[
+        menus.item("Abrir ventana", abrir),
+        menus.separator(),
+        menus.item("Salir", app.quit),
+    ],
+    on_click=lambda button: abrir(),
+)
+```
+
+| API | Descripción |
+|---|---|
+| `app.tray(icon, *, tooltip=None, menu=None, on_click=None, on_double_click=None, template=False)` | Pone (o reemplaza) la bandeja. `icon` es una ruta o los bytes de un PNG/SVG (los dibuja Skia, como `image`). `menu` es una descripción de [`menus`](#menús-nativos). `on_click(button)` / `on_double_click(button)` reciben `"left"`, `"right"` o `"middle"`. `template=True` (macOS) pinta el icono con el color del sistema: dibújalo en blanco y negro con transparencia. |
+| `app.tray_hide()` | Quita la bandeja. |
+
+Mientras hay bandeja, la app **sigue viva aunque se cierren todas las ventanas** (es lo que
+espera una app de bandeja): `app.quit()` la termina. `run(keep_alive=True)` también vale sin
+bandeja, para una app que trabaja sin ventanas.
+
+Con menú, el clic izquierdo suele abrirlo —en macOS siempre—; `on_click` se dispara con los clics
+que no abre menú. En Linux la bandeja usa StatusNotifierItem: en GNOME hace falta la extensión
+AppIndicator, y algunos escritorios no muestran la bandeja en absoluto.
+
+## Notificaciones
+
+```python
+app.notify("Informe generado", "datos-2026.csv está en tu carpeta de descargas", icon="icono.png")
+```
+
+| API | Descripción |
+|---|---|
+| `app.notify(title, body="", *, icon=None)` | Muestra una notificación del sistema. `icon` es una ruta a un PNG/SVG (donde el sistema lo admita). |
+
+Se puede llamar desde cualquier hilo —por ejemplo desde una tarea de `app.spawn()` con la ventana
+cerrada— y también sin app en marcha. Si el sistema no admite notificaciones, se avisa por stderr
+y la app sigue: en Linux hace falta un demonio de notificaciones (GNOME y KDE lo traen), en macOS
+una app firmada (un script suelto puede no poder mostrarlas) y en Windows el aviso sale con el
+nombre del ejecutable salvo que la app registre un AppUserModelID. En esta versión no hay callback
+de clic.
+
+## Menús nativos
+
+```python
+app = App(
+    view,
+    menu=menus.bar(
+        menus.submenu(
+            "Archivo",
+            menus.item("Abrir…", abrir, shortcut="mod+o"),
+            menus.item("Guardar", guardar, shortcut="mod+s"),
+            menus.separator(),
+            menus.item("Salir", app.quit),
+        ),
+        menus.submenu("Edición", menus.predefined("copy"), menus.predefined("paste")),
+    ),
+)
+```
+
+| Constructor | Descripción |
+|---|---|
+| `menus.item(label, on_click, *, shortcut=None, enabled=True)` | Una opción; llama a `on_click()` al elegirla. `shortcut` es un atajo del sistema: `"ctrl+o"`, `"mod+s"` (`mod` es Control fuera de macOS y Comando en macOS), `"f5"`, `"shift+alt+f"`… |
+| `menus.separator()` | Una línea separadora. |
+| `menus.submenu(label, *items)` | Un submenú con sus entradas. |
+| `menus.predefined(name)` | Una entrada estándar del sistema: `"copy"`, `"paste"`, `"cut"`, `"select_all"`, `"undo"`, `"redo"`, `"delete"`, `"minimize"`, `"maximize"`, `"fullscreen"`, `"close_window"`, `"quit"`, `"about"`, `"hide"`, `"hide_others"`, `"show_all"`, `"services"` o `"bring_all_to_front"`. |
+| `menus.bar(*items)` | La barra de la app, para `App(menu=...)`; es azúcar de una lista. |
+
+La misma descripción vale para los tres menús nativos:
+
+- **La barra de la app**: `App(view, menu=menus.bar(...))`, en Windows y macOS. En macOS el núcleo
+  añade delante el submenú estándar de la app (Acerca de, Ocultar, Salir…). Los atajos de la barra
+  los gestiona el sistema, así que la app no los ve como teclas: no los repitas en `on_key`.
+- **El menú de la bandeja**: `app.tray(icon, menu=[...])`.
+- **Los menús contextuales**: la propiedad `on_context_menu` de cualquier elemento —clic derecho—
+  con una lista o un callable que la devuelve (se evalúa al abrir el menú, así puede depender del
+  estado):
+
+```python
+card(
+    on_context_menu=[
+        menus.item("Copiar", copiar),
+        menus.separator(),
+        menus.item("Eliminar", eliminar, enabled=hay_seleccion()),
+    ],
+)[...]
+```
+
+En Linux no hay menús nativos (requieren GTK): la barra y los contextuales no aparecen y el patrón
+es el componente `menu` dentro de la interfaz. En macOS, con menú, el clic izquierdo de la bandeja
+abre su menú.
 
 ## Signal
 
@@ -210,7 +375,9 @@ script. También se activa con `App(view, reload=True)`.
 subcarpetas), salvo los instalados (`site-packages`, el entorno virtual) y Aurora. Al cambiar uno,
 se vuelven a ejecutar ese módulo, los módulos de la app que usan algo suyo (una función, una clase,
 un objeto) y el script principal. Ahí `App(...)` y `app.run()` no abren otra ventana: la app en
-marcha pasa a usar la `view` y el `theme` nuevos. El título y el tamaño no cambian.
+marcha pasa a usar la `view` y el `theme` nuevos. El título y el tamaño no cambian. Con varias
+ventanas, se emparejan con las del código nuevo por orden de creación (las demás se cierran o se
+abren), y cada una pasa a usar la vista nueva.
 
 **Qué se conserva.** Cada `Signal` del código nuevo que esté en el mismo sitio que uno del anterior
 —una variable global, o un atributo o elemento (hasta 4 niveles) de un objeto de una clase de la

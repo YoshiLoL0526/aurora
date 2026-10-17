@@ -28,7 +28,19 @@ include = [
 
 [dependencies]
 arboard = { version = "3", default-features = false }
+# Menús nativos: la barra de la app (Windows/macOS), el menú de la bandeja y
+# los contextuales. Sin features: en Linux no hay barra (no metemos GTK).
+muda = { version = "0.21", default-features = false }
+# Notificaciones del sistema: toasts de Windows, Centro de notificaciones en
+# macOS y D-Bus/libnotify en Linux y BSD (en Linux, zbus: sin dependencias C).
+notify-rust = "4.18"
 pyo3 = { version = "0.30.1", features = ["extension-module", "abi3-py311"] }
+# Diálogos nativos de archivo. En Linux usa el por defecto el XDG Desktop Portal
+# (sin GTK en build; en tiempo de ejecución hace falta un portal o `zenity`).
+rfd = "0.17.2"
+# Bandeja del sistema. En Linux, la feature `ksni` (abajo) usa el protocolo
+# StatusNotifierItem por D-Bus: sin GTK, con su propio hilo de trabajo.
+tray-icon = { version = "0.26.1", default-features = false }
 # Las features coinciden con binarios precompilados de Skia (rust-skia/skia-binaries)
 # para cada sistema: con otra combinación, la primera compilación construiría Skia
 # desde el código fuente (requiere LLVM y tarda mucho). SVG solo existe junto a
@@ -46,10 +58,20 @@ ash = { version = "0.38", default-features = false, features = ["std"] }
 skia-safe = { version = "0.153.3", features = ["ganesh", "vulkan"] }
 vulkano = { version = "0.35", default-features = false, features = ["x11"] }
 
+# La bandeja en Linux/BSD usa StatusNotifierItem (ksni): sin GTK en build ni en
+# tiempo de ejecución (necesita un anfitrión SNI; en GNOME, la extensión AppIndicator).
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+tray-icon = { version = "0.26.1", default-features = false, features = ["ksni"] }
+
+# Los aceleradores de la barra de menús en Windows: el hook de mensajes del
+# bucle llama a TranslateAcceleratorW con el HACCEL del menú.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.3"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-quartz-core", "NSResponder", "NSView"] }
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes", "CFRunLoop"] }
 objc2-metal = { version = "0.3.2", default-features = false, features = ["std", "MTLDevice", "MTLCommandBuffer", "MTLCommandQueue", "MTLDrawable", "MTLPixelFormat", "MTLTexture", "MTLResource"] }
 objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "objc2-metal", "CALayer", "CAMetalLayer"] }
 skia-safe = { version = "0.153.3", features = ["ganesh", "metal"] }

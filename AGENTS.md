@@ -52,6 +52,16 @@ cargo fmt --check && cargo clippy --release -- -D warnings
   only Rust code that knows the dict shape; resolves CSS-style text-style inheritance here) →
   `render::Engine` phased invalidation (`restyle` diffs and skips relayout → `update` runs
   Taffy/layout/composite → `paint` repaints only the damaged rect; `tick` advances transitions).
+- Windows: `App.window(view, ...)` creates extra `Window`s (Python side); in Rust `window.rs` keeps
+  one `View` per `WindowId` (window + surface + `Runtime`) under a single winit loop, and Python
+  sends commands (`_core.window_open/close/set`, `quit`) through the `EventLoopProxy` — safe from
+  any thread. `wake()` is an epoch (`WAKE_EPOCH`) each `Runtime` compares against its own, and
+  `@component` memoization is keyed per owner (App/Window/Pilot) so windows never evict each other.
+- Desktop integration lives in small modules that talk to the OS from the loop thread:
+  `dialog.rs` (`rfd`, synchronous, GIL released, parent = the window running Python right now),
+  `tray.rs` (`tray-icon`; created in `resumed` or on `TrayShow`), `menu.rs` (the `aurora.menus`
+  spec → `muda`; the bar is built *before* the event loop so its HACCEL can go in the Windows
+  msg-hook) and `notify.rs` (`notify-rust`; sent from the loop when one is running).
 - `src/runtime/` `Runtime` is window-independent app state, shared by the winit loop (`window.rs`,
   GIL released via `py.detach`) and the headless `Pilot` (`pilot.rs`, `app.pilot()`). `Signal.set`
   from any thread calls `_core.wake()`. Every event rebuilds the whole `view()`; node identity
