@@ -27,6 +27,16 @@ def _mix(a, b, t):
     return tuple(round(p + (q - p) * t) for p, q in zip(a, b, strict=True))
 
 
+def _brightest(path, y):
+    """Color más intenso de la fila: el trazo de un glifo, libre de antialiasing."""
+    channels, rows = _png_rows(path, y + 1)
+    row = rows[y]
+    return max(
+        (tuple(row[x * channels : x * channels + 3]) for x in range(len(row) // channels)),
+        key=sum,
+    )
+
+
 # --- API ------------------------------------------------------------------------
 
 
@@ -86,6 +96,49 @@ def test_without_transition_changes_are_immediate(tmp_path):
     color.set("#0000FF")
     pilot.frame()
     assert _pixel(pilot, tmp_path, 20, 20) == BLUE
+
+
+def test_text_color_transitions(tmp_path):
+    color = Signal("#FF0000")
+
+    def view():
+        return column(bg="#000000", padding=10)[text("█", size=40, color=color(), transition=LINEAR, key="t")]
+
+    pilot = App(view, size=(120, 90)).pilot()
+    _x, y, _w, h = pilot.rect("t")
+    axis = int(y + h / 2)
+    out = tmp_path / "text.png"
+    pilot.png(str(out))
+    assert _brightest(out, axis) == RED
+
+    color.set("#0000FF")
+    pilot.frame()  # el primer frame pinta el color anterior
+    pilot.frame(0.5)
+    pilot.png(str(out))
+    assert _near(_brightest(out, axis), _mix(RED, BLUE, 0.5), tol=12)
+    pilot.settle()
+    pilot.png(str(out))
+    assert _brightest(out, axis) == BLUE
+
+
+def test_inherited_text_color_changes_instantly(tmp_path):
+    """El `transition` de un contenedor no anima el color que heredan sus textos:
+    el texto necesita su propia transición (limitación conocida)."""
+    color = Signal("#FF0000")
+
+    def view():
+        return column(bg="#000000", color=color(), transition=LINEAR)[text("█", size=40, key="t")]
+
+    pilot = App(view, size=(120, 90)).pilot()
+    _x, y, _w, h = pilot.rect("t")
+    axis = int(y + h / 2)
+    color.set("#0000FF")
+    pilot.frame()
+    pilot.frame(0.5)
+    out = tmp_path / "inherited.png"
+    pilot.png(str(out))
+    # Sin transición propia, el texto ya está en el color nuevo.
+    assert _brightest(out, axis) == BLUE
 
 
 def test_opacity_transition_and_appearing_background(tmp_path):

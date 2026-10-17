@@ -254,8 +254,12 @@ pub struct HitRegion {
     pub key: String,
     /// Rectángulo absoluto, ya desplazado por los `scroll` que lo contienen.
     pub rect: Rect,
-    /// Zona visible: la intersección de los contenedores `scroll` que lo recortan.
+    /// Zona visible: la intersección de los contenedores `scroll` que lo recortan
+    /// y de los ancestros con `overflow="hidden"`.
     pub clip: Rect,
+    /// Recorte que imponen los ancestros con `overflow="hidden"` (antes de
+    /// combinar con el de su capa de `scroll`).
+    object_clip: Rect,
     /// Rectángulo y tinta del subárbol en coordenadas locales de su capa.
     local: Rect,
     ink: Rect,
@@ -323,8 +327,13 @@ struct Motion {
     /// Propiedades con `transition`: colores (`a, r, g, b`) y escalares.
     bg: Option<Track>,
     border: Option<Track>,
+    /// Color del texto: el párrafo lleva el color dentro y se rehace cada frame
+    /// mientras dura la transición (ver `recolor_texts`).
+    text: Option<Track>,
     opacity: Option<Track>,
     radius: Option<Track>,
+    /// Vaivén perpetuo de la opacidad (`pulse`): nunca termina.
+    pulse: Option<Track>,
     /// Caja que se muestra (`l, t, r, b`, en coordenadas locales de su capa)
     /// mientras se desliza hacia la que le dio el layout (`animate_layout`).
     layout: Option<Track>,
@@ -344,8 +353,10 @@ impl Motion {
     fn restyled(&self) -> bool {
         self.bg.is_some()
             || self.border.is_some()
+            || self.text.is_some()
             || self.opacity.is_some()
             || self.radius.is_some()
+            || self.pulse.is_some()
     }
 
     /// Se pinta fuera de su caja o transformado: desplazado por el layout o
@@ -730,6 +741,7 @@ impl Engine {
         let changes = [
             color_pair(a.bg, b.bg),
             color_pair(a.border_color, b.border_color),
+            color_pair(Some(old.text_props.color), Some(new.text_props.color)),
             (scalar(a.opacity), scalar(b.opacity)),
             (scalar(a.radius), scalar(b.radius)),
         ];
@@ -738,7 +750,13 @@ impl Engine {
             return;
         }
         let m = self.motion.entry(new.key.clone()).or_default();
-        let slots = [&mut m.bg, &mut m.border, &mut m.opacity, &mut m.radius];
+        let slots = [
+            &mut m.bg,
+            &mut m.border,
+            &mut m.text,
+            &mut m.opacity,
+            &mut m.radius,
+        ];
         for (slot, change) in slots.into_iter().zip(changes) {
             match (slot.as_mut(), change) {
                 (Some(track), (_, Some(to))) => track.retarget(to, timing),
@@ -832,7 +850,10 @@ impl Engine {
         let mut nodes: HashMap<&str, &Node> = HashMap::new();
         let mut stack = vec![root];
         while let Some(n) = stack.pop() {
-            if n.style.animate_layout.is_some() || n.style.enter.is_some() {
+            if n.style.animate_layout.is_some()
+                || n.style.enter.is_some()
+                || n.style.pulse.is_some()
+            {
                 nodes.insert(n.key.as_str(), n);
             }
             stack.extend(&n.children);
@@ -889,6 +910,20 @@ impl Engine {
                     }
                 }
                 None => {}
+            }
+        }
+        // Los nodos con `pulse` laten desde el primer frame; su valor inicial
+        // (t = 0) es opacidad plena, así que las capturas siguen siendo fijas.
+        for r in &self.regions {
+            let Some(node) = nodes.get(r.key.as_str()) else {
+                continue;
+            };
+            let Some(timing @ Timing::Pulse { floor, .. }) = node.style.pulse else {
+                continue;
+            };
+            let m = self.motion.entry(r.key.clone()).or_default();
+            if m.pulse.is_none() {
+                m.pulse = Some(Track::new(IDENTITY, [floor, 0.0, 0.0, 1.0], timing));
             }
         }
         self.motion
@@ -1036,6 +1071,53 @@ impl Engine {
         ctx.paragraph = paragraph;
         ctx.key = key;
         true
+    }
+
+    /// Rehace los párrafos cuyo color está en transición: Skia guarda el color
+    /// dentro del párrafo, así que cada frame se reescribe con el valor actual
+    /// de la pista (mismo ancho medido). Solo corre mientras dura la transición.
+    fn recolor_texts(&self, root: &Node, cache: &mut LayoutCache) {
+        let moving: Vec<(&str, Vec4)> = self
+            .motion
+            .iter()
+            .filter_map(|(key, m)| Some((key.as_str(), m.text.as_ref()?.value())))
+            .collect();
+        if moving.is_empty() {
+            return;
+        }
+        let Some(lroot) = cache.root.as_ref() else {
+            return;
+        };
+        for (key, value) in moving {
+            let Some(node) = root.find(key) else {
+                continue;
+            };
+            if node.kind != Kind::Text {
+                continue;
+            }
+            let Some(lnode) = find_layout(lroot, key) else {
+                continue;
+            };
+            let Some(Leaf::Text(ctx)) = cache.tree.get_node_context_mut(lnode.id) else {
+                continue;
+            };
+            let text = node.text.as_deref().unwrap_or("");
+            let props = TextProps {
+                color: vec_color(value),
+                ..node.text_props.clone()
+            };
+            let pk = ParagraphKey::new(text, &props, &node.style);
+            if ctx.key == pk {
+                continue;
+            }
+            let Some(width) = ctx.laid_out else {
+                continue;
+            };
+            let mut paragraph = self.paragraph(text, &props, &node.style);
+            paragraph.layout(width);
+            ctx.paragraph = paragraph;
+            ctx.key = pk;
+        }
     }
 
     /// Deja el párrafo de una hoja que cambia en la reserva, para que otro nodo
@@ -1446,7 +1528,14 @@ impl Engine {
         let mut animating = false;
         for (key, m) in &mut self.motion {
             let mut repaint = false;
-            for slot in [&mut m.bg, &mut m.border, &mut m.opacity, &mut m.radius] {
+            for slot in [
+                &mut m.bg,
+                &mut m.border,
+                &mut m.text,
+                &mut m.opacity,
+                &mut m.radius,
+                &mut m.pulse,
+            ] {
                 if let Some(track) = slot {
                     repaint |= track.step(dt);
                     if track.done() {
@@ -1535,6 +1624,9 @@ impl Engine {
             self.scale = scale;
             self.full = true;
         }
+        // Textos con el color en transición: el párrafo se rehace con el valor
+        // que toca pintar (Skia guarda el color dentro del párrafo).
+        self.recolor_texts(root, &mut cache);
         self.layout_cache = Some(cache);
         self.layout_cached = reuse;
         // Tras un layout las regiones son nuevas: hay que colocarlas aunque no
@@ -1765,14 +1857,15 @@ impl Engine {
             layers: vec![Layer::new(String::new(), None, None, false, no_clip())],
             overlays: Vec::new(),
         };
-        g.collect(root, lroot, Point::default(), None, 0);
+        g.collect(root, lroot, Point::default(), None, 0, no_clip());
         let mut i = 0;
         while let Some(&(node, lnode, origin, parent, layer)) = g.overlays.get(i) {
             let own = g.layers.len();
             let owner = format!("overlay:{}", node.key);
             g.layers
                 .push(Layer::new(owner, Some(layer), None, true, lnode.ink));
-            g.collect_node(node, lnode, origin, parent, own);
+            // Las capas superiores se pintan por encima, sin recortes heredados.
+            g.collect_node(node, lnode, origin, parent, own, no_clip());
             i += 1;
         }
         let alive: HashSet<&str> = g
@@ -1914,7 +2007,7 @@ impl Engine {
             for r in &mut self.regions {
                 let layer = &self.layers[r.layer];
                 r.rect = r.local.with_offset(-layer.offset);
-                r.clip = layer.clip;
+                r.clip = intersect(layer.clip, r.object_clip);
             }
         }
         damage
@@ -2231,6 +2324,7 @@ fn same_geometry(a: &Node, b: &Node) -> bool {
         && sa.focusable == sb.focusable
         && sa.tooltip.is_some() == sb.tooltip.is_some()
         && sa.scroll == sb.scroll
+        && sa.clip == sb.clip
         && sa.shadow == sb.shadow
         && sa.press_scale == sb.press_scale
 }
@@ -2330,6 +2424,9 @@ fn animated_style(style: &Style, m: &Motion) -> Style {
     }
     if let Some(t) = &m.opacity {
         s.opacity = t.value()[0].clamp(0.0, 1.0);
+    }
+    if let Some(t) = &m.pulse {
+        s.opacity = (s.opacity * t.value()[0]).clamp(0.0, 1.0);
     }
     if let Some(t) = &m.radius {
         s.radius = t.value()[0].max(0.0);
@@ -2512,12 +2609,13 @@ impl<'a> Geometry<'a> {
         origin: Point,
         parent: Option<usize>,
         layer: usize,
+        clip: Rect,
     ) {
         if node.style.overlay {
             self.overlays.push((node, lnode, origin, parent, layer));
             return;
         }
-        self.collect_node(node, lnode, origin, parent, layer);
+        self.collect_node(node, lnode, origin, parent, layer, clip);
     }
 
     fn collect_node(
@@ -2527,6 +2625,7 @@ impl<'a> Geometry<'a> {
         origin: Point,
         parent: Option<usize>,
         layer: usize,
+        clip: Rect,
     ) {
         let layout = self.tree.layout(lnode.id).expect("layout");
         let rect = Rect::from_xywh(
@@ -2539,7 +2638,8 @@ impl<'a> Geometry<'a> {
         self.regions.push(HitRegion {
             key: node.key.clone(),
             rect,
-            clip: no_clip(),
+            clip,
+            object_clip: clip,
             local: rect,
             ink: lnode.ink,
             own: lnode.own,
@@ -2573,9 +2673,23 @@ impl<'a> Geometry<'a> {
                 viewport,
             ));
         }
+        // `overflow="hidden"`: los hijos viven recortados a la caja del nodo.
+        let child_clip = if node.style.clip {
+            let bw = node.style.border_width;
+            intersect(clip, rect.with_inset((bw, bw)))
+        } else {
+            clip
+        };
         let child_origin = Point::new(rect.left, rect.top);
         for (child, lchild) in node.children.iter().zip(&lnode.children) {
-            self.collect(child, lchild, child_origin, Some(index), child_layer);
+            self.collect(
+                child,
+                lchild,
+                child_origin,
+                Some(index),
+                child_layer,
+                child_clip,
+            );
         }
     }
 }
@@ -2809,6 +2923,15 @@ impl<'a> Painter<'a> {
         }
         if node.is_editable() {
             self.paint_input(node, lnode, rect);
+        }
+
+        // `overflow="hidden"`: se recorta el subárbol a la caja que se muestra
+        // (deco sigue la animación de layout, así un despliegue se revela solo).
+        if s.clip {
+            let bw = s.border_width;
+            let viewport = deco.with_inset((bw, bw));
+            let r = (s.radius - bw).max(0.0);
+            canvas.clip_rrect(RRect::new_rect_xy(viewport, r, r), ClipOp::Intersect, true);
         }
 
         let mut child_origin = Point::new(rect.left, rect.top);
@@ -3217,9 +3340,10 @@ fn taffy_style(s: &Style) -> taffy::Style {
         Some(Len::Pct(p)) => Dimension::percent(p),
         None => Dimension::auto(),
     };
-    let inset = |v: Option<f32>| {
-        v.map(LengthPercentageAuto::length)
-            .unwrap_or(LengthPercentageAuto::auto())
+    let inset = |v: Option<Len>| match v {
+        Some(Len::Px(px)) => LengthPercentageAuto::length(px),
+        Some(Len::Pct(p)) => LengthPercentageAuto::percent(p),
+        None => LengthPercentageAuto::auto(),
     };
     let lpa = |v: Option<f32>| {
         v.map(LengthPercentageAuto::length)

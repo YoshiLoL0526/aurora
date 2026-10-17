@@ -347,6 +347,30 @@ def test_cursor_style_applies_to_children_and_during_drag():
     assert pilot.cursor == "default"
 
 
+def test_overflow_hidden_clips_clicks_and_toggles():
+    hits = []
+    clipped = Signal(True)
+
+    def view():
+        return column()[
+            box(width=100, height=20, overflow="hidden" if clipped() else "visible")[
+                # Sin encogerse: desborda y el recorte es lo que lo oculta.
+                box(width=100, height=60, shrink=0, bg="#222222", on_click=lambda: hits.append(1))
+            ],
+            box(key="below", width=100, height=20, on_click=lambda: hits.append(2)),
+        ]
+
+    pilot = App(view, size=(120, 80)).pilot()
+    pilot.click_at(50, 30)  # sobre el recorte: gana el hermano pintado después
+    assert hits == [2]
+    pilot.click_at(50, 50)  # solo lo cubre el contenido desbordado
+    assert hits == [2]
+    clipped.set(False)
+    pilot.settle()
+    pilot.click_at(50, 50)
+    assert hits == [2, 1]  # sin recorte sí lo recibe
+
+
 def test_invalid_cursor_raises(tmp_path):
     with pytest.raises(ValueError, match="cursor"):
         App(lambda: box(cursor="mano"), size=(10, 10)).render_png(str(tmp_path / "x.png"))

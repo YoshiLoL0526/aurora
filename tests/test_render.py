@@ -83,6 +83,28 @@ def test_percentage_width(tmp_path):
     assert _png_pixel(out, 55, 5) == (0, 0, 0)
 
 
+def test_percent_inset_positions_absolute_children():
+    view = lambda: box(width=200, height=50, padding=(0, 40, 0, 10))[
+        box(key="pct", position="absolute", left="50%", top=10, width=10, height=10)
+    ]
+    pilot = App(view, size=(220, 60)).pilot()
+    # El porcentaje se resuelve contra la caja de relleno del padre (200): 10 + 100.
+    assert pilot.rect("pct") == (110, 10, 10, 10)
+
+
+def test_overflow_hidden_clips_painting(tmp_path):
+    out = tmp_path / "clip.png"
+    tree = box(bg="#000000")[
+        # El hijo no se encoge: desborda y el recorte es lo que lo oculta.
+        box(width=40, height=20, overflow="hidden", bg="#111111")[
+            box(width=40, height=60, shrink=0, bg="#00FF00")
+        ]
+    ]
+    _core.render_png(tree.to_spec(MIDNIGHT), 60, 40, str(out), 1.0)
+    assert _png_pixel(out, 20, 10) == (0, 255, 0)
+    assert _png_pixel(out, 20, 30) == (0, 0, 0)
+
+
 def test_full_app_renders(tmp_path):
     out = tmp_path / "app.png"
 

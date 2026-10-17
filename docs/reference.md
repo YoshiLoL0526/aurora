@@ -23,7 +23,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 ## App
 
 ```python
-App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, reload=None)
+App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, reload=None, motion=None)
 ```
 
 | Parámetro | Tipo | Descripción |
@@ -34,6 +34,7 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 | `theme` | `Theme \| Callable[[], Theme]` | Tema fijo, o un `Signal[Theme]` para cambiarlo en caliente. |
 | `inspector` | `bool \| None` | Permite abrir con F12 el [inspector y profiler de frames](#inspector-y-profiler-de-frames). Con `None` (por defecto) lo decide la variable de entorno `AURORA_INSPECTOR` (`1`, `true`, `yes` u `on` lo activan). |
 | `reload` | `bool \| None` | Activa el [hot reload](#hot-reload) en `run()`. Con `None` (por defecto) lo decide la variable de entorno `AURORA_RELOAD`, como `inspector`. |
+| `motion` | `bool \| None` | Con `False`, los componentes no animan por defecto ([switchs, casillas, pestañas y menús](#animaciones)): sus cambios son inmediatos. Con `None` (por defecto) lo decide `AURORA_MOTION` (`0`, `false`, `no` u `off` lo desactivan). |
 
 | Método | Descripción |
 |---|---|
@@ -603,6 +604,56 @@ row(gap=16)[
 ]
 ```
 
+### `progress(value, *, max=1.0, color="$primary", **estilo)`
+
+Barra de progreso: `value` va de 0 a `max` (por defecto, una fracción de 0 a 1) y se recorta a ese
+rango. Al cambiar el valor, la barra crece hasta su nuevo sitio (con `App(motion=False)`, de
+golpe). `color` admite un color del tema o un gradiente `(desde, hasta, ángulo)`; los `estilo` van
+al carril (`height`, `width`…).
+
+```python live
+from aurora import column, progress  # oculto
+
+column(gap=10, width=260)[
+    progress(0.35),
+    progress(0.7, color=("$primary", "$accent", 0)),
+    progress(3, max=10, height=6, color="$success"),
+]
+```
+
+### `spinner(*, size=8, gap=5, tone="$primary", key=None, **estilo)`
+
+Indicador de carga: tres puntos que laten en cadena (`pulse`: un vaivén perpetuo de opacidad).
+Mientras está visible el movimiento no se detiene — es lo que necesita un indicador — así que
+retíralo cuando la carga termine. Con `App(motion=False)` queda fijo, a opacidad plena.
+
+```python live
+from aurora import App, box, spinner  # oculto
+
+# El spinner no reposa nunca: para la captura, la app va con el movimiento apagado.
+App(
+    lambda: box(width=160, height=64, align="center", justify="center")[spinner()],
+    size=(200, 100),
+    motion=False,
+).run()
+```
+
+### `skeleton(*, lines=1, width="100%", height=14, gap=8, **estilo)`
+
+Marcador de carga: bloques con la forma del contenido que está por llegar. Con varias `lines`, la
+última queda más corta, como el final de un párrafo. Late despacio (`pulse`) mientras está
+visible. Los `estilo` van a cada bloque (`bg`, `radius`…).
+
+```python live
+from aurora import App, column, skeleton  # oculto
+
+App(
+    lambda: column(width=280, gap=14)[skeleton(lines=2, height=12), skeleton(height=12, width=100)],
+    size=(280, 140),
+    motion=False,
+).run()
+```
+
 ### `divider(*, vertical=False, color="$border", **estilo)`
 
 Línea de 1 px. Horizontal por defecto (ocupa el ancho de su columna); con `vertical=True`, para
@@ -643,6 +694,19 @@ column(gap=12)[
 ]
 ```
 
+### `radio(options, selected, *, key=None, **estilo)`
+
+Grupo de botones de opción: uno activo a la vez. `options` son valores (o pares `(valor, etiqueta)`)
+y `selected`, el `Signal` con el valor activo. Cada fila (círculo y etiqueta) se activa con clic,
+Enter o Espacio y tiene la key `f"{key}-{valor}"`. El punto interior entra encogiéndose.
+
+```python live
+from aurora import Signal, radio  # oculto
+
+plan = Signal("pro")
+radio([("free", "Gratis"), ("pro", "Pro"), ("team", "Equipo")], plan, key="plan")
+```
+
 ### `tabs(options, selected, *, key=None, **estilo)`
 
 Pestañas con indicador bajo la activa. `options` es una lista de valores o de pares
@@ -654,6 +718,63 @@ from aurora import Signal, tabs  # oculto
 
 page = Signal("resumen")
 tabs([("resumen", "Resumen"), ("tablero", "Tablero"), ("equipo", "Equipo")], page, key="nav")
+```
+
+### `segmented(options, selected, *, width=220, key=None, **estilo)`
+
+Selector segmentado: el pulgar se desliza hasta la opción activa. `options` son valores (o pares
+`(valor, etiqueta)`) y `selected`, el `Signal` con el valor activo. Las ranuras miden todas lo
+mismo, de ahí el `width` en píxeles (es lo que permite anclar el pulgar por fracción y que se
+deslice). Cada opción tiene la key `f"{key}-{valor}"` y el pulgar la suya, `f"{key}-thumb"`. Los
+`estilo` van al contenedor (`bg`…).
+
+```python live
+from aurora import Signal, segmented  # oculto
+
+scope = Signal("Semana")
+segmented(["Día", "Semana", "Mes"], scope, key="scope", width=280)
+```
+
+### `slider(value, *, min=0.0, max=1.0, width=180, on_change=None, key=None, **estilo)`
+
+Deslizador: arrastra el pulgar para cambiar `value` (un `Signal[float]`), recortado al rango
+`min`…`max`. `width` fija el ancho en píxeles (el arrastre se calcula con él: no lo pongas en `%`).
+`on_change(valor)` se llama en cada paso del arrastre. El relleno y el pulgar siguen el valor con
+la animación común; con `App(motion=False)`, al instante.
+
+```python live
+from aurora import Signal, slider  # oculto
+
+volume = Signal(0.6)
+slider(volume, key="volume", width=240)
+```
+
+### `pages(current, views, *, key="pages", **estilo)`
+
+Una vista por valor de `current` (un `Signal`), con transición al cambiar: la página nueva entra
+fundiéndose y la anterior se va. `views` asocia cada valor con una función que devuelve su
+contenido; un valor sin vista lanza `ValueError`. Es el compañero natural de `tabs`: comparten el
+`Signal`, cambiar de pestaña cambia de página.
+
+Cada página es su propio `scroll` (su key es `f"{key}-{valor}"`) que ocupa el espacio libre, así
+que no hace falta darle `height`; los `estilo` van a él (`padding`, `gap`…). Al volver a una
+página empieza arriba.
+
+```python live
+from aurora import Signal, column, pages, text  # oculto
+
+current = Signal("uno")  # oculto
+
+pages(
+    current,
+    {
+        "uno": lambda: column(gap=6)[text("Página uno"), text("Su contenido", color="$muted")],
+        "dos": lambda: column(gap=6)[text("Página dos"), text("Otro contenido", color="$muted")],
+    },
+    key="demo",
+    padding=8,
+    height=90,
+)
 ```
 
 ### `select(value, options, *, placeholder="Elegir…", key=None, **estilo)`
@@ -791,6 +912,116 @@ image("info.svg", width=16, tooltip="Se actualiza cada hora")
 La burbuja usa los colores heredables `tooltip_bg` y `tooltip_color`, que por defecto invierten el
 tema (`$text` sobre `$background`), así destaca en claro y en oscuro.
 
+### `dialog(open, content, *, title=None, on_close=None, width=420, key=None, **estilo)`
+
+Diálogo modal: fondo oscurecido y tarjeta centrada con `content`. Con un `Signal[bool]` en `open`
+se cierra solo — el clic fuera y Esc lo ponen a `False` —; `on_close` se llama en cada cierre, útil
+si `open` es un booleano fijo o quieres cerrar un modal de varios estados
+(`on_close=lambda: modal.set(None)`). `title` añade un encabezado; los `estilo` van a la tarjeta
+(`padding`, `shadow`…).
+
+La tarjeta toma el foco al abrirse y lo atrapa (Tab no sale de ella), salvo que el contenido traiga
+un `autofocus`, que gana. Entra con un zoom suave y sale fundiéndose. Devuelve `None` mientras está
+cerrado: colócalo como **último hijo de la raíz** (o con `layer="overlay"`).
+
+```python live
+from aurora import Signal, box, button, column, dialog, row, text  # oculto
+
+open_ = Signal(True)  # oculto
+
+box(width=380, height=260, bg="$background")[
+    dialog(
+        open_,
+        column(gap=14)[
+            text("¿Eliminar la tarea «Refactor»?"),
+            row(gap=8, justify="end")[
+                button("Cancelar", lambda: None, variant="soft"),
+                button("Eliminar", lambda: None),
+            ],
+        ],
+        title="Confirmación",
+        width=300,
+    )
+]
+```
+
+### `toast(message, *, on_close=None, tone="$accent", key=None, **estilo)`
+
+Aviso flotante abajo a la derecha. `message` puede ser un `Signal[str | None]`: se muestra si no es
+`None` y un clic lo descarta (el Signal pasa a `None`). `on_close` se llama en cada cierre; `tone`
+es el color del punto de acento y los `estilo` van al aviso (`right`, `bottom`, `max_width`…). Entra
+deslizándose desde abajo y sale fundiéndose. Devuelve `None` mientras no hay mensaje: colócalo como
+**último hijo de la raíz**. Para que se vaya solo, programa el Signal con la app
+(`app.spawn(asyncio.sleep(3))` y ponerlo a `None` al terminar).
+
+```python live
+from aurora import box, column, text, toast  # oculto
+
+box(width=380, height=200, bg="$background", padding=18)[
+    column(gap=6)[text("Ajustes guardados", weight=600), text("Hace un momento", color="$muted", size=12)],
+    toast("Cambios guardados", tone="$success"),
+]
+```
+
+### `menu(trigger, items, *, key, drop=44, **estilo)`
+
+Menú de acciones: `trigger` es el elemento que se pulsa (normalmente un botón o un "⋯") y `items`
+la lista de opciones, `(etiqueta, on_click)` o `(etiqueta, on_click, estilo)` — el estilo extra va
+al texto, para una acción peligrosa: `{"color": "$danger"}`. La lista se pinta por encima
+(`layer="overlay"`), entra deslizándose y se cierra al elegir, al hacer clic fuera o con Esc.
+`drop` es la distancia del panel al borde superior del disparador y `key` (obligatoria, como en
+`virtual_list`) guarda el estado de abierto: las opciones tienen la key
+`f"{key}-item-{índice}"`.
+
+```python
+menu(
+    button("Acciones", variant="soft"),
+    [
+        ("Editar", edit),
+        ("Duplicar", duplicate),
+        ("Eliminar", remove, {"color": "$danger"}),
+    ],
+    key="acciones",
+)
+```
+
+### `accordion(sections, open, *, key=None, **estilo)`
+
+Acordeón: cada sección se despliega al pulsar su cabecera. `sections` son triples
+`(valor, título, contenido)` y `open`, el `Signal` con la sección desplegada (`None` con todas
+plegadas; pulsar la cabecera abierta la pliega). El contenido se despliega con la altura animada y
+`overflow="hidden"`, **se queda montado** al plegarse (conserva su estado y no recibe clics
+mientras está oculto). Cada sección tiene la key `f"{key}-{valor}"`.
+
+```python live
+from aurora import Signal, accordion, text  # oculto
+
+section = Signal("uno")  # oculto
+
+accordion(
+    [
+        ("uno", "Cómo funciona", text("El contenido se recorta y se despliega animado.")),
+        ("dos", "Atajos", text("Pulsa cualquier cabecera para abrir o cerrar su sección.")),
+    ],
+    section,
+    key="demo",
+    width=380,
+)
+```
+
+### `field(control, *, label=None, hint=None, error=None, key=None, **estilo)`
+
+Campo de formulario: etiqueta encima, el control y, debajo, un mensaje de ayuda o de error. `error`
+sustituye a `hint` en color de peligro (`$danger`): pásalo con el texto del problema y quítalo
+cuando el valor sea válido. Los `estilo` van a la columna (`gap`, `width`, `grow`…).
+
+```python live
+from aurora import Signal, field, text_input  # oculto
+
+email = Signal("")
+field(text_input(email, placeholder="tu@correo.com", width=240), label="Correo", hint="No lo compartimos")
+```
+
 ### `text_input(value, *, placeholder="", on_change=None, on_submit=None, key=None, **estilo)`
 
 Campo de texto de una línea. `value` es normalmente un `Signal[str]`, y entonces queda **enlazado
@@ -833,7 +1064,7 @@ principio y al final de la línea. Para limitar su altura, ponlo dentro de un
 ## Animaciones
 
 Las animaciones se **declaran** en el elemento y las interpola el núcleo en cada frame, sin volver a
-llamar a Python ni competir por el GIL. Cuatro propiedades de estilo las activan:
+llamar a Python ni competir por el GIL. Cinco propiedades de estilo las activan:
 
 ```python
 from aurora import animate
@@ -841,23 +1072,45 @@ from aurora import animate
 row(
     key=f"tarea-{t.id}",  # identidad estable: imprescindible para animar
     bg="$surface_pressed" if t.done else "$surface",
-    transition=animate.spring(),  # cambios de bg, border_color, opacity y radius
+    transition=animate.spring(),  # funde bg, border_color, color, opacity y radius
     animate_layout=True,  # se desliza cuando el layout lo mueve
     enter=animate.slide(y=12),  # aparece subiendo y haciéndose visible
     exit=animate.zoom(0.95),  # se va encogiendo y desvaneciéndose
 )
+box(pulse=animate.pulse())  # late sin parar (indicadores de carga)
 ```
 
 | Propiedad | Valores | Descripción |
 |---|---|---|
-| `transition` | `animate.spring(...)`, `animate.tween(...)` | Al reconstruir la vista, los cambios de `bg`, `border_color`, `opacity` y `radius` se animan desde lo que se ve hacia el valor nuevo. Un color que aparece o desaparece se funde desde/hacia transparente. Es también la curva por defecto de las otras tres. |
+| `transition` | `animate.spring(...)`, `animate.tween(...)` | Al reconstruir la vista, los cambios de `bg`, `border_color`, `color` (el del texto del propio nodo), `opacity` y `radius` se animan desde lo que se ve hacia el valor nuevo. Un color que aparece o desaparece se funde desde/hacia transparente. Es también la curva por defecto de las otras tres. El color heredado de un contenedor no se anima a través de los hijos: para eso, pon `transition` en el propio texto. |
 | `animate_layout` | `True` o una curva | Cuando un layout cambia la caja del elemento (otro elemento aparece, se va, cambia de tamaño o se reordena), se desliza desde la caja que mostraba; su fondo, borde y sombra cambian de tamaño con ella y sus hijos se desplazan con él. Con `True` usa la curva de `transition` (o un muelle). Al redimensionar la ventana el layout salta, sin animarse. |
 | `enter` | efecto | Valores desde los que **aparece** cuando entra en la vista. No se reproduce en el primer frame de la app (ni en `render_png`). |
 | `exit` | efecto | Valores hacia los que **se va** cuando sale de la vista. Mientras dura se pinta una instantánea del elemento tal como estaba, encima de su capa: ya no ocupa sitio en el layout (los demás pueden deslizarse a su hueco con `animate_layout`) ni recibe eventos. Si vuelve a la vista antes de terminar, entra desde donde estaba. |
+| `pulse` | `animate.pulse(...)` | Vaivén perpetuo de la opacidad (1 → `floor` → 1), para indicadores de carga. Nunca termina: mientras está visible, la app sigue pintando frames. |
 
 Todo se anima **por `key`**: un elemento sin `key` explícita toma la identidad de su posición, así
 que en listas que cambian dale siempre una. Mientras una animación de layout o un efecto
 transforma un elemento, los clics usan su caja final (la de `pilot.rect`).
+
+### Movimiento por defecto en los componentes
+
+No hace falta declarar nada para que los componentes se sientan vivos: `switch`, `checkbox`,
+`tabs`, `select`, `radio`, `segmented` y `slider` ya traen sus animaciones con una **escala común**
+de duraciones cortas (el knob de un switch se desliza, la marca de una casilla entra encogiéndose,
+el subrayado de las pestañas funde, el menú de un `select` aparece deslizándose, el pulgar de un
+`segmented` se desliza hasta la opción activa y las barras de `progress` crecen hasta su valor).
+
+`spinner` y `skeleton`, en cambio, laten con un **vaivén perpetuo** (`pulse`): mientras están
+visibles la app sigue pintando frames y `pilot.settle()` agota sus frames sin llegar al reposo.
+
+Si prefieres que nada se mueva —tests de snapshot, equipos que lo piden—, apágalo entero:
+
+```python
+App(view, motion=False)  # o AURORA_MOTION=0 en el entorno
+```
+
+Los efectos de entrada no se reproducen en el primer frame ni en `render_png` (y el vaivén nace a
+opacidad plena): las capturas y la documentación siguen siendo deterministas.
 
 ### Curvas de tiempo
 
@@ -868,6 +1121,17 @@ transforma un elemento, los clics usan su caja final (la de `pilot.rect`).
 
 `delay` (segundos) retrasa el comienzo; con él se escalonan las entradas de una lista
 (`enter=animate.slide(y=8, transition=animate.spring(delay=i * 0.03))`).
+
+### Vaivén perpetuo
+
+`animate.pulse(duration=1.0, *, delay=0, floor=0.35)` baja la opacidad de 1 a `floor` y la sube
+otra vez, sin terminar nunca. Se pasa en la propiedad **`pulse`** de un elemento (no en
+`transition`) y es para indicadores de carga: `delay` escalona varios elementos y `floor` marca la
+opacidad mínima.
+
+```python
+box(width=8, height=8, radius="$full", bg="$primary", pulse=animate.pulse(delay=0.15))
+```
 
 ### Efectos de entrada y salida
 
@@ -909,7 +1173,8 @@ contenedores (como en CSS).
 | `shrink` | número | `1` | Cuánto se encoge si falta espacio. |
 | `wrap` | `bool` | `False` | Permite saltar de línea a los hijos (rejillas de tarjetas). |
 | `position` | `"absolute"` | relativo | Saca al elemento del flujo; se coloca con `top/right/bottom/left` respecto a su padre. Útil para modales, toasts y superposiciones. |
-| `top`, `right`, `bottom`, `left` | número | — | Desplazamientos para `position="absolute"`. |
+| `top`, `right`, `bottom`, `left` | número · `"50%"` | — | Desplazamientos para `position="absolute"`. Los porcentajes se resuelven contra la caja de relleno del padre (como la posición absoluta de CSS). |
+| `overflow` | `"visible"`, `"hidden"` | `"visible"` | Con `"hidden"` el contenido que se sale de la caja se recorta (pintado **y** clics) sin tocar el layout. Los hijos se encogen para caber salvo que les des `shrink=0`: con él desbordan y es el recorte quien los oculta (así despliega el `accordion`). |
 | `src` | ruta o `bytes` | — | Origen de una imagen. Usa la primitiva `image()`. |
 | `fit` | `"contain"`, `"cover"`, `"fill"`, `"none"` | `"contain"` | Encaje de una imagen en su caja. |
 | `scroll` | `"x"`, `"y"`, `"both"` | — | Convierte la caja en contenedor desplazable. Usa la primitiva `scroll()`, que añade buenos valores por defecto. |
@@ -931,7 +1196,7 @@ contenedores (como en CSS).
 | `shadow` | `(dx, dy, blur, color)` | Sombra difuminada desplazada. |
 | `opacity` | `0.0` – `1.0` | Opacidad del elemento y todos sus hijos. |
 | `press_scale` | número | Escala al pulsar (p. ej. `0.96`). Animada. |
-| `transition`, `animate_layout`, `enter`, `exit` | curvas y efectos de `animate` | Animaciones declarativas. Ver [Animaciones](#animaciones). |
+| `transition`, `animate_layout`, `enter`, `exit`, `pulse` | curvas y efectos de `animate` | Animaciones declarativas: `transition` funde los cambios de `bg`, `border_color`, `color`, `opacity` y `radius`; `pulse` (un `animate.pulse()`) hace latir la opacidad sin parar. Ver [Animaciones](#animaciones). |
 | `scrollbar_color` | color | Color del pulgar de la barra de un `scroll` (se pinta translúcido). `scroll()` usa `$muted`. |
 | `placeholder_color` | color | Color del placeholder de un campo de texto. Por defecto, el color del texto al 45 %. |
 | `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |

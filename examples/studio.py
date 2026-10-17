@@ -8,7 +8,8 @@ Una app de gestión de proyectos con:
   • formulario de nueva tarea en un modal: text_input con autofocus, select y Enter para crear
   • ajustes con tabs, switch, checkbox, select y textarea enlazados a Signals
   • scroll por página, tooltips, teclado (Tab, Esc, Ctrl/Cmd+N) y tema claro/oscuro reactivo
-  • hover/pressed animados en Rust en todos los elementos clicables
+  • hover/pressed animados en Rust en todos los elementos clicables, y transiciones
+    declaradas: el switch desliza, las tarjetas se mueven, las páginas se funden
 
     uv run examples/studio.py               # ventana
     uv run examples/studio.py --png out/    # renderiza varias pantallas a PNG
@@ -29,15 +30,22 @@ from aurora import (
     Element,
     KeyEvent,
     Signal,
+    accordion,
+    animate,
     badge,
     box,
     button,
     card,
     checkbox,
     column,
+    dialog,
     divider,
+    field,
+    menu,
+    pages,
+    progress,
     row,
-    scroll,
+    segmented,
     select,
     spacer,
     stat,
@@ -46,7 +54,14 @@ from aurora import (
     text,
     text_input,
     textarea,
+    toast,
 )
+
+# Curvas de la demo: cortas y discretas. Los componentes ya traen las suyas.
+FADE = animate.tween(0.15, easing="ease_out")
+ENTER = animate.tween(0.18, easing="ease_out")
+EXIT = animate.tween(0.12, easing="ease_in")
+SLIDE = animate.tween(0.25, easing="ease_out")
 
 # ════════════════════════════════════════════════════════════════════ modelo
 
@@ -129,7 +144,7 @@ page = Signal("resumen")
 active_tags: Signal[frozenset[str]] = Signal(frozenset())
 theme = Signal(MIDNIGHT)
 modal: Signal[tuple | None] = Signal(None)  # ("delete", id) | ("about",)
-toast: Signal[str | None] = Signal(None)
+notice: Signal[str | None] = Signal(None)
 following: Signal[frozenset[str]] = Signal(frozenset({"Ana Souza"}))
 week = Signal("Esta semana")
 selected_day: Signal[int | None] = Signal(3)
@@ -149,12 +164,13 @@ signature = Signal("")
 weekly_digest = Signal(True)
 notify_assigned = Signal(True)
 notify_mentions = Signal(False)
+open_section: Signal[str | None] = Signal(None)
 
 # ══════════════════════════════════════════════════════════════════ acciones
 
 
 def notify(msg: str) -> None:
-    toast.set(msg)
+    notice.set(msg)
 
 
 def move(task_id: int, delta: int) -> None:
@@ -210,6 +226,12 @@ def toggle_theme() -> None:
     theme.set(DAYLIGHT if theme() is MIDNIGHT else MIDNIGHT)
 
 
+def reset_demo() -> None:
+    tasks.set(SEED)
+    open_section.set(None)
+    notify("Tablero restablecido")
+
+
 # ═══════════════════════════════════════════════════════════ piezas pequeñas
 
 
@@ -240,38 +262,10 @@ def dot(color: str, size: int = 8) -> Element:
     return box(width=size, height=size, radius="$full", bg=color)
 
 
-def progress(pct: float, color: str, height: int = 8) -> Element:
-    return box(height=height, radius="$full", bg="$surface_hover")[
-        box(
-            width=f"{max(2.0, min(100.0, pct)):.1f}%",
-            height="100%",
-            radius="$full",
-            gradient=(color, color + "AA", 0),
-        ),
-    ]
-
-
 def section_title(title: str, subtitle: str | None = None) -> Element:
     return column(gap=2)[
         text(title, size=15, weight=650),
         subtitle and text(subtitle, size=12, color="$muted"),
-    ]
-
-
-def segmented(options: list[str], current: Signal[str]) -> Element:
-    return row(padding=3, gap=2, radius="$md", bg="$surface_hover")[
-        (
-            box(
-                key=f"seg-{opt}",
-                padding=(6, 12),
-                radius=9,
-                bg="$surface" if current() == opt else "#00000000",
-                bg_hover="$surface" if current() == opt else "$surface_pressed",
-                shadow=(0, 1, 4, "$shadow") if current() == opt else None,
-                on_click=lambda o=opt: current.set(o),
-            )[text(opt, size=12, weight=600, color="$text" if current() == opt else "$muted")]
-            for opt in options
-        )
     ]
 
 
@@ -296,10 +290,17 @@ def nav_item(name: str, icon: str, label: str) -> Element:
         align="center",
         bg="$surface_pressed" if active else "#00000000",
         bg_hover="$surface_pressed" if active else "$surface_hover",
+        transition=FADE,
         on_click=lambda: page.set(name),
     )[
-        text(icon, size=13, color="$primary" if active else "$muted"),
-        text(label, size=14, weight=600 if active else 500, color="$text" if active else "$muted"),
+        text(icon, size=13, color="$primary" if active else "$muted", transition=FADE),
+        text(
+            label,
+            size=14,
+            weight=600 if active else 500,
+            color="$text" if active else "$muted",
+            transition=FADE,
+        ),
         spacer(),
         count is not None and pill(str(count), "#7C5CFF"),
     ]
@@ -376,6 +377,7 @@ def bar_chart() -> Element:
                     height=max(6, 118 * v / peak),
                     radius=7,
                     gradient=("#7C5CFF", "#22D3B6", 90) if chosen else ("#7C5CFF99", "#7C5CFF44", 90),
+                    animate_layout=SLIDE,  # al cambiar de semana, las barras crecen o menguan
                 ),
                 text(day, size=11, weight=600 if chosen else 500, color="$text" if chosen else "$muted"),
             ]
@@ -390,7 +392,7 @@ def bar_chart() -> Element:
         row(align="center")[
             section_title("Tareas completadas", f"{total} en total · pico de {peak} en un día"),
             spacer(),
-            segmented(list(WEEKS), week),
+            segmented(list(WEEKS), week, key="seg-week", width=260),
         ],
         row(gap=6, height=170, align="end")[bars],
         row(gap=8, align="center", padding=(10, 12), radius="$sm", bg="$surface_hover")[
@@ -415,7 +417,7 @@ def projects_card(ts: tuple[Task, ...]) -> Element:
                     spacer(),
                     text(f"{pct:.0f}%", size=13, weight=700),
                 ],
-                progress(pct, color),
+                progress(pct, max=100, color=(color, color + "AA", 0)),
                 text(f"{done} de {total} pts · {len(own)} tareas", size=11, color="$muted"),
             ]
         )
@@ -504,7 +506,23 @@ def small_action(
 
 def task_card(t: Task, col_index: int) -> Element:
     pcolor = PROJECTS[t.project]
-    return card(key=f"task-{t.id}", padding=14, gap=10, radius=14, shadow=(0, 4, 14, "$shadow"))[
+    options = []
+    if col_index > 0:
+        options.append(("←  Mover a la izquierda", lambda: move(t.id, -1)))
+    if col_index < 2:
+        options.append(("Mover a la derecha  →", lambda: move(t.id, +1)))
+    options.append(("Eliminar", lambda: modal.set(("delete", t.id)), {"color": "$danger"}))
+    return card(
+        key=f"task-{t.id}",
+        padding=14,
+        gap=10,
+        radius=14,
+        shadow=(0, 4, 14, "$shadow"),
+        # Las tarjetas entran, se deslizan al reordenarse y se desvanecen al irse.
+        enter=animate.slide(y=-8, transition=ENTER),
+        exit=animate.fade(transition=EXIT),
+        animate_layout=SLIDE,
+    )[
         row(gap=6, align="center")[
             dot(pcolor, 7),
             text(t.project, size=11, weight=600, color="$muted"),
@@ -517,17 +535,13 @@ def task_card(t: Task, col_index: int) -> Element:
             text(f"{t.points} pts", size=11, color="$muted"),
             spacer(),
             avatar(t.assignee, 24, tooltip=t.assignee),
-        ],
-        box(height=1, bg="$border"),
-        row(gap=2, align="center")[
-            small_action(
-                "←", lambda: move(t.id, -1), key=f"l-{t.id}", enabled=col_index > 0, tip="Mover atrás"
+            menu(
+                box(padding=(3, 8), radius=8, bg_hover="$surface_pressed", press_scale=0.92)[
+                    text("⋯", size=15, weight=700, color="$muted")
+                ],
+                options,
+                key=f"menu-{t.id}",
             ),
-            small_action(
-                "→", lambda: move(t.id, +1), key=f"r-{t.id}", enabled=col_index < 2, tip="Mover adelante"
-            ),
-            spacer(),
-            small_action("Eliminar", lambda: modal.set(("delete", t.id)), key=f"d-{t.id}", color="$danger"),
         ],
     ]
 
@@ -544,6 +558,7 @@ def tag_chip(tag: str) -> Element:
         bg_hover="$primary_hover" if on else "$surface_hover",
         border_width=1,
         border_color="$primary" if on else "$border",
+        transition=FADE,
         press_scale=0.95,
         on_click=lambda: toggle_tag(tag),
     )[
@@ -610,7 +625,7 @@ def member_card(m: Member) -> Element:
                 spacer(),
                 text(f"{load}/{m.capacity} pts", size=12, weight=700, color=color),
             ],
-            progress(pct, color, 6),
+            progress(pct, max=100, color=(color, color + "AA", 0), height=6),
         ],
         row(gap=8)[
             pill(f"{len(own)} activas", m.color),
@@ -679,9 +694,40 @@ def settings() -> Element:
         checkbox(notify_assigned, "Avisarme cuando me asignan una tarea", key="set-assigned"),
         checkbox(notify_mentions, "Avisarme cuando me mencionan", key="set-mentions"),
     ]
+    advanced = card(gap=10, padding=14)[
+        accordion(
+            [
+                (
+                    "reset",
+                    "Zona de peligro",
+                    column(gap=12, padding=(4, 2, 10, 2))[
+                        text(
+                            "Devuelve el tablero a las tareas de ejemplo. Se pierden los cambios.",
+                            size=12,
+                            color="$muted",
+                        ),
+                        row(justify="end")[
+                            button(
+                                "Restablecer demo",
+                                reset_demo,
+                                key="reset-demo",
+                                bg="$danger",
+                                bg_hover="#FB8A8A",
+                                bg_pressed="#E05A5A",
+                                shadow=(0, 6, 18, "#F8717140"),
+                            )
+                        ],
+                    ],
+                ),
+            ],
+            open_section,
+            key="settings-acc",
+        )
+    ]
     return column(gap=18, max_width=680)[
         tabs([("general", "General"), ("notificaciones", "Notificaciones")], settings_tab, key="set-tabs"),
         general if settings_tab() == "general" else notifications,
+        advanced,
     ]
 
 
@@ -694,12 +740,9 @@ def modal_layer() -> Element | None:
         return None
     if state[0] == "new":
 
-        def field(label: str, control: Element, **style) -> Element:
-            return column(gap=6, **style)[text(label, size=12, weight=600, color="$muted"), control]
-
         def half(label: str, control: Element) -> Element:
             # Dos campos por fila a partes iguales.
-            return field(label, control, grow=1, width=0)
+            return field(control, label=label, grow=1, width=0)
 
         body = [
             column(gap=2)[
@@ -707,7 +750,6 @@ def modal_layer() -> Element | None:
                 text("Enter para crear · Esc para cancelar", size=12, color="$muted"),
             ],
             field(
-                "Título",
                 text_input(
                     new_title,
                     placeholder="¿Qué hay que hacer?",
@@ -715,6 +757,7 @@ def modal_layer() -> Element | None:
                     autofocus=True,
                     on_submit=create_task,
                 ),
+                label="Título",
             ),
             row(gap=12)[
                 half("Proyecto", select(new_project, list(PROJECTS), key="new-project")),
@@ -789,44 +832,18 @@ def modal_layer() -> Element | None:
             ],
             row(justify="end")[button("Entendido", lambda: modal.set(None), key="m-ok")],
         ]
-    return box(
+    return dialog(
+        True,
+        column(gap=20)[body],
+        on_close=lambda: modal.set(None),
         key="backdrop",
-        position="absolute",
-        top=0,
-        left=0,
-        right=0,
-        bottom=0,
-        bg="#05060ACC",
-        align="center",
-        justify="center",
-        on_click=lambda: modal.set(None),
-    )[card(width=440, padding=24, gap=20, capture=True, shadow=(0, 24, 60, "#00000088"))[body]]
+        width=440,
+        shadow=(0, 24, 60, "#00000088"),
+    )
 
 
 def toast_layer() -> Element | None:
-    msg = toast()
-    if msg is None:
-        return None
-    return row(
-        key="toast",
-        position="absolute",
-        right=24,
-        bottom=24,
-        max_width=420,
-        gap=12,
-        align="center",
-        padding=(12, 14, 12, 16),
-        radius="$md",
-        bg="$surface",
-        border_width=1,
-        border_color="$border",
-        shadow=(0, 12, 32, "$shadow"),
-        on_click=lambda: toast.set(None),
-    )[
-        dot("#22D3B6"),
-        text(msg, size=13, weight=500, shrink=1, max_lines=1),
-        text("✕", size=12, color="$muted"),
-    ]
+    return toast(notice, key="toast", tone="#22D3B6")
 
 
 # ═══════════════════════════════════════════════════════════════════════ app
@@ -837,6 +854,8 @@ PAGES = {
     "equipo": ("Equipo", "Carga de trabajo y personas que sigues", team),
     "ajustes": ("Ajustes", "Preferencias de la cuenta y notificaciones", settings),
 }
+# El contenido de cada página, para el contenedor `pages`.
+PAGE_VIEWS = {name: view for name, (_title, _subtitle, view) in PAGES.items()}
 
 
 def on_key(e: KeyEvent) -> bool | None:
@@ -851,7 +870,7 @@ def on_key(e: KeyEvent) -> bool | None:
 
 
 def view() -> Element:
-    title, subtitle, render = PAGES[page()]
+    title, subtitle, _render = PAGES[page()]
     return row(on_key=on_key)[
         sidebar(),
         column(grow=1, width=0, padding=(26, 0, 0, 0), gap=22)[
@@ -865,10 +884,9 @@ def view() -> Element:
                 button("Acerca de", lambda: modal.set(("about",)), variant="ghost", key="about"),
                 button("+ Nueva tarea", open_new_task, key="add", tooltip="Ctrl+N"),
             ],
-            # Cada página conserva su propia posición de desplazamiento.
-            # El relleno va dentro para que el contenido llegue al borde de la ventana
-            # y las sombras de las tarjetas no se recorten.
-            scroll(key=f"page-{page()}", padding=(0, 30, 26, 30))[render()],
+            # Cada página es su propio `scroll`; el relleno va dentro para que el
+            # contenido llegue al borde de la ventana y las sombras no se recorten.
+            pages(page, PAGE_VIEWS, key="page", padding=(0, 30, 26, 30)),
         ],
         modal_layer(),
         toast_layer(),

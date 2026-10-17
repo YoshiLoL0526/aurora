@@ -107,8 +107,9 @@ pub struct Style {
     pub width: Option<Len>,
     pub height: Option<Len>,
     pub absolute: bool,
-    /// top, right, bottom, left (solo con `position="absolute"`).
-    pub inset: [Option<f32>; 4],
+    /// top, right, bottom, left (solo con `position="absolute"`). Admite
+    /// porcentajes del contenedor ("50%") como `width`/`height`.
+    pub inset: [Option<Len>; 4],
     pub min_width: Option<f32>,
     pub max_width: Option<f32>,
     pub min_height: Option<f32>,
@@ -116,6 +117,9 @@ pub struct Style {
     pub grow: f32,
     pub shrink: Option<f32>,
     pub wrap: bool,
+    /// Recorta a sus hijos a la caja del nodo (con `overflow="hidden"`): el
+    /// contenido que se sale se oculta y no recibe clics. No afecta al layout.
+    pub clip: bool,
     /// Contenedor desplazable: recorta a sus hijos y se desplaza en estos ejes.
     pub scroll: Option<Axis>,
     // Visual
@@ -157,14 +161,16 @@ pub struct Style {
     pub src: Option<Source>,
     pub fit: Fit,
     // Animaciones declarativas (ver `motion.rs`)
-    /// Curva con la que se animan los cambios de `bg`, `border_color`,
-    /// `opacity` y `radius` entre reconstrucciones.
+    /// Curva con la que se animan los cambios de `bg`, `border_color`, `color`
+    /// (el del texto), `opacity` y `radius` entre reconstrucciones.
     pub transition: Option<Timing>,
     /// Curva con la que el nodo se desliza a su nueva caja cuando el layout la cambia.
     pub animate_layout: Option<Timing>,
     /// Efecto con el que aparece y con el que desaparece de la vista.
     pub enter: Option<Effect>,
     pub exit: Option<Effect>,
+    /// Opacidad en vaivén perpetuo (`animate.pulse()`): indicadores de carga.
+    pub pulse: Option<Timing>,
 }
 
 /// Cursor del ratón. Lo eligen el runtime (según lo que hay bajo el puntero)
@@ -432,10 +438,10 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         height: len_of(d, "height")?,
         absolute: str_of(d, "position")?.as_deref() == Some("absolute"),
         inset: [
-            f32_of(d, "top")?,
-            f32_of(d, "right")?,
-            f32_of(d, "bottom")?,
-            f32_of(d, "left")?,
+            len_of(d, "top")?,
+            len_of(d, "right")?,
+            len_of(d, "bottom")?,
+            len_of(d, "left")?,
         ],
         min_width: f32_of(d, "min_width")?,
         max_width: f32_of(d, "max_width")?,
@@ -444,6 +450,15 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         grow: f32_of(d, "grow")?.unwrap_or(0.0),
         shrink: f32_of(d, "shrink")?,
         wrap: bool_of(d, "wrap")?,
+        clip: match str_of(d, "overflow")?.as_deref() {
+            None | Some("visible") => false,
+            Some("hidden") => true,
+            Some(other) => {
+                return Err(PyValueError::new_err(format!(
+                    "overflow inválido: {other:?} (usa \"visible\" o \"hidden\")"
+                )));
+            }
+        },
         scroll: match str_of(d, "scroll")?.as_deref() {
             None => None,
             Some("x") => Some(Axis::X),
@@ -519,6 +534,16 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
         exit: get(d, "exit")?
             .map(|v| motion::parse_effect(&v, "exit"))
             .transpose()?,
+        pulse: match get(d, "pulse")? {
+            Some(v) => {
+                let timing = motion::parse_timing(&v)?;
+                if !matches!(timing, Timing::Pulse { .. }) {
+                    return Err(PyValueError::new_err("pulse debe ser animate.pulse(...)"));
+                }
+                Some(timing)
+            }
+            None => None,
+        },
         transition,
     })
 }

@@ -11,25 +11,37 @@ from concurrent.futures import Future
 from types import ModuleType
 from typing import Any, Literal, TypeVar
 
-from . import _core, animate, reactive
+from . import _core, _motion, animate, reactive
 from . import inspector as _inspector
 from . import reload as _reload
 from ._core import DragEvent, KeyEvent, Pilot, ScrollEvent
 from .canvas import Canvas, Path, canvas
 from .charts import chart
 from .components import (
+    accordion,
     avatar,
     badge,
     button,
     card,
     checkbox,
+    dialog,
     divider,
+    field,
+    menu,
+    pages,
+    progress,
+    radio,
+    segmented,
     select,
+    skeleton,
+    slider,
+    spinner,
     stat,
     switch,
     tabs,
     text_input,
     textarea,
+    toast,
     tooltip,
     virtual_list,
 )
@@ -54,6 +66,7 @@ __all__ = [
     "ScrollEvent",
     "Signal",
     "Theme",
+    "accordion",
     "animate",
     "avatar",
     "badge",
@@ -65,13 +78,23 @@ __all__ = [
     "checkbox",
     "column",
     "component",
+    "dialog",
     "divider",
+    "field",
     "image",
+    "menu",
+    "pages",
+    "progress",
+    "radio",
     "resource",
     "row",
     "scroll",
+    "segmented",
     "select",
+    "skeleton",
+    "slider",
     "spacer",
+    "spinner",
     "stat",
     "switch",
     "table",
@@ -79,6 +102,7 @@ __all__ = [
     "text",
     "text_input",
     "textarea",
+    "toast",
     "tooltip",
     "virtual_list",
 ]
@@ -101,6 +125,11 @@ class App:
     módulo local, la vista se reconstruye con el código nuevo sin perder el
     estado de los `Signal` (ver `aurora.reload`). Sin indicarlo, lo activa la
     variable de entorno `AURORA_RELOAD=1` (o `aurora dev app.py`).
+
+    `motion=False` desactiva las animaciones por defecto de los componentes
+    (switchs, casillas, pestañas, menús…): los cambios son inmediatos. Sin
+    indicarlo, lo decide la variable de entorno `AURORA_MOTION` (`0`, `false`,
+    `no` u `off` las desactivan).
     """
 
     def __init__(
@@ -112,6 +141,7 @@ class App:
         theme: Theme | Callable[[], Theme] = MIDNIGHT,
         inspector: bool | None = None,
         reload: bool | None = None,
+        motion: bool | None = None,
     ) -> None:
         self.view = view
         self.title = title
@@ -123,6 +153,7 @@ class App:
         self._loop_lock = threading.Lock()
         self.reload = _reload.enabled(reload)
         self._reloader: _reload.Reloader | None = None
+        self.motion = _motion.enabled(motion)
         # Dentro de una recarga, esta `App` solo presta su vista a la que está en marcha.
         if _reload.context.active:
             _reload.context.created = self
@@ -131,6 +162,8 @@ class App:
         if self._reloader is not None:
             self._apply_reload(self._reloader)
         reactive.begin_build()
+        # Los componentes leen el interruptor de movimiento al construirse.
+        previous_motion = _motion.activate(self.motion)
         try:
             # El tema puede ser reactivo (p. ej. un Signal[Theme]) para alternar claro/oscuro.
             theme = self.theme if isinstance(self.theme, Theme) else self.theme()
@@ -149,6 +182,7 @@ class App:
                 spec = self._inspector.dock(spec, info, theme.font_family)
             return spec
         finally:
+            _motion.activate(previous_motion)
             reactive.end_build()
 
     def _apply_reload(self, reloader: _reload.Reloader) -> None:

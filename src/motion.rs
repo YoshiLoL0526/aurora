@@ -85,6 +85,14 @@ pub enum Timing {
         easing: Easing,
         delay: f32,
     },
+    /// Vaivén perpetuo de ida y vuelta en `duration` segundos: nunca termina.
+    /// Lo usan `pulse` (opacidad de spinners y esqueletos): la opacidad baja
+    /// hasta `floor` y vuelve.
+    Pulse {
+        duration: f32,
+        delay: f32,
+        floor: f32,
+    },
 }
 
 impl Default for Timing {
@@ -139,6 +147,17 @@ impl Timing {
                 } else {
                     (x, false)
                 }
+            }
+            Timing::Pulse {
+                duration, delay, ..
+            } => {
+                let t = t - delay;
+                if t <= 0.0 {
+                    return (0.0, false);
+                }
+                // Coseno de ida y vuelta: 0 → 1 → 0 sin parar (nunca termina).
+                let phase = (t % duration) / duration;
+                (0.5 - 0.5 * (std::f32::consts::TAU * phase).cos(), false)
             }
         }
     }
@@ -278,7 +297,7 @@ pub fn parse_timing(obj: &Bound<'_, PyAny>) -> PyResult<Timing> {
             delay,
         });
     }
-    if obj.hasattr("duration")? {
+    if obj.hasattr("easing")? {
         let duration = attr(obj, "duration")?;
         if duration.is_nan() || duration < 0.0 {
             return Err(PyValueError::new_err("duration no puede ser negativa"));
@@ -293,6 +312,25 @@ pub fn parse_timing(obj: &Bound<'_, PyAny>) -> PyResult<Timing> {
             duration,
             easing,
             delay,
+        });
+    }
+    if obj.hasattr("duration")? {
+        let duration = attr(obj, "duration")?;
+        if duration.is_nan() || duration <= 0.0 {
+            return Err(PyValueError::new_err(
+                "la duración del vaivén debe ser positiva",
+            ));
+        }
+        let floor = attr(obj, "floor")?;
+        if !(floor > 0.0 && floor <= 1.0) {
+            return Err(PyValueError::new_err(
+                "floor del vaivén debe estar entre 0 y 1",
+            ));
+        }
+        return Ok(Timing::Pulse {
+            duration,
+            delay,
+            floor,
         });
     }
     Err(invalid())
@@ -381,6 +419,24 @@ mod tests {
             assert!(x > 0.0 && x < 1.0 && !done);
             assert_eq!(t.progress(MAX_DURATION), (1.0, true));
         }
+    }
+
+    #[test]
+    fn pulses_oscillate_and_never_finish() {
+        let t = Timing::Pulse {
+            duration: 1.0,
+            delay: 0.25,
+            floor: 0.35,
+        };
+        // Durante el retardo está arriba (valor 0) y no ha terminado.
+        assert_eq!(t.progress(0.25), (0.0, false));
+        let (mid, done) = t.progress(0.5);
+        assert!((mid - 0.5).abs() < 1e-4 && !done);
+        let (top, _) = t.progress(0.75);
+        assert!((top - 1.0).abs() < 1e-4);
+        // Una vuelta después vuelve a empezar: el vaivén no termina nunca.
+        let (again, done) = t.progress(2.25);
+        assert!(again < 1e-4 && !done);
     }
 
     #[test]

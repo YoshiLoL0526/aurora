@@ -388,8 +388,10 @@ con zoom.
 ### Más componentes
 
 Además de `button`, `card`, `badge` y `stat`, Aurora trae `checkbox`, `switch`, `select`, `tabs`,
-`avatar`, `divider` y `tooltip`. Los controles se enlazan a un `Signal` igual que los campos de
-texto:
+`avatar`, `divider`, `tooltip`, `progress`, `radio`, `segmented`, `slider`, `spinner`, `skeleton` y
+`field` (etiqueta + control + error), y los de superposición: `dialog`, `toast`, `menu` y
+`accordion`, más `pages` (una vista por página con transición). Los controles se enlazan a un
+`Signal` igual que los campos de texto:
 
 ```python live continue
 from aurora import checkbox, select, switch, tabs
@@ -501,8 +503,17 @@ def view():
 ```
 
 `capture=True` es la clave: sin él, un clic dentro de la tarjeta "subiría" hasta el fondo y
-cerraría el modal. Un toast es lo mismo sin fondo: un `row` con `position="absolute"`,
-`right=24` y `bottom=24`.
+cerraría el modal.
+
+¿No quieres montarlo a mano? `dialog` hace exactamente esto — fondo, tarjeta centrada, `capture`,
+cierre al hacer clic fuera o con Esc y la animación de entrada y salida:
+
+```python
+dialog(selected() is not None, detalle(...), on_close=lambda: selected.set(None), width=420)
+```
+
+Y `toast(mensaje)` es el aviso flotante de abajo a la derecha, con punto de acento y un clic para
+descartarlo. Todo esto está en la [referencia de componentes](reference.md#componentes).
 
 ### Teclado y atajos
 
@@ -555,6 +566,10 @@ row(
 `animate.spring()` es un muelle físico (natural y sin duración fija); `animate.tween(0.2)` es una
 transición clásica de duración fija. Todo lo demás está en la
 [referencia](reference.md#animaciones).
+
+Los componentes ya vienen animados por defecto con esa misma escala: el knob de un switch se
+desliza, la marca de un `checkbox` entra encogiéndose, el menú de un `select` aparece
+deslizándose… Si prefieres que nada se mueva, `App(view, motion=False)` (o `AURORA_MOTION=0`).
 
 ## 9. Tema claro y oscuro
 

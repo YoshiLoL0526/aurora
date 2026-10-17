@@ -8,6 +8,55 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Movimiento por defecto en los componentes**: `switch`, `checkbox`, `tabs` y `select` animan
+  sus cambios sin declarar nada — el knob se desliza, la marca de la casilla entra
+  encogiéndose, el subrayado de las pestañas funde y el menú del desplegable aparece
+  deslizándose y se va fundiéndose. Comparten una escala común de duraciones cortas.
+  - `App(view, motion=False)` o la variable de entorno `AURORA_MOTION=0` lo desactivan para
+    toda la app (tests de snapshot, equipos que lo prefieren sin movimiento).
+  - Los efectos de entrada no se reproducen en el primer frame ni en `render_png`: las
+    capturas y la documentación siguen siendo deterministas.
+- `examples/studio.py` aprovecha las animaciones: las páginas se funden al cambiar, el modal y
+  el toast entran y salen, las tarjetas del tablero y las barras de progreso se deslizan.
+- **Componentes nuevos** (con las animaciones anteriores ya puestas):
+  - `dialog`: modal completo — fondo, tarjeta centrada, cierre con clic fuera o Esc, foco dentro
+    de la tarjeta al abrirse y atrapado, y entrada/salida animadas. Devuelve `None` cerrado.
+  - `toast`: aviso flotante abajo a la derecha que se descarta con un clic (enlazado a un
+    `Signal[str | None]`) y entra deslizándose.
+  - `progress`: barra de progreso de 0 a `max` que crece hasta su nuevo valor y admite color del
+    tema o gradiente.
+  - `pages`: una vista por valor de un `Signal` con transición entre páginas y su propio scroll.
+- `examples/studio.py` usa los componentes nuevos: `dialog`, `toast`, `progress` y `pages`
+  sustituyen sus versiones locales y montadas a mano.
+- **Vaivén perpetuo `animate.pulse()`**: opacidad que baja hasta `floor` y vuelve, sin terminar.
+  Se pasa en la propiedad `pulse` de un elemento; con `App(motion=False)` queda fijo.
+- **El color del texto ahora anima** con `transition` (antes se cambiaba de golpe): los párrafos
+  se rehacen con el color interpolado mientras dura la transición. El color heredado de un
+  contenedor no se propaga a los hijos: para animarlo, el texto necesita su `transition`.
+- **`top`/`right`/`bottom`/`left` aceptan porcentajes** (`left="50%"`), resueltos contra la caja
+  de relleno del padre. Es lo que permite anclar pulgares y barras por fracción sin medir nada.
+- **Componentes nuevos** con movimiento por defecto:
+  - `radio`: grupo de opciones; el punto interior entra encogiéndose.
+  - `segmented`: selector con pulgar deslizante (usa los porcentajes en `left`).
+  - `slider`: deslizador arrastrable (`width` en píxeles) con relleno y pulgar que siguen el valor.
+  - `spinner`: tres puntos que laten en cadena (`pulse`); nunca queda en reposo.
+  - `skeleton`: bloques con la forma del contenido que llega, latiendo despacio.
+- Las pestañas (`tabs`) funden también el color de su texto, y `examples/studio.py` usa el
+  `segmented` del catálogo.
+- **`overflow="hidden"`**: el contenido que se sale de su caja se recorta (pintado y clics) sin
+  tocar el layout. Con `shrink=0` en el hijo, desborda en vez de aplastarse: es la base del
+  despliegue del acordeón.
+- **Componentes nuevos**:
+  - `menu`: lista de acciones que se abre desde un disparador, en superposición, con cierre al
+    elegir, al hacer clic fuera o con Esc.
+  - `accordion`: secciones que se despliegan con altura animada y recorte, y se quedan montadas al
+    plegarse (conservan su estado).
+  - `field`: etiqueta + control + mensaje de ayuda o error (`$danger`).
+- `examples/studio.py` estrena los tres: `field` en el formulario de nueva tarea, `menu` en las
+  tarjetas del tablero y un acordeón de «Zona de peligro» en Ajustes.
+
 ### Corregido
 
 - En un `textarea`, `Ctrl+Inicio`/`Ctrl+Fin` (Windows/Linux) y `Cmd+Inicio`/`Cmd+Fin`

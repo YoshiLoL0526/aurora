@@ -14,7 +14,9 @@ sin volver a llamar a Python:
 Las curvas de tiempo son `spring()` (muelle físico, por defecto) y `tween()`
 (duración fija con easing). Los efectos de entrada y salida (`fade`, `slide`,
 `zoom` y el general `effect`) dicen desde qué valores aparece un elemento y hacia
-cuáles se va: opacidad, desplazamiento y escala.
+cuáles se va: opacidad, desplazamiento y escala. `pulse()` es aparte: un vaivén
+perpetuo de opacidad para indicadores de carga, que se pasa en la propiedad
+`pulse` de un elemento.
 """
 
 from __future__ import annotations
@@ -59,6 +61,22 @@ class Tween:
         _check_delay(self.delay)
 
 
+@dataclass(frozen=True, slots=True)
+class Pulse:
+    """Vaivén perpetuo de opacidad (spinners y esqueletos). Ver `pulse()`."""
+
+    duration: float
+    delay: float
+    floor: float
+
+    def __post_init__(self) -> None:
+        if not self.duration > 0:
+            raise ValueError("la duración del vaivén debe ser positiva")
+        if not 0 < self.floor <= 1:
+            raise ValueError("floor del vaivén debe estar entre 0 y 1")
+        _check_delay(self.delay)
+
+
 Transition = Spring | Tween
 
 
@@ -100,6 +118,17 @@ def tween(duration: float = 0.25, *, easing: Easing = "ease_out", delay: float =
     return Tween(float(duration), easing, float(delay))
 
 
+def pulse(duration: float = 1.0, *, delay: float = 0.0, floor: float = 0.35) -> Pulse:
+    """Vaivén perpetuo de opacidad: baja de 1 a `floor` y vuelve, sin terminar.
+
+    Es para indicadores de carga (spinners, esqueletos), no para transiciones:
+    se pasa en la propiedad `pulse` de un elemento. `delay` permite escalonar
+    varios elementos (p. ej. los puntos de un spinner) y `floor` la opacidad
+    mínima del vaivén.
+    """
+    return Pulse(float(duration), float(delay), float(floor))
+
+
 def effect(
     *,
     opacity: float = 1.0,
@@ -132,11 +161,13 @@ def zoom(scale: float = 0.9, *, fade: bool = True, transition: Transition | None
 __all__ = [
     "Easing",
     "Effect",
+    "Pulse",
     "Spring",
     "Transition",
     "Tween",
     "effect",
     "fade",
+    "pulse",
     "slide",
     "spring",
     "tween",

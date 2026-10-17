@@ -9,9 +9,10 @@ uv run examples/studio.py
 
 ## Aurora Studio
 
-Una app completa: navegación entre vistas, kanban con búsqueda, gráfico interactivo, formulario de
-nueva tarea (Ctrl+N), ajustes con `tabs`/`switch`/`select`/`textarea`, modal con confirmación,
-toasts, tooltips y tema claro/oscuro. Código: [`examples/studio.py`](../examples/studio.py).
+Una app completa: navegación entre vistas con transición, kanban con búsqueda y menús de acción,
+gráfico interactivo, formulario de nueva tarea (Ctrl+N), ajustes con `tabs`/`switch`/`select`/
+`textarea` animados por defecto y una zona de peligro en acordeón, modal con confirmación, toasts,
+tooltips y tema claro/oscuro. Código: [`examples/studio.py`](../examples/studio.py).
 
 ```python live file=examples/studio.py alt="Aurora Studio, vista de resumen"
 ```
