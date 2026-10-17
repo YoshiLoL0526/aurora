@@ -218,7 +218,7 @@ pub enum Kind {
     Image,
     /// Lienzo de dibujo inmediato: Python graba sus comandos con `draw`.
     Canvas,
-    /// Gráfico nativo: series de datos y ejes (ver `chart.rs`).
+    /// Gráfico nativo: series de datos y ejes (ver `chart/`).
     Chart,
 }
 
@@ -252,7 +252,7 @@ pub struct Node {
     /// comandos (o `None` si lo anterior sigue valiendo). Ver `canvas.rs`.
     pub draw: Option<Py<PyAny>>,
     /// Solo en `Kind::Chart`: los datos y las opciones del gráfico, ya
-    /// convertidos a vistas sin copia de los búferes. Ver `chart.rs`.
+    /// convertidos a vistas sin copia de los búferes. Ver `chart/`.
     pub chart: Option<Arc<crate::chart::Chart>>,
 }
 

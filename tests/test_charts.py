@@ -11,7 +11,7 @@ from test_render import _png_pixel, _png_rows
 from aurora import MIDNIGHT, App, Signal, box, chart, column, component, scroll, text
 
 # Márgenes del área de dibujo dentro de la caja del gráfico (los mismos que
-# `chart.rs`): 8 px arriba y a la derecha, y la franja del eje x abajo.
+# `chart/`): 8 px arriba y a la derecha, y la franja del eje x abajo.
 TOP, RIGHT = 8, 8
 BOTTOM = 11 * 1.5 + 6
 SIZE = 200
