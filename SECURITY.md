@@ -6,7 +6,7 @@ Aurora está en fase pre-alfa. Solo la última versión publicada recibe correcc
 
 | Versión | Soporte |
 |---|---|
-| 0.1.x | ✅ |
+| 0.5.x | ✅ |
 
 ## Reportar una vulnerabilidad
 

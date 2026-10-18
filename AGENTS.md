@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Aurora (`aurora-ui`, pre-alpha v0.4) is a declarative, reactive desktop UI library: the public API is
+Aurora (`aurora-ui`, pre-alpha v0.5) is a declarative, reactive desktop UI library: the public API is
 pure Python (`python/aurora/`), while layout, render, animation and events run in a native Rust core
 (`src/`, built as the extension module `aurora._core` via PyO3 + maturin). Stack: Skia for painting
 and text shaping, Taffy for flexbox, winit for the window, GPU via Vulkan/Metal with a CPU
