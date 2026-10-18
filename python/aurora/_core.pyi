@@ -98,12 +98,15 @@ def notify(
     body: str = "",
     icon: str | PathLike[str] | None = None,
     app_id: str | None = None,
+    on_click: Callable[[], Any] | None = None,
 ) -> None:
     """Muestra una notificación del sistema. Segura desde cualquier hilo.
 
     Sin bucle en marcha se envía en el hilo que llama; si el sistema no las
     admite, se avisa por stderr. En Windows, `app_id` es el AUMID de la app:
-    sin él el aviso lo firma la identidad de reserva de PowerShell.
+    sin él el aviso lo firma la identidad de reserva de PowerShell. Con
+    `on_click`, un hilo espera el clic en el cuerpo del aviso y lo llama (sin
+    argumentos).
     """
 
 def app_id_set(app_id: str) -> None:

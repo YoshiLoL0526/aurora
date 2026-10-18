@@ -66,12 +66,12 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 ## Hacia la 1.0 🚧
 
 - ✅ Accesibilidad completa con AccessKit (lectores de pantalla, navegación por teclado)
-- 🚧 Integración con el escritorio:
+- ✅ Integración con el escritorio:
   - ✅ Multi-ventana (`app.window(...)`, ciclo de vida y cierre por ventana)
   - ✅ Diálogos nativos (abrir/guardar archivo)
   - ✅ Bandeja del sistema
   - ✅ Menús nativos (barra de la app y contextuales)
-  - ✅ Notificaciones del sistema (`app.notify`, sin callback de clic)
+  - ✅ Notificaciones del sistema (`app.notify`, con callback de clic)
 - ⏳ API estable con política de deprecación documentada
 - ✅ Wheels precompiladas en PyPI para Windows, macOS (x86_64/arm64) y Linux
 

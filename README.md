@@ -210,18 +210,21 @@ Aurora encaja cuando quieres **una app de escritorio con aspecto moderno, escrit
 desarrollo web de por medio**: dashboards, herramientas internas, paneles de control para tus
 scripts y modelos, utilidades personales.
 
-Si hoy necesitas un toolkit maduro con cientos de widgets, accesibilidad completa y años en
-producción, **Qt (PySide6/PyQt)** es la opción sensata. Si tu interfaz vive en el navegador, una
-solución web encaja mejor. Aurora no busca reemplazarlas: busca que construir una interfaz
-*bonita y rápida* desde Python sea lo más directo posible. Más contexto en [VISION.md](VISION.md).
+Si hoy necesitas un toolkit maduro con cientos de widgets y años en producción,
+**Qt (PySide6/PyQt)** es la opción sensata. Si tu interfaz vive en el navegador, una solución web
+encaja mejor. Aurora no busca reemplazarlas: busca que construir una interfaz *bonita y rápida*
+desde Python sea lo más directo posible. Más contexto en [VISION.md](VISION.md).
 
 ## Limitaciones conocidas
 
-Aurora es joven. Esto es lo que **todavía no** hace (todo está en el [roadmap](ROADMAP.md)):
+Aurora es joven. Esto es lo que **todavía no** hace:
 
 - **Vista completa por evento**: cada cambio vuelve a llamar a `view()`. Las ramas marcadas con
   `@component` que no cambiaron se reutilizan, pero el resto se reconstruye.
-- Todavía sin accesibilidad.
+- **Menús nativos y bandeja en Linux**: los menús del sistema necesitan GTK, que Aurora no usa: en
+  Linux la barra y los contextuales no aparecen, y ese hueco lo cubre el componente `menu` dentro
+  de la app. La bandeja usa StatusNotifierItem: en GNOME necesita la extensión AppIndicator (y
+  algunos escritorios no la muestran).
 
 ## Documentación
 

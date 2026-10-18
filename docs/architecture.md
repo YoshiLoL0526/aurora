@@ -556,8 +556,11 @@ Rust ejecuta**, y las APIs del sistema se usan desde el hilo del bucle.
   aviso el sistema (Centro de notificaciones en Windows y macOS, libnotify/D-Bus en Linux). Si hay
   bucle, el aviso viaja como comando y se envía en su hilo (macOS lo prefiere); sin bucle, en el
   hilo que llama. El icono se pasa como `icon` en el escritorio Linux y como `image_path` en
-  Windows y macOS. La identidad del aviso en Windows (AUMID) vive en `identity.rs`: fija el AUMID
-  del proceso y registra la app con un acceso directo del menú Inicio (`IShellLinkW` +
+  Windows y macOS. Con `on_click`, el aviso se envía con su handle y un hilo propio espera la
+  respuesta (`wait_for_response`): el clic en el cuerpo llega como la acción «default» —en Linux el
+  aviso la declara, que si no los servidores no la emiten— y el callback se llama con el GIL
+  tomado, despertando el bucle. La identidad del aviso en Windows (AUMID) vive en `identity.rs`:
+  fija el AUMID del proceso y registra la app con un acceso directo del menú Inicio (`IShellLinkW` +
   `IPropertyStore`), que es lo que Windows exige para aceptar el AUMID de una app sin instalador.
 
 ## Capas

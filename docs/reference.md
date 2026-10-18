@@ -50,7 +50,7 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 | `window(view, *, title="Aurora", size=None, resizable=True, on_close=None)` | Crea una ventana adicional con su propia vista (ver [Window](#window)). `size` por defecto es el de la ventana principal. |
 | `windows()` | Las ventanas creadas con `window(...)`, en orden de creación (sin la principal). |
 | `main` | La ventana principal, como un [`Window`](#window) (ver abajo). |
-| `notify(title, body="", *, icon=None)` | Muestra una [notificación del sistema](#notificaciones). |
+| `notify(title, body="", *, icon=None, on_click=None)` | Muestra una [notificación del sistema](#notificaciones). |
 | `register_app_id(name=None)` | (Windows) Registra la identidad de la app con un acceso directo del menú Inicio (ver [Notificaciones](#notificaciones)). |
 | `quit()` | Cierra todas las ventanas y termina la app. Seguro desde cualquier hilo. |
 | `render_png(path, *, size=None, scale=2.0)` | Renderiza la vista a PNG sin abrir ventana. `scale` es la densidad de píxeles (2.0 ≈ pantalla Retina). |
@@ -157,14 +157,19 @@ app.notify("Informe generado", "datos-2026.csv está en tu carpeta de descargas"
 
 | API | Descripción |
 |---|---|
-| `app.notify(title, body="", *, icon=None)` | Muestra una notificación del sistema, con la identidad de la app. `icon` es una ruta a un PNG/SVG (donde el sistema lo admita). |
+| `app.notify(title, body="", *, icon=None, on_click=None)` | Muestra una notificación del sistema, con la identidad de la app. `icon` es una ruta a un PNG/SVG (donde el sistema lo admita). `on_click`, si se indica, se llama al pulsar el aviso. |
 | `app.register_app_id(name=None)` | (Windows) Registra la identidad de la app con un acceso directo del menú Inicio: `%APPDATA%\...\Start Menu\Programs\<name>.lnk`. Devuelve `False` fuera de Windows o si no se pudo. |
 
 Se puede llamar desde cualquier hilo —por ejemplo desde una tarea de `app.spawn()` con la ventana
 cerrada— y también sin app en marcha. Si el sistema no admite notificaciones, se avisa por stderr
 y la app sigue: en Linux hace falta un demonio de notificaciones (GNOME y KDE lo traen) y en macOS
-una app firmada (un script suelto puede no poder mostrarlas). En esta versión no hay callback de
-clic.
+una app firmada (un script suelto puede no poder mostrarlas).
+
+**El clic en el aviso.** Con `on_click`, pulsar el cuerpo de la notificación llama a ese callback
+(sin argumentos) desde un hilo propio: cambiar un `Signal` despierta la ventana sola. En Linux el
+aviso declara la acción `default` —la que los servidores asocian al cuerpo y no dibujan como
+botón—, y en macOS hace falta la app en marcha (`run()`) para que el sistema entregue el clic.
+Cerrar el aviso sin pulsarlo no llama a nada.
 
 **Windows y la identidad del aviso.** Windows firma cada notificación con el *AppUserModelID*
 (AUMID) de quien la envía; sin uno propio, la identidad de reserva es la de PowerShell y el aviso

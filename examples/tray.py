@@ -24,10 +24,12 @@ def añadir() -> None:
     recordatorios.set([*recordatorios(), f"Recordatorio {len(recordatorios()) + 1}"])
     # La notificación la pinta el sistema aunque la ventana esté cerrada; en
     # una app empaquetada lleva la identidad de la app (la registra sola).
+    # El clic en el aviso reabre la ventana.
     app.notify(
         "Recordatorio añadido",
         f"Ya hay {len(recordatorios())} en la lista",
         icon=ICONO,
+        on_click=app.main.open,
     )
 
 
@@ -53,8 +55,9 @@ def view():
             button("Ocultar ventana", alternar, variant="soft", key="ocultar"),
         ],
         text(
-            "La app sigue viva en la bandeja del sistema: ábrela con su icono (o doble clic) y "
-            "ciérrala con la X cuando quieras — solo «Salir» la termina.",
+            "La app sigue viva en la bandeja del sistema: ábrela con su icono, su doble clic o "
+            "pulsando la notificación, y ciérrala con la X cuando quieras — solo «Salir» la "
+            "termina.",
             size=13,
             color="$muted",
         ),

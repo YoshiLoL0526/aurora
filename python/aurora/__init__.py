@@ -300,6 +300,7 @@ class App:
         body: str = "",
         *,
         icon: str | PathLike[str] | None = None,
+        on_click: Callable[[], Any] | None = None,
     ) -> None:
         """Muestra una notificación del sistema.
 
@@ -308,16 +309,21 @@ class App:
         sistema: Centro de notificaciones en Windows y macOS, y aviso del
         demonio de notificaciones en Linux (GNOME y KDE lo traen).
 
+        `on_click` (opcional) se llama —sin argumentos— al pulsar el aviso, en
+        un hilo propio: desde él valen las mismas reglas que en `app.spawn()`
+        (cambiar un `Signal` despierta la ventana sola). El clic es el del
+        cuerpo del aviso; en macOS necesita la app en marcha (`run()`) para que
+        el sistema lo entregue.
+
         Se puede llamar desde cualquier hilo —por ejemplo desde una tarea de
         `app.spawn()` con la ventana cerrada— y también sin app en marcha. Si
         el sistema no admite notificaciones (Linux sin demonio, macOS sin app
         firmada), se avisa por stderr y la app sigue. En Windows, el aviso lleva
         la identidad (`app_id`) de la app: una empaquetada la registra sola
         (`sys.frozen`); en un script, sin identidad, Windows lo firma como
-        «Windows PowerShell» (ver `register_app_id`). En esta versión no hay
-        callback de clic.
+        «Windows PowerShell» (ver `register_app_id`).
         """
-        _core.notify(title, body, icon, self.app_id)
+        _core.notify(title, body, icon, self.app_id, on_click)
 
     def register_app_id(self, name: str | None = None) -> bool:
         """Registra la identidad de la app en Windows (acceso directo del menú Inicio).

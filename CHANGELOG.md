@@ -69,8 +69,12 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   (Centro de notificaciones en Windows y macOS, libnotify/D-Bus en Linux y BSD, con `notify-rust` y
   sin dependencias C). Se puede llamar desde cualquier hilo —también desde `app.spawn()` con la
   ventana cerrada— y sin app en marcha; si el sistema no las admite, se avisa por stderr y la app
-  sigue. En esta versión no hay callback de clic. `examples/tray.py` notifica al añadir un
-  recordatorio.
+  sigue. `examples/tray.py` notifica al añadir un recordatorio y reabre la ventana al pulsar el
+  aviso.
+  - **Callback de clic**: `on_click` se llama —sin argumentos— al pulsar el cuerpo del aviso, en un
+    hilo propio (cambiar un `Signal` despierta la ventana sola). En Linux el aviso declara la
+    acción `default` —la que los servidores asocian al cuerpo y no dibujan como botón—; en macOS
+    hace falta la app en marcha (`run()`) para que el sistema entregue el clic.
   - **Windows**: los avisos llevan la identidad de la app (`App(app_id=...)`); en una app
     empaquetada (`sys.frozen`) se deriva del título y se registra sola al arrancar con un acceso
     directo del menú Inicio —lo que Windows exige a las apps sin instalador—, así que dejan de

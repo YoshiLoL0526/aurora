@@ -176,6 +176,13 @@ aviso lleva la identidad de tu app: una app **empaquetada** la registra sola (ac
 menú Inicio), y en desarrollo puedes probarla con `app.register_app_id()` — sin identidad, Windows
 lo firma como «Windows PowerShell».
 
+Si quieres reaccionar al clic, pásale `on_click` —se llama, sin argumentos, al pulsar el cuerpo del
+aviso, en un hilo propio (en macOS, con la app en marcha)—:
+
+```python
+app.notify("Informe generado", "ya está en tu carpeta de descargas", on_click=app.main.open)
+```
+
 ### Barra de menús
 
 `App(view, menu=menus.bar(...))` pone la barra de menús nativa (Windows y macOS), con atajos del
