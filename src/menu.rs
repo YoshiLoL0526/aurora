@@ -16,12 +16,18 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use muda::accelerator::{Accelerator, Code, Modifiers};
-use muda::{ContextMenu, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::Window;
+// Mostrar un menú contextual sobre el HWND/NSView es de `ContextMenu`, y el
+// mango de la ventana se pide con `HasWindowHandle`: en Linux no hay menús
+// nativos (requieren GTK) y estos imports no se usan.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use muda::ContextMenu;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 /// Un menú construido y sus acciones, listas para despachar.
 pub struct Built {
@@ -70,8 +76,11 @@ pub fn show_context(window: &Window, entries: &Bound<'_, PyAny>) -> PyResult<()>
                 .show_context_menu_for_nsview(view.ns_view.as_ptr() as _, None)
         };
     }
+    // En Linux no hay menús nativos (requieren GTK): no se muestra nada, pero la
+    // acción queda registrada por si el id llegara desde el menú (no llegará: no
+    // se dibuja). Se consume `window` para no dejar un parámetro sin usar.
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    let _ = &built;
+    let _ = window;
     Ok(())
 }
 
