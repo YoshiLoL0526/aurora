@@ -80,6 +80,8 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
     directo del menú Inicio —lo que Windows exige a las apps sin instalador—, así que dejan de
     salir firmados como «Windows PowerShell». `app.register_app_id()` lo hace a mano (en
     desarrollo apunta a `python.exe` + el script) y devuelve `False` fuera de Windows.
+- **`aurora build` con `--upx` / `upx = true`**: opción para comprimir los binarios con UPX (debe
+  estar instalado) cuando se quiere un ejecutable más pequeño.
 
 ### Cambiado
 
@@ -92,6 +94,13 @@ versión menor puede incluir cambios incompatibles, que siempre se señalarán a
   núcleo compilado, sin Rust ni compilar nada— y dejan el clonado del repositorio (uv + Rust) para
   trabajar sobre Aurora. El [roadmap](https://github.com/YoshiLoL0526/aurora/blob/main/ROADMAP.md)
   marca las wheels en PyPI como hechas.
+- **`aurora build` ya no usa UPX por defecto**: aunque UPX esté instalado, el ejecutable se
+  empaqueta igual en cualquier máquina (antes, tenerlo en el `PATH` cambiaba el resultado y podía
+  llenar la salida de trazas de `NotCompressibleException`); UPX además dispara falsos positivos de
+  antivirus y arranca más lento. Quien lo quiera, lo activa con `upx = true` o `--upx`.
+- **La salida de `aurora build` deja de colar el encabezado de PyInstaller**: el nivel de log va
+  por entorno, que sí filtra las líneas `INFO:` que `--log-level` no alcanzaba al invocarlo con
+  `-m`; un build limpio imprime solo `Empaquetando …` y `Listo: …`, y los avisos que importen.
 
 ## [0.4.0] — 2026-10-17
 

@@ -12,6 +12,7 @@ opcional (`aurora-ui[build]`): solo hace falta para empaquetar, no para ejecutar
     include = ["assets"]         # archivos o carpetas que se copian junto a la app
     onefile = true               # un solo archivo; false = carpeta (arranca más rápido)
     console = false              # true = mantener la consola (útil para ver errores)
+    upx = false                  # true = comprimir los binarios con UPX (si está instalado)
     dist = "dist"                # carpeta de salida
 """
 
@@ -27,7 +28,7 @@ from typing import Any
 
 import tomllib
 
-_KEYS = {"script", "name", "icon", "include", "onefile", "console", "dist"}
+_KEYS = {"script", "name", "icon", "include", "onefile", "console", "upx", "dist"}
 _DEFAULT_SCRIPTS = ("main.py", "app.py")
 # Formatos de icono que PyInstaller usa tal cual; el resto lo convierte con Pillow.
 _NATIVE_ICON = {"win32": ".ico", "darwin": ".icns"}
@@ -50,6 +51,7 @@ class BuildConfig:
     include: list[Path] = field(default_factory=list)
     onefile: bool = True
     console: bool = False
+    upx: bool = False
     clean: bool = False
 
     @property
@@ -110,6 +112,7 @@ def resolve(
     include: list[str] | None = None,
     onefile: bool | None = None,
     console: bool | None = None,
+    upx: bool | None = None,
     dist: str | None = None,
     clean: bool = False,
     cwd: Path | None = None,
@@ -176,6 +179,7 @@ def resolve(
         include=includes,
         onefile=onefile if onefile is not None else _flag(setting("onefile", bool), True),
         console=console if console is not None else _flag(setting("console", bool), False),
+        upx=upx if upx is not None else _flag(setting("upx", bool), False),
         clean=clean,
     )
 
@@ -217,8 +221,6 @@ def pyinstaller_args(config: BuildConfig) -> list[str]:
         "--name",
         config.name,
         "--noconfirm",
-        "--log-level",
-        "WARN",
         "--distpath",
         str(config.dist),
         "--workpath",
@@ -231,6 +233,10 @@ def pyinstaller_args(config: BuildConfig) -> list[str]:
         "--exclude-module",
         "tkinter",
     ]
+    if not config.upx:
+        # UPX altera el binario (falsos positivos de antivirus, arranque más lento) y haría que
+        # el build dependiera de tenerlo instalado: solo se usa pidiéndolo con `upx = true`.
+        args.append("--noupx")
     if config.icon is not None:
         args += ["--icon", str(config.icon)]
     for path in config.include:
@@ -245,7 +251,11 @@ def build(config: BuildConfig) -> Path:
     if importlib.util.find_spec("PyInstaller") is None:
         raise BuildError(f"falta PyInstaller: {_INSTALL_HINT}")
     command = [sys.executable, "-m", "PyInstaller", *pyinstaller_args(config)]
-    result = subprocess.run(command, cwd=config.root, check=False)
+    # Con `-m`, `--log-level` no filtra las líneas INFO del propio PyInstaller (ese código corre
+    # como `__main__`, fuera del logger `PyInstaller`); por entorno, sí. Se respeta lo del usuario.
+    env = os.environ.copy()
+    env.setdefault("PYI_LOG_LEVEL", "WARN")
+    result = subprocess.run(command, cwd=config.root, check=False, env=env)
     if result.returncode != 0:
         raise BuildError(f"PyInstaller terminó con código {result.returncode} (detalles arriba)")
     if not config.executable.exists():

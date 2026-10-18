@@ -10,7 +10,7 @@ import pytest
 from test_render import _png_rows, _png_size
 
 from aurora import resource
-from aurora.build import BuildError, destination, pyinstaller_args, resolve
+from aurora.build import BuildError, build, destination, pyinstaller_args, resolve
 from aurora.cli import main
 
 
@@ -31,6 +31,8 @@ def test_defaults_from_main_py(tmp_path):
     args = pyinstaller_args(config)
     assert "--windowed" in args
     assert ("--onedir" if sys.platform == "darwin" else "--onefile") in args
+    assert "--noupx" in args
+    assert "--log-level" not in args
     assert args[args.index("--workpath") + 1] == str(tmp_path.resolve() / "build")
 
 
@@ -86,11 +88,56 @@ def test_executable_and_output_paths(tmp_path):
     assert config.output == config.dist / "main"
 
 
+def test_upx_is_opt_in(tmp_path):
+    config = resolve(cwd=project(tmp_path, "upx = true"))
+    assert config.upx
+    assert "--noupx" not in pyinstaller_args(config)
+    # La opción explícita gana al pyproject.
+    assert "--noupx" in pyinstaller_args(resolve(cwd=tmp_path, upx=False))
+
+
+@pytest.mark.parametrize(("flag", "expected"), [([], None), (["--upx"], True), (["--no-upx"], False)])
+def test_cli_upx_flag_reaches_resolve(tmp_path, monkeypatch, flag, expected):
+    (tmp_path / "main.py").write_text("")
+    captured = {}
+
+    def fake_resolve(script, **kwargs):
+        captured.update(kwargs)
+        return resolve(cwd=tmp_path)
+
+    monkeypatch.setattr("aurora.cli.resolve", fake_resolve)
+    monkeypatch.setattr("aurora.cli.build", lambda config: tmp_path / "salida")
+    assert main(["build", *flag]) == 0
+    assert captured["upx"] is expected
+
+
+@pytest.mark.skipif(importlib.util.find_spec("PyInstaller") is None, reason="requiere PyInstaller")
+@pytest.mark.parametrize(("preset", "expected"), [(None, "WARN"), ("DEBUG", "DEBUG")])
+def test_build_sets_pyinstaller_log_level_respecting_environment(tmp_path, monkeypatch, preset, expected):
+    if preset is None:
+        monkeypatch.delenv("PYI_LOG_LEVEL", raising=False)
+    else:
+        monkeypatch.setenv("PYI_LOG_LEVEL", preset)
+    config = resolve(cwd=project(tmp_path), console=True)
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen.update(kwargs)
+        config.executable.parent.mkdir(parents=True, exist_ok=True)
+        config.executable.write_bytes(b"")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert build(config) == config.output
+    assert seen["env"]["PYI_LOG_LEVEL"] == expected
+
+
 @pytest.mark.parametrize(
     ("settings", "message"),
     [
         ('scritp = "main.py"', "clave desconocida"),
         ("onefile = 1", "onefile debe ser bool"),
+        ("upx = 1", "upx debe ser bool"),
         ('include = "assets"', "include debe ser list"),
         ('include = ["falta"]', "no existe"),
         ('script = "falta.py"', "no existe"),

@@ -49,6 +49,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     window = p.add_mutually_exclusive_group()
     window.add_argument("--console", action="store_true", default=None, help="mantener la consola")
     window.add_argument("--windowed", dest="console", action="store_false", help="sin consola (por defecto)")
+    upx = p.add_mutually_exclusive_group()
+    upx.add_argument(
+        "--upx",
+        action="store_true",
+        default=None,
+        help="comprimir los binarios con UPX (más pequeño; requiere UPX y puede disparar antivirus)",
+    )
+    upx.add_argument("--no-upx", dest="upx", action="store_false", help="no comprimir con UPX (por defecto)")
     p.add_argument("--dist", help="carpeta de salida (por defecto: dist)")
     p.add_argument("--clean", action="store_true", help="borrar la caché de PyInstaller antes")
 
@@ -63,6 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include=args.include,
             onefile=args.onefile,
             console=args.console,
+            upx=args.upx,
             dist=args.dist,
             clean=args.clean,
         )

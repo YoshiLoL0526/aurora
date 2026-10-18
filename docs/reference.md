@@ -1550,8 +1550,13 @@ comandos tienen prioridad, salvo `--include`, que se suma a `include`.
 | `--include RUTA` | `include` (lista) | — | Archivo o carpeta que se copia con la app, con la misma ruta relativa al script (`assets/logo.png` sigue siendo `assets/logo.png`). Lo que está fuera de la carpeta del script va a la raíz. Repetible. |
 | `--onefile` / `--onedir` | `onefile` | `true` | Un solo archivo, o una carpeta con el ejecutable y sus bibliotecas, que arranca antes (no se descomprime en cada inicio). En macOS sin consola siempre se genera una `.app`. |
 | `--console` / `--windowed` | `console` | `false` | Mantener la ventana de consola (útil para ver `print` y errores mientras pruebas). |
+| `--upx` / `--no-upx` | `upx` | `false` | Comprime los binarios con UPX (que debe estar instalado): el ejecutable pesa menos, a costa de falsos positivos de antivirus y un arranque algo más lento. |
 | `--dist` | `dist` | `dist` | Carpeta de salida. Los archivos intermedios van a `build/`. |
 | `--clean` | — | — | Borra la caché de PyInstaller antes de empaquetar. |
+
+UPX viene desactivado a propósito: además de lo anterior, el resultado del build no debe depender
+de si la máquina tiene UPX instalado. Si lo activas y PyInstaller avisa de que algún binario no es
+comprimible (`python3.dll` y similares), es normal: lo deja sin comprimir y el build termina igual.
 
 ```toml
 [tool.aurora.build]
