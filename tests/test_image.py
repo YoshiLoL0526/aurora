@@ -1,5 +1,6 @@
 """Imágenes: tamaño natural y proporción, fit, recorte, SVG, bytes, caché y errores."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -108,7 +109,12 @@ def test_changed_file_is_reloaded(tmp_path):
     out = tmp_path / "live-out.png"
     pilot.png(str(out))
     assert _png_pixel(out, 25, 25) == RED
-    _core.render_png(box(bg="#0000FF").to_spec(MIDNIGHT), 12, 12, str(path), 1.0)
+    _core.render_png(box(bg="#0000FF").to_spec(MIDNIGHT), 30, 30, str(path), 1.0)
+    # La caché va por ruta + mtime + tamaño, y en NTFS dos escrituras seguidas
+    # pueden compartir marca de tiempo: se adelanta el mtime para que el cambio
+    # sea inequívoco (el tamaño también cambia: 10×10 → 30×30).
+    later = path.stat().st_mtime + 1
+    os.utime(path, (later, later))
     tick.set(1)
     pilot.frame()
     pilot.png(str(out))
