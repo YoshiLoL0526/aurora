@@ -42,7 +42,10 @@ Y verifica a mano:
 - [ ] Si el cambio es **visual**, hay un test en `tests/test_render.py` que lo renderiza, y
       `uv run examples/studio.py` sigue viéndose bien.
 - [ ] Si cambia la **API pública**, están actualizados `docs/reference.md`, la guía si aplica,
-      los stubs (`_core.pyi`) y el `CHANGELOG.md` (sección *Sin publicar*).
+      los stubs (`_core.pyi`) y el `CHANGELOG.md` (sección *Sin publicar*), y `tests/api.txt`
+      está regenerado (`AURORA_UPDATE_API=1 uv run pytest tests/test_api.py`). Para quitar o
+      renombrar algo público, márcalo antes como obsoleto según la
+      [política de estabilidad](docs/stability.md).
 - [ ] Si el cambio toca el **camino de un frame** (layout, pintura, reconstrucción), compara la
       [suite de benchmarks](benchmarks/README.md) antes y después (`--json` / `--compare`).
 - [ ] Si añades una **propiedad de estilo**, sigue los pasos de

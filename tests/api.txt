@@ -1,0 +1,220 @@
+[aurora]
+class App(view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), theme: 'Theme | Callable[[], Theme]' = Theme(...), menu: 'Sequence[dict[str, Any]] | None' = None, app_id: 'str | None' = None, inspector: 'bool | None' = None, reload: 'bool | None' = None, motion: 'bool | None' = None) -> 'None'
+    .main (propiedad)
+    .notify(self, title: 'str', body: 'str' = '', *, icon: 'str | PathLike[str] | None' = None, on_click: 'Callable[[], Any] | None' = None) -> 'None'
+    .pilot(self, *, size: 'tuple[float, float] | None' = None, scale: 'float' = 1.0, inspector: 'bool' = False) -> 'Pilot'
+    .quit(self) -> 'None'
+    .register_app_id(self, name: 'str | None' = None) -> 'bool'
+    .render_png(self, path: 'str', *, size: 'tuple[float, float] | None' = None, scale: 'float' = 2.0) -> 'None'
+    .run(self, *, backend: "Literal['auto', 'gpu', 'cpu']" = 'auto', keep_alive: 'bool | None' = None) -> 'None'
+    .spawn(self, coro: 'Coroutine[Any, Any, T]') -> 'Future[T]'
+    .tray(self, icon: 'str | PathLike[str] | bytes', *, tooltip: 'str | None' = None, menu: 'Sequence[dict[str, Any]] | None' = None, on_click: 'Callable[[str], Any] | None' = None, on_double_click: 'Callable[[str], Any] | None' = None, template: 'bool' = False) -> 'None'
+    .tray_hide(self) -> 'None'
+    .watch(self, main: 'ModuleType | None' = None) -> '_reload.Reloader'
+    .window(self, view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float] | None' = None, resizable: 'bool' = True, on_close: 'Callable[[], Any] | None' = None) -> 'Window'
+    .windows(self) -> 'list[Window]'
+class AuroraDeprecationWarning(...)
+class Canvas(width: 'float', height: 'float', theme: 'Theme') -> 'None'
+    .arc(self, cx: 'float', cy: 'float', r: 'float', start: 'float', sweep: 'float', *, pie: 'bool' = False, fill: 'Color | None' = None, stroke: 'Color | None' = None, stroke_width: 'float' = 1, cap: 'Cap' = 'butt', dash: 'Sequence[float] | None' = None) -> 'None'
+    .circle(self, cx: 'float', cy: 'float', r: 'float', *, fill: 'Color | None' = None, stroke: 'Color | None' = None, stroke_width: 'float' = 1, dash: 'Sequence[float] | None' = None) -> 'None'
+    .clear(self, color: 'Color' = '$background') -> 'None'
+    .clip_rect(self, x: 'float', y: 'float', width: 'float', height: 'float') -> 'None'
+    .height
+    .line(self, x1: 'float', y1: 'float', x2: 'float', y2: 'float', *, stroke: 'Color' = '$primary', stroke_width: 'float' = 1, cap: 'Cap' = 'butt', dash: 'Sequence[float] | None' = None) -> 'None'
+    .oval(self, x: 'float', y: 'float', width: 'float', height: 'float', *, fill: 'Color | None' = None, stroke: 'Color | None' = None, stroke_width: 'float' = 1, dash: 'Sequence[float] | None' = None) -> 'None'
+    .path(self, path: 'Path', *, fill: 'Color | None' = None, stroke: 'Color | None' = None, stroke_width: 'float' = 1, cap: 'Cap' = 'butt', join: 'Join' = 'miter', dash: 'Sequence[float] | None' = None) -> 'None'
+    .polygon(self, points: 'Points', *, fill: 'Color | None' = None, stroke: 'Color | None' = None, stroke_width: 'float' = 1, join: 'Join' = 'miter', dash: 'Sequence[float] | None' = None) -> 'None'
+    .polyline(self, points: 'Points', *, stroke: 'Color | None' = None, fill: 'Color | None' = None, stroke_width: 'float' = 1, closed: 'bool' = False, cap: 'Cap' = 'butt', join: 'Join' = 'round', dash: 'Sequence[float] | None' = None) -> 'None'
+    .rect(self, x: 'float', y: 'float', width: 'float', height: 'float', *, radius: 'float' = 0, fill: 'Color | None' = None, stroke: 'Color | None' = None, stroke_width: 'float' = 1, dash: 'Sequence[float] | None' = None) -> 'None'
+    .restore(self) -> 'None'
+    .rotate(self, degrees: 'float') -> 'None'
+    .save(self) -> 'None'
+    .saved(self) -> 'Generator[Canvas]'
+    .scale(self, sx: 'float', sy: 'float | None' = None) -> 'None'
+    .text(self, x: 'float', y: 'float', content: 'object', *, color: 'Color' = '$text', size: 'float' = 14, weight: 'int' = 400, family: 'str | None' = None, align: 'Align' = 'left', baseline: 'Baseline' = 'top') -> 'None'
+    .translate(self, dx: 'float', dy: 'float') -> 'None'
+    .width
+class Column(key: 'str', title: 'str | None' = None, width: 'float' = 160, min_width: 'float' = 48, align: 'Align' = 'start', value: 'Callable[[Any], Any] | None' = None, format: 'Callable[[Any], str] | None' = None, cell: 'Callable[[Any], Element] | None' = None, sortable: 'bool' = True, resizable: 'bool' = True) -> None
+    .align
+    .cell
+    .format
+    .min_width
+    .resizable
+    .sortable
+    .title
+    .value
+    .width
+DAYLIGHT: Theme
+class DragEvent()
+    .dx
+    .dy
+    .phase
+    .x
+    .y
+class Element(kind: 'str' = 'box', *, content: 'TextLike | None' = None, key: 'str | None' = None, **props: 'Any') -> 'None'
+    .children
+    .content
+    .handlers
+    .key
+    .kind
+    .on_click (propiedad)
+    .style
+    .to_spec(self, theme: 'Theme') -> 'dict[str, Any]'
+class KeyEvent()
+    .alt
+    .ctrl
+    .key
+    .matches(self, /, combo)
+    .meta
+    .repeat
+    .shift
+    .text
+MIDNIGHT: Theme
+class Path() -> 'None'
+    .arc(self, cx: 'float', cy: 'float', r: 'float', start: 'float', sweep: 'float') -> 'Path'
+    .close(self) -> 'Path'
+    .cubic_to(self, c1x: 'float', c1y: 'float', c2x: 'float', c2y: 'float', x: 'float', y: 'float') -> 'Path'
+    .line_to(self, x: 'float', y: 'float') -> 'Path'
+    .move_to(self, x: 'float', y: 'float') -> 'Path'
+    .quad_to(self, cx: 'float', cy: 'float', x: 'float', y: 'float') -> 'Path'
+class Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False)
+    .a11y_action(self, /, key, action, value=None)
+    .a11y_tree(self, /)
+    .chart_view(self, /, key)
+    .click(self, /, key)
+    .click_at(self, /, x, y)
+    .clipboard
+    .cursor
+    .drag(self, /, key, dx=0.0, dy=0.0, steps=4)
+    .focus(self, /, key)
+    .focused
+    .frame(self, /, dt=Ellipsis)
+    .hovered
+    .ime_commit(self, /, text)
+    .ime_preedit(self, /, text)
+    .inspection
+    .key_down(self, /, combo)
+    .key_up(self, /, combo)
+    .leave(self, /)
+    .mouse_down(self, /)
+    .mouse_up(self, /)
+    .move_to(self, /, x, y)
+    .png(self, /, path)
+    .press(self, /, combo)
+    .rect(self, /, key)
+    .resize(self, /, width, height)
+    .scroll(self, /, key, dy=0.0, dx=0.0)
+    .scroll_offset(self, /, key)
+    .selection(self, /, key)
+    .settle(self, /, max_frames=600)
+    .stats
+    .tooltip
+    .type(self, /, text)
+    .wheel(self, /, dy=0.0, dx=0.0, lines=False)
+class ScrollEvent()
+    .height
+    .width
+    .x
+    .y
+class Signal(value: 'T') -> 'None'
+    .set(self, value: 'T') -> 'None'
+    .subscribe(self, fn: 'Callable[[T], None]') -> 'Callable[[], None]'
+    .update(self, fn: 'Callable[[T], T]') -> 'None'
+    .value (propiedad)
+class Theme(colors: 'dict[str, str]' = <factory>, radius: 'dict[str, float]' = <factory>, font_family: 'str' = 'Inter') -> None
+    .font_family
+    .resolve(self, value: 'Any') -> 'Any'
+class Window(app: 'App', view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, on_close: 'Callable[[], Any] | None' = None, _id: 'int | None' = None) -> 'None'
+    .close(self) -> 'None'
+    .is_open (propiedad)
+    .open(self) -> 'None'
+    .pilot(self, *, size: 'tuple[float, float] | None' = None, scale: 'float' = 1.0, inspector: 'bool' = False) -> 'Pilot'
+    .render_png(self, path: 'str', *, size: 'tuple[float, float] | None' = None, scale: 'float' = 2.0) -> 'None'
+    .size (propiedad)
+    .title (propiedad)
+accordion(sections: 'Sequence[tuple[Any, str, Element]]', open: 'Signal[Any]', *, key: 'str | None' = None, **style: 'Any') -> 'Element'
+animate (módulo)
+avatar(name: 'str' = '', *, src: 'str | os.PathLike[str] | bytes | None' = None, size: 'float' = 32, **style: 'Any') -> 'Element'
+badge(label: 'TextLike', *, tone: 'str' = 'accent') -> 'Element'
+box(**style: 'Any') -> 'Element'
+button(label: 'TextLike', on_click: 'Callable[[], Any] | None' = None, *, variant: 'Variant' = 'primary', key: 'str | None' = None, **style: 'Any') -> 'Element'
+canvas(draw: 'Callable[[Canvas], Any]', **style: 'Any') -> 'Element'
+card(**style: 'Any') -> 'Element'
+chart(y: 'Any', *, x: 'Any' = None, kind: 'Kind' = 'line', color: 'str | Sequence[str] | None' = None, names: 'Sequence[Any] | None' = None, labels: 'Sequence[Any] | None' = None, y_min: 'float | None' = None, y_max: 'float | None' = None, grid: 'bool' = True, zoom: 'bool' = False, stroke_width: 'float' = 2, point_size: 'float' = 3.5, bar_width: 'float' = 0.7, label_size: 'float' = 11, label_color: 'str' = '$muted', grid_color: 'str' = '$border', **style: 'Any') -> 'Element'
+checkbox(checked: 'Signal[bool] | bool', label: 'TextLike | None' = None, *, on_change: 'Callable[[bool], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+column(**style: 'Any') -> 'Element'
+component(fn: 'Callable[P, Element]') -> 'Component[P]'
+dialog(open: 'Signal[bool] | bool', content: 'Element', *, title: 'TextLike | None' = None, on_close: 'Callable[[], Any] | None' = None, width: 'float' = 420, key: 'str | None' = None, **style: 'Any') -> 'Element | None'
+dialogs (módulo)
+divider(*, vertical: 'bool' = False, color: 'str' = '$border', **style: 'Any') -> 'Element'
+field(control: 'Element', *, label: 'str | None' = None, hint: 'str | None' = None, error: 'str | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+image(src: 'str | os.PathLike[str] | bytes', *, fit: 'Fit' = 'contain', **style: 'Any') -> 'Element'
+menu(trigger: 'Element', items: 'Sequence[tuple[str, Callable[[], Any]] | tuple[str, Callable[[], Any], dict[str, Any]]]', *, key: 'str', drop: 'float' = 44, **style: 'Any') -> 'Element'
+menus (módulo)
+pages(current: 'Signal[Any]', views: 'Mapping[Any, Callable[[], Element]]', *, key: 'str' = 'pages', **style: 'Any') -> 'Element'
+progress(value: 'Signal[float] | float', *, max: 'float' = 1.0, color: 'str | tuple[str, str, float]' = '$primary', **style: 'Any') -> 'Element'
+radio(options: 'Options', selected: 'Signal[Any]', *, key: 'str | None' = None, **style: 'Any') -> 'Element'
+resource(path: 'str | os.PathLike[str]') -> 'str'
+row(**style: 'Any') -> 'Element'
+scroll(*, axis: "Literal['x', 'y', 'both']" = 'y', **style: 'Any') -> 'Element'
+segmented(options: 'Options', selected: 'Signal[Any]', *, width: 'float' = 220, key: 'str | None' = None, **style: 'Any') -> 'Element'
+select(value: 'Signal[Any]', options: 'Options', *, placeholder: 'str' = 'Elegir…', key: 'str | None' = None, **style: 'Any') -> 'Element'
+skeleton(*, lines: 'int' = 1, width: 'str | float' = '100%', height: 'float' = 14, gap: 'float' = 8, **style: 'Any') -> 'Element'
+slider(value: 'Signal[float]', *, min: 'float' = 0.0, max: 'float' = 1.0, width: 'float' = 180, on_change: 'Callable[[float], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+spacer() -> 'Element'
+spinner(*, size: 'float' = 8, gap: 'float' = 5, tone: 'str' = '$primary', key: 'str | None' = None, **style: 'Any') -> 'Element'
+stat(label: 'str', value: 'TextLike', delta: 'str | None' = None, *, positive: 'bool' = True) -> 'Element'
+switch(on: 'Signal[bool] | bool', label: 'TextLike | None' = None, *, on_change: 'Callable[[bool], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+table(rows: 'Sequence[Any]', columns: 'Sequence[Column | str]', *, key: 'str', sort: 'Signal[Sort] | None' = None, widths: 'Signal[dict[str, float]] | None' = None, on_row_click: 'Callable[[Any], Any] | None' = None, row_height: 'float' = 36, header_height: 'float' = 40, striped: 'bool' = True, empty: 'str' = 'Sin datos', overscan: 'int' = 4, **style: 'Any') -> 'Element'
+tabs(options: 'Options', selected: 'Signal[Any]', *, key: 'str | None' = None, **style: 'Any') -> 'Element'
+text(content: 'TextLike', **style: 'Any') -> 'Element'
+text_input(value: 'Signal[str] | TextLike', *, placeholder: 'str' = '', on_change: 'Callable[[str], Any] | None' = None, on_submit: 'Callable[[str], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+textarea(value: 'Signal[str] | TextLike', *, placeholder: 'str' = '', rows: 'int' = 3, on_change: 'Callable[[str], Any] | None' = None, on_submit: 'Callable[[str], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+toast(message: 'Signal[str | None] | TextLike | None', *, on_close: 'Callable[[], Any] | None' = None, tone: 'str' = '$accent', key: 'str | None' = None, **style: 'Any') -> 'Element | None'
+tooltip(child: 'Element', tip: 'str') -> 'Element'
+virtual_list(count: 'int', item: 'Callable[[int], Element]', *, item_height: 'float', key: 'str', gap: 'float' = 0, overscan: 'int' = 4, role: 'str' = 'list', item_role: 'str' = 'listitem', **style: 'Any') -> 'Element'
+
+[aurora.animate]
+Easing = typing.Literal['linear', 'ease', 'ease_in', 'ease_out', 'ease_in_out']
+class Effect(opacity: 'float' = 1.0, x: 'float' = 0.0, y: 'float' = 0.0, scale: 'float' = 1.0, transition: 'Transition | None' = None) -> None
+    .opacity
+    .scale
+    .transition
+    .x
+    .y
+class Pulse(duration: 'float', delay: 'float', floor: 'float') -> None
+    .delay
+    .duration
+    .floor
+class Spring(stiffness: 'float', damping: 'float', mass: 'float', delay: 'float') -> None
+    .damping
+    .delay
+    .mass
+    .stiffness
+Transition = aurora.animate.Spring | aurora.animate.Tween
+class Tween(duration: 'float', easing: 'Easing', delay: 'float') -> None
+    .delay
+    .duration
+    .easing
+effect(*, opacity: 'float' = 1.0, x: 'float' = 0.0, y: 'float' = 0.0, scale: 'float' = 1.0, transition: 'Transition | None' = None) -> 'Effect'
+fade(opacity: 'float' = 0.0, *, transition: 'Transition | None' = None) -> 'Effect'
+pulse(duration: 'float' = 1.0, *, delay: 'float' = 0.0, floor: 'float' = 0.35) -> 'Pulse'
+slide(x: 'float' = 0.0, y: 'float' = 0.0, *, fade: 'bool' = True, transition: 'Transition | None' = None) -> 'Effect'
+spring(*, stiffness: 'float' = 380.0, damping: 'float' = 30.0, mass: 'float' = 1.0, delay: 'float' = 0.0) -> 'Spring'
+tween(duration: 'float' = 0.25, *, easing: 'Easing' = 'ease_out', delay: 'float' = 0.0) -> 'Tween'
+zoom(scale: 'float' = 0.9, *, fade: 'bool' = True, transition: 'Transition | None' = None) -> 'Effect'
+
+[aurora.dialogs]
+Filters = collections.abc.Sequence[tuple[str, collections.abc.Sequence[str]]]
+open_file(*, title: 'str | None' = None, directory: 'str | PathLike[str] | None' = None, filters: 'Filters | None' = None) -> 'str | None'
+open_files(*, title: 'str | None' = None, directory: 'str | PathLike[str] | None' = None, filters: 'Filters | None' = None) -> 'list[str]'
+pick_folder(*, title: 'str | None' = None, directory: 'str | PathLike[str] | None' = None) -> 'str | None'
+save_file(*, title: 'str | None' = None, directory: 'str | PathLike[str] | None' = None, default_name: 'str | None' = None, filters: 'Filters | None' = None) -> 'str | None'
+
+[aurora.menus]
+PREDEFINED: frozenset
+bar(*items: 'dict[str, Any]') -> 'Sequence[dict[str, Any]]'
+item(label: 'str', on_click: 'Callable[[], Any]', *, shortcut: 'str | None' = None, enabled: 'bool' = True) -> 'dict[str, Any]'
+predefined(name: 'str') -> 'dict[str, Any]'
+separator() -> 'dict[str, Any]'
+submenu(label: 'str', *items: 'dict[str, Any]') -> 'dict[str, Any]'

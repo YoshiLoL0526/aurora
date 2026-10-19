@@ -72,7 +72,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
   - ✅ Bandeja del sistema
   - ✅ Menús nativos (barra de la app y contextuales)
   - ✅ Notificaciones del sistema (`app.notify`, con callback de clic)
-- ⏳ API estable con política de deprecación documentada
+- ✅ Política de estabilidad de la API: qué es público, plazos de obsolescencia y avisos (AuroraDeprecationWarning)
 - ✅ Wheels precompiladas en PyPI para Windows, macOS (x86_64/arm64) y Linux
 
 ---

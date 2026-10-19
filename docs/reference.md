@@ -1,7 +1,8 @@
 # Referencia
 
 Referencia completa de la API pública de Aurora. Para un recorrido paso a paso, empieza por la
-[guía](guide.md).
+[guía](guide.md). Qué se considera público y cómo cambia entre versiones lo explica la
+[política de estabilidad](stability.md).
 
 - [App](#app)
 - [Window (ventanas adicionales)](#window)
@@ -23,6 +24,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Temas y tokens](#temas-y-tokens)
 - [Formatos de valores](#formatos-de-valores)
 - [Empaquetado: `aurora build`](#empaquetado-aurora-build)
+- [Avisos de obsolescencia](#avisos-de-obsolescencia)
 
 ---
 
@@ -1583,3 +1585,17 @@ Devuelve la ruta absoluta de un recurso de la app. Una ruta relativa se resuelve
 donde quedan los archivos de `include`, que conservan su estructura. Así funciona igual con
 `python app.py`, con doble clic en el ejecutable o lanzándolo desde otra carpeta. Una ruta
 absoluta se devuelve tal cual.
+
+## Avisos de obsolescencia
+
+`aurora.AuroraDeprecationWarning` (subclase de `FutureWarning`) es el aviso que emite cualquier parte
+de la API marcada como obsoleta: dice desde qué versión lo está, en cuál se eliminará y qué usar
+en su lugar. Se ve por defecto en la consola; para que los tests de tu app fallen al usar algo
+obsoleto:
+
+```toml
+[tool.pytest.ini_options]
+filterwarnings = ["error::aurora.AuroraDeprecationWarning"]
+```
+
+Los plazos y qué cuenta como API pública están en la [política de estabilidad](stability.md).

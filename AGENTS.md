@@ -90,7 +90,9 @@ cargo fmt --check && cargo clippy --release -- -D warnings
   aren't shown. Ruff also formats the Python inside the Markdown files.
 - Required per change: visual → render test in `tests/test_render.py`; interaction → `Pilot` test in
   `tests/test_pilot.py`; public API → `docs/reference.md` + `_core.pyi` (if native) + the
-  "Sin publicar" section of `CHANGELOG.md`; frame-path (layout/paint/rebuild) → compare
+  "Sin publicar" section of `CHANGELOG.md` + regenerate `tests/api.txt`
+  (`AURORA_UPDATE_API=1 uv run pytest tests/test_api.py`); removing/renaming public API → deprecate
+  first with `aurora._deprecation` per `docs/stability.md`; frame-path (layout/paint/rebuild) → compare
   `benchmarks/run.py --json` / `--compare` before and after.
 
 ## Conventions

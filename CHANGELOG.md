@@ -3,8 +3,28 @@
 Todos los cambios relevantes de Aurora se documentan aquí.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa
-[Versionado Semántico](https://semver.org/lang/es/). Mientras la versión sea `0.x`, cualquier
-versión menor puede incluir cambios incompatibles, que siempre se señalarán aquí.
+[Versionado Semántico](https://semver.org/lang/es/). Mientras la versión sea `0.x`, una versión
+menor puede eliminar lo que se marcó como obsoleto en la anterior; cómo se retira cada cosa lo
+explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stability/).
+
+## [Sin publicar]
+
+### Añadido
+
+- **Política de estabilidad de la API**
+  ([documentada](https://yoshilol0526.github.io/aurora/stability/)): qué es público (lo que se
+  importa de `aurora`, `aurora.animate`, `aurora.dialogs` y `aurora.menus`, las props de estilo,
+  los tokens, la CLI y `[tool.aurora.build]`) y qué es interno, qué puede cambiar en cada tipo de
+  versión, y el plazo antes de eliminar algo: al menos una versión menor marcado como obsoleto
+  mientras sea `0.x`, y hasta la siguiente mayor desde la 1.0.
+- **`aurora.AuroraDeprecationWarning`**: el aviso que emite lo obsoleto, con la versión desde la
+  que lo está, la versión en que se eliminará y la alternativa. Hereda de `FutureWarning` (se ve
+  por defecto); `-W error::aurora.AuroraDeprecationWarning` lo convierte en error en los tests de
+  una app.
+- `aurora.dialogs` y `aurora.menus` declaran su `__all__`.
+- Interno: `tests/test_api.py` fija la superficie pública (`tests/api.txt`, nombres y firmas) y
+  `aurora._deprecation` reúne los ayudantes para retirar API (`@deprecated`,
+  `@renamed_kwargs`, `warn`). La suite convierte los avisos de obsolescencia en errores.
 
 ## [0.5.0] — 2026-10-18
 

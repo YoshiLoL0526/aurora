@@ -70,6 +70,8 @@ cache-keys = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Ni los tests, ni los ejemplos, ni la documentación pueden usar API obsoleta.
+filterwarnings = ["error::aurora.AuroraDeprecationWarning"]
 
 [tool.ruff]
 line-length = 110

@@ -101,3 +101,6 @@ def bar(*items: dict[str, Any]) -> Sequence[dict[str, Any]]:
     el submenú estándar de la app (Acerca de, Ocultar, Salir…).
     """
     return list(items)
+
+
+__all__ = ["PREDEFINED", "bar", "item", "predefined", "separator", "submenu"]

@@ -38,6 +38,7 @@ nav:
   - Galería: examples.md
   - Arquitectura: architecture.md
   - Proyecto:
+      - Estabilidad de la API: stability.md
       - Roadmap: roadmap.md
       - Cambios: changelog.md
 

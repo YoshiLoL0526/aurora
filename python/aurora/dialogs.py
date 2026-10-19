@@ -81,3 +81,6 @@ def pick_folder(
 ) -> str | None:
     """Pide una carpeta y devuelve su ruta, o `None` si se cancela."""
     return _core.pick_folder(title, directory)
+
+
+__all__ = ["Filters", "open_file", "open_files", "pick_folder", "save_file"]
