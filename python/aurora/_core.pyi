@@ -1,5 +1,6 @@
 """Stubs del módulo nativo (Rust). La API pública está en `aurora`; esto es interno."""
 
+from collections.abc import Sequence
 from os import PathLike
 from typing import Any, Callable
 
@@ -200,6 +201,15 @@ class Pilot:
     def click_at(self, x: float, y: float) -> None: ...
     def drag(self, key: str, dx: float = 0.0, dy: float = 0.0, steps: int = 4) -> None:
         """Arrastra desde el centro de `key` desplazando `(dx, dy)` en `steps` movimientos, y suelta."""
+    def hover_files(self, files: Sequence[str | PathLike[str]] | None) -> None:
+        """Archivos del sistema que pasan sobre la ventana, o `None` si salen sin soltar."""
+    def drop_files(
+        self,
+        files: Sequence[str | PathLike[str]],
+        key: str | None = None,
+        at: tuple[float, float] | None = None,
+    ) -> bool:
+        """Suelta archivos sobre el centro de `key`, en `at` o sin posición; `True` si un `on_drop` los recibió."""
     @property
     def cursor(self) -> str:
         """Cursor del ratón (`"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`,

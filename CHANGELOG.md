@@ -21,6 +21,13 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   que lo está, la versión en que se eliminará y la alternativa. Hereda de `FutureWarning` (se ve
   por defecto); `-W error::aurora.AuroraDeprecationWarning` lo convierte en error en los tests de
   una app.
+- **Soltar archivos desde el sistema**: `on_drop=lambda rutas: ...` en cualquier elemento recibe
+  las rutas de los archivos y carpetas arrastrados desde el explorador (en Windows, el elemento
+  bajo el puntero o su primer ancestro con `on_drop`; en macOS y Linux X11, que no informan del
+  punto, el primer `on_drop` de la vista). `on_drop_hover` recibe las rutas mientras el arrastre
+  pasa sobre la ventana y `None` al salir o soltar, para resaltar la zona. En Wayland winit aún
+  no los entrega. `Pilot.hover_files(...)` y `Pilot.drop_files(..., key=...)` lo simulan en los
+  tests, y `examples/notepad.py` abre el archivo que se suelta sobre la ventana.
 - `aurora.dialogs` y `aurora.menus` declaran su `__all__`.
 - Interno: `tests/test_api.py` fija la superficie pública (`tests/api.txt`, nombres y firmas) y
   `aurora._deprecation` reúne los ayudantes para retirar API (`@deprecated`,

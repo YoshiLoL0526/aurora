@@ -313,6 +313,8 @@ def test_counter():
 | `click(key)` | Clic en el centro del nodo `key`, como una persona: si otro nodo lo tapa, el clic llega a ese otro. `LookupError` si el nodo no se pintó. |
 | `click_at(x, y)` | Mueve el puntero, pulsa y suelta. |
 | `drag(key, dx=0, dy=0, steps=4)` | Pulsa en el centro de `key`, mueve el puntero `(dx, dy)` en `steps` pasos y suelta. |
+| `hover_files(files)` | Archivos del sistema que entran arrastrándose en la ventana (`None`: salen sin soltar). Llama a los `on_drop_hover`. |
+| `drop_files(files, key=None, at=None)` | Suelta archivos sobre el centro de `key`, en `at=(x, y)` o, sin ninguno, sin posición (como en macOS y Linux). Devuelve `True` si un `on_drop` los recibió. Ver [Soltar archivos](#soltar-archivos). |
 | `cursor` | Cursor del ratón en el último frame: `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"` o `"crosshair"` (modo selección del inspector). |
 | `move_to(x, y)` / `leave()` | Mueve el puntero / lo saca de la ventana. |
 | `mouse_down()` / `mouse_up()` | Pulsa / suelta el botón izquierdo por separado. |
@@ -648,6 +650,8 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | `on_drag` | Callable que recibe un [`DragEvent`](#dragevent). Pulsar sobre el elemento empieza un arrastre: le llegan todos los movimientos hasta soltar, aunque el puntero salga de su caja. Si el puntero llega a moverse, el gesto no cuenta como clic. Hace al elemento interactivo (hover/pressed) pero no enfocable. |
 | `on_key` | Callable que recibe un [`KeyEvent`](#keyevent). Recibe las teclas cuando el foco está en el elemento o en uno de sus descendientes (la raíz las recibe siempre). Devuelve `True` para darla por atendida. |
 | `on_focus` / `on_blur` | Callables sin argumentos: el elemento gana / pierde el foco. |
+| `on_drop` | Callable que recibe la lista de rutas (`list[str]`) de los archivos que se sueltan desde el explorador del sistema sobre el elemento o sus hijos. Ver [Soltar archivos](#soltar-archivos). |
+| `on_drop_hover` | Callable que recibe la lista de rutas cuando un arrastre de archivos entra en la ventana y `None` cuando sale o se suelta. Para resaltar las zonas donde soltar. |
 | `on_<evento>` | Todo argumento que empiece por `on_` se trata como manejador, no como estilo. |
 | `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`. |
 | `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
@@ -694,6 +698,38 @@ row()[
     box(width=6, cursor="col-resize", bg_hover="$border", on_drag=redimensionar),
 ]
 ```
+
+### Soltar archivos
+
+Arrastrar archivos desde el explorador del sistema hasta la ventana los entrega al elemento con
+`on_drop` que hay bajo el puntero (o a su primer ancestro que lo tenga), como una lista de rutas
+absolutas. Mientras el arrastre pasa sobre la ventana, todos los `on_drop_hover` de la vista
+reciben esas rutas, y `None` al salir o al soltar:
+
+```python
+arrastrando = Signal(False)
+archivos = Signal[list[str]]([])
+
+card(
+    padding=24,
+    border_width=2,
+    border_color="$primary" if arrastrando() else "$border",
+    on_drop=archivos.set,
+    on_drop_hover=lambda rutas: arrastrando.set(rutas is not None),
+)[text("Suelta aquí tus CSV")]
+```
+
+- **Dónde cae**: en Windows, en el punto exacto donde se suelta. En macOS y Linux (X11) el sistema
+  no informa del punto durante el arrastre: los archivos van al **primer elemento con `on_drop`
+  de la vista** (en orden del árbol), así que con una sola zona se comporta igual en todos los
+  sistemas. Por la misma razón, `on_drop_hover` avisa a la vista entera, no a la zona de debajo.
+- **Linux con Wayland**: winit todavía no entrega los archivos arrastrados; ni `on_drop` ni
+  `on_drop_hover` se llaman (con XWayland sí).
+- Solo se entregan archivos y carpetas (no texto ni imágenes arrastradas desde otra app). Lo que
+  haya en las rutas lo decide tu manejador: comprueba la extensión antes de abrirlas.
+- En los tests, `pilot.hover_files(rutas)` / `pilot.hover_files(None)` y
+  `pilot.drop_files(rutas, key=...)` simulan el arrastre (sin `key` ni `at`, sin posición, como en
+  macOS y Linux); `drop_files` devuelve si algún `on_drop` los recibió.
 
 ## Teclado y foco
 

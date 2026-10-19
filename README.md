@@ -225,6 +225,8 @@ Aurora es joven. Esto es lo que **todavía no** hace:
   Linux la barra y los contextuales no aparecen, y ese hueco lo cubre el componente `menu` dentro
   de la app. La bandeja usa StatusNotifierItem: en GNOME necesita la extensión AppIndicator (y
   algunos escritorios no la muestran).
+- **Soltar archivos fuera de Windows**: macOS y Linux (X11) no informan de dónde se sueltan, así
+  que los archivos van al primer `on_drop` de la vista; en Wayland, winit aún no los entrega.
 
 ## Documentación
 

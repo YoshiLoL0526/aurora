@@ -2,6 +2,8 @@
 //! frame. Usa el mismo `Runtime` que la ventana, así que un test que pasa con
 //! el piloto ejercita el mismo hit-testing, burbujeo y reconstrucción.
 
+use std::path::PathBuf;
+
 use pyo3::exceptions::{PyLookupError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -51,6 +53,13 @@ impl Pilot {
         // Un `on_scroll` puede haber vuelto a cambiar un `Signal`: queda otro frame.
         Ok(animating || hover_changed || self.rt.needs_sync() || self.rt.animating())
     }
+}
+
+fn paths(files: Vec<PathBuf>) -> Vec<String> {
+    files
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
 }
 
 fn new_surface(width: f32, height: f32, scale: f32) -> PyResult<Surface> {
@@ -140,6 +149,37 @@ impl Pilot {
             C::RowResize => "row-resize",
             C::Crosshair => "crosshair",
         }
+    }
+
+    /// Archivos del sistema que empiezan a pasar sobre la ventana, o `None`
+    /// cuando el arrastre sale sin soltar (avisa a los `on_drop_hover`).
+    fn hover_files(&mut self, files: Option<Vec<PathBuf>>) -> PyResult<()> {
+        let files = files.map(paths);
+        let result = self.rt.files_hover(files.as_deref());
+        self.step(FRAME)?;
+        result
+    }
+
+    /// Suelta archivos del sistema sobre el centro de `key`, en `at=(x, y)` o,
+    /// sin ninguno de los dos, sin posición (como en macOS y Linux, donde el
+    /// sistema no la da). Devuelve si algún `on_drop` los recibió.
+    #[pyo3(signature = (files, key = None, at = None))]
+    fn drop_files(
+        &mut self,
+        files: Vec<PathBuf>,
+        key: Option<&str>,
+        at: Option<(f32, f32)>,
+    ) -> PyResult<bool> {
+        let at = match key {
+            Some(key) => {
+                let c = self.center(key)?;
+                Some((c.x, c.y))
+            }
+            None => at,
+        };
+        let result = self.rt.files_drop(&paths(files), at);
+        self.step(FRAME)?;
+        result
     }
 
     fn leave(&mut self) -> PyResult<()> {

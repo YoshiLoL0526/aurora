@@ -246,6 +246,43 @@ struct View {
     on_close: Option<Py<PyAny>>,
     /// Aviso a Python (por id) cuando la ventana se cerró de verdad.
     on_closed: Option<Py<PyAny>>,
+    /// Archivos arrastrados desde el sistema, pendientes de entregar en el
+    /// próximo frame: winit manda un evento por archivo y aquí se agrupan.
+    files: PendingFiles,
+}
+
+/// Archivos del sistema que pasan sobre la ventana o se sueltan en ella.
+#[derive(Default)]
+struct PendingFiles {
+    hovered: Vec<String>,
+    /// El arrastre salió de la ventana sin soltar.
+    left: bool,
+    dropped: Vec<String>,
+    /// Dónde se soltaron (píxeles lógicos), si el sistema lo dice.
+    at: Option<(f32, f32)>,
+}
+
+/// Posición del puntero en la ventana (píxeles lógicos), preguntada al sistema.
+/// Mientras se arrastran archivos winit no manda `CursorMoved`; en Windows se
+/// pregunta directamente. En el resto, la última posición conocida.
+#[cfg(target_os = "windows")]
+fn cursor_in(window: &Window) -> Option<(f32, f32)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    let mut p = POINT::default();
+    // SAFETY: `GetCursorPos` solo escribe en el `POINT` que se le pasa.
+    unsafe { GetCursorPos(&mut p) }.ok()?;
+    let origin = window.inner_position().ok()?;
+    let scale = window.scale_factor() as f32;
+    Some((
+        (p.x - origin.x) as f32 / scale,
+        (p.y - origin.y) as f32 / scale,
+    ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cursor_in(_window: &Window) -> Option<(f32, f32)> {
+    None
 }
 
 impl View {
@@ -279,7 +316,27 @@ impl View {
             fatal: None,
             on_close,
             on_closed,
+            files: PendingFiles::default(),
         })
+    }
+
+    /// Entrega a la vista los archivos arrastrados desde el último frame.
+    fn flush_files(&mut self) {
+        let PendingFiles {
+            hovered,
+            left,
+            dropped,
+            at,
+        } = std::mem::take(&mut self.files);
+        if !hovered.is_empty() {
+            report(self.rt.files_hover(Some(&hovered)));
+        }
+        if left {
+            report(self.rt.files_hover(None));
+        }
+        if !dropped.is_empty() {
+            report(self.rt.files_drop(&dropped, at).map(drop));
+        }
     }
 
     /// Pinta un frame, con esta ventana como «la ventana en curso» de Python.
@@ -289,6 +346,7 @@ impl View {
     }
 
     fn redraw_inner(&mut self) {
+        self.flush_files();
         if let Err(err) = self.rt.sync() {
             Python::attach(|py| err.print(py));
             if !self.rt.has_tree() {
@@ -471,6 +529,24 @@ impl View {
                     let spec = handler.call0(py)?;
                     crate::menu::show_context(&self.window, spec.bind(py))
                 }));
+                window.request_redraw();
+            }
+            WindowEvent::HoveredFile(path) => {
+                self.files.hovered.push(path.to_string_lossy().into_owned());
+                self.files.left = false;
+                window.request_redraw();
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.files.hovered.clear();
+                self.files.left = true;
+                window.request_redraw();
+            }
+            WindowEvent::DroppedFile(path) => {
+                if self.files.dropped.is_empty() {
+                    let at = cursor_in(&window).or(self.rt.pointer());
+                    self.files.at = at;
+                }
+                self.files.dropped.push(path.to_string_lossy().into_owned());
                 window.request_redraw();
             }
             WindowEvent::ModifiersChanged(m) => {

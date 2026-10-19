@@ -86,9 +86,11 @@ class Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False)
     .clipboard
     .cursor
     .drag(self, /, key, dx=0.0, dy=0.0, steps=4)
+    .drop_files(self, /, files, key=None, at=None)
     .focus(self, /, key)
     .focused
     .frame(self, /, dt=Ellipsis)
+    .hover_files(self, /, files)
     .hovered
     .ime_commit(self, /, text)
     .ime_preedit(self, /, text)

@@ -29,6 +29,7 @@ pub use crate::spec::Cursor as CursorKind;
 mod a11y;
 mod clipboard;
 mod editing;
+mod files;
 mod focus;
 mod keyboard;
 mod pointer;
@@ -156,6 +157,8 @@ pub struct Runtime {
     canvases: Canvases,
     /// Cuándo volver a grabar cada `chart`.
     charts: Charts,
+    /// Hay archivos del sistema arrastrándose sobre la ventana (`on_drop_hover`).
+    files_hovering: bool,
     /// Inspector del árbol y profiler de frames.
     pub inspector: Inspector,
     /// Estado de accesibilidad: ids estables por key para el árbol nativo.
@@ -190,6 +193,7 @@ impl Runtime {
             history: VecDeque::new(),
             canvases: Canvases::default(),
             charts: Charts::default(),
+            files_hovering: false,
             inspector: Inspector::new(inspector),
             a11y: crate::a11y::A11y::default(),
         }

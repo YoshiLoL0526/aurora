@@ -1,4 +1,4 @@
-"""Bloc de notas: diálogos nativos, menú con atajos y «cambios sin guardar».
+"""Bloc de notas: diálogos nativos, menú con atajos, soltar archivos y «cambios sin guardar».
 
 uv run examples/notepad.py                    # abre la ventana
 uv run examples/notepad.py --png nota.png     # render headless
@@ -27,6 +27,7 @@ contenido = Signal("")
 ruta = Signal[Path | None](None)  # el archivo abierto, si lo hay
 sucio = Signal(False)
 confirmar = Signal(False)
+arrastrando = Signal(False)  # hay archivos del sistema pasando sobre la ventana
 
 
 def nombre() -> str:
@@ -53,9 +54,16 @@ def nuevo() -> None:
 
 def abrir() -> None:
     elegida = dialogs.open_file(title="Abrir nota", filters=[("Texto", ["txt", "md"])])
-    if elegida is None:
-        return
-    archivo = Path(elegida)
+    if elegida is not None:
+        cargar(Path(elegida))
+
+
+def soltar(archivos: list[str]) -> None:
+    """Arrastrar un archivo desde el explorador sobre la ventana lo abre."""
+    cargar(Path(archivos[0]))
+
+
+def cargar(archivo: Path) -> None:
     try:
         contenido.set(archivo.read_text(encoding="utf-8"))
     except OSError as error:
@@ -127,7 +135,13 @@ def atajos(e: KeyEvent) -> bool | None:
 
 
 def view():
-    return column(padding=16, gap=12, on_key=atajos)[
+    return column(
+        padding=16,
+        gap=12,
+        on_key=atajos,
+        on_drop=soltar,
+        on_drop_hover=lambda archivos: arrastrando.set(archivos is not None),
+    )[
         row(align="center", gap=10)[
             text(lambda: nombre(), weight=700, key="nombre"),
             text(lambda: "• sin guardar" if sucio() else "", size=12, color="$muted"),
@@ -138,8 +152,9 @@ def view():
         scroll(grow=1, key="scroll")[
             textarea(
                 contenido,
-                placeholder="Escribe algo…",
+                placeholder="Escribe algo… o suelta aquí un archivo",
                 rows=16,
+                border_color="$primary" if arrastrando() else "$border",
                 grow=1,
                 key="editor",
             )

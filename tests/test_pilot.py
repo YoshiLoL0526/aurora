@@ -374,3 +374,71 @@ def test_overflow_hidden_clips_clicks_and_toggles():
 def test_invalid_cursor_raises(tmp_path):
     with pytest.raises(ValueError, match="cursor"):
         App(lambda: box(cursor="mano"), size=(10, 10)).render_png(str(tmp_path / "x.png"))
+
+
+def test_drop_files_goes_to_drop_zone_under_point(tmp_path):
+    got = []
+    view = lambda: row(gap=10)[
+        box(key="a", width=80, height=80, on_drop=lambda files: got.append(("a", files))),
+        box(key="b", width=80, height=80, on_drop=lambda files: got.append(("b", files)))[
+            text("Suelta", key="label")
+        ],
+        box(key="nada", width=80, height=80),
+    ]
+    pilot = App(view, size=(300, 100)).pilot()
+    path = tmp_path / "datos.csv"
+    # Burbujea desde el hijo hasta el primer ancestro con `on_drop`; acepta `Path`.
+    assert pilot.drop_files([path, "otro.txt"], key="label") is True
+    assert got == [("b", [str(path), "otro.txt"])]
+    # Fuera de toda zona con `on_drop` no lo recibe nadie.
+    assert pilot.drop_files(["x"], key="nada") is False
+    assert len(got) == 1
+
+
+def test_drop_files_without_position_goes_to_first_drop_zone():
+    got = []
+    view = lambda: column()[
+        text("Sin zona"),
+        box(key="primera", on_drop=lambda files: got.append(("primera", files))),
+        box(key="segunda", on_drop=lambda files: got.append(("segunda", files))),
+    ]
+    pilot = App(view, size=(200, 100)).pilot()
+    # macOS y Linux no dan la posición al soltar: decide el orden del árbol.
+    assert pilot.drop_files(["a.png"]) is True
+    assert got == [("primera", ["a.png"])]
+
+
+def test_drop_hover_notifies_every_listener_and_rebuilds():
+    hovering = Signal[list[str] | None](None)
+    seen = []
+
+    def view():
+        return column()[
+            box(key="zona", on_drop_hover=hovering.set, on_drop=lambda files: None),
+            box(key="otra", on_drop_hover=seen.append),
+            text(lambda: f"{len(hovering() or [])} archivos", key="estado"),
+        ]
+
+    pilot = App(view, size=(200, 100)).pilot()
+    pilot.hover_files(["a.png", "b.png"])
+    assert hovering() == ["a.png", "b.png"]
+    assert seen == [["a.png", "b.png"]]
+    # Soltar termina el arrastre: los avisos reciben `None`.
+    pilot.drop_files(["a.png", "b.png"], key="zona")
+    assert hovering() is None
+    assert seen == [["a.png", "b.png"], None]
+    # Salir sin soltar también; un segundo `None` no vuelve a avisar.
+    pilot.hover_files(["c.txt"])
+    pilot.hover_files(None)
+    pilot.hover_files(None)
+    assert seen[-2:] == [["c.txt"], None]
+    assert len(seen) == 4
+
+
+def test_drop_handler_error_surfaces():
+    def boom(files):
+        raise RuntimeError("fallo al soltar")
+
+    pilot = App(lambda: box(key="z", width=50, height=50, on_drop=boom), size=(100, 100)).pilot()
+    with pytest.raises(RuntimeError, match="fallo al soltar"):
+        pilot.drop_files(["a"], key="z")
