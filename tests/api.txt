@@ -145,7 +145,9 @@ card(**style: 'Any') -> 'Element'
 chart(y: 'Any', *, x: 'Any' = None, kind: 'Kind' = 'line', color: 'str | Sequence[str] | None' = None, names: 'Sequence[Any] | None' = None, labels: 'Sequence[Any] | None' = None, y_min: 'float | None' = None, y_max: 'float | None' = None, grid: 'bool' = True, zoom: 'bool' = False, stroke_width: 'float' = 2, point_size: 'float' = 3.5, bar_width: 'float' = 0.7, label_size: 'float' = 11, label_color: 'str' = '$muted', grid_color: 'str' = '$border', **style: 'Any') -> 'Element'
 checkbox(checked: 'Signal[bool] | bool', label: 'TextLike | None' = None, *, on_change: 'Callable[[bool], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 column(**style: 'Any') -> 'Element'
+combobox(value: 'Signal[Any]', options: 'Options', *, placeholder: 'str' = 'Buscar…', empty: 'str' = 'Sin resultados', on_change: 'Callable[[Any], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 component(fn: 'Callable[P, Element]') -> 'Component[P]'
+date_picker(value: 'Signal[date | None] | Signal[date]', *, min: 'date | None' = None, max: 'date | None' = None, placeholder: 'str' = 'Elegir fecha', format: 'Callable[[date], str]' = <function _short>, first_weekday: 'int' = 0, on_change: 'Callable[[date], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 dialog(open: 'Signal[bool] | bool', content: 'Element', *, title: 'TextLike | None' = None, on_close: 'Callable[[], Any] | None' = None, width: 'float' = 420, key: 'str | None' = None, **style: 'Any') -> 'Element | None'
 dialogs (módulo)
 divider(*, vertical: 'bool' = False, color: 'str' = '$border', **style: 'Any') -> 'Element'
@@ -153,6 +155,7 @@ field(control: 'Element', *, label: 'str | None' = None, hint: 'str | None' = No
 image(src: 'str | os.PathLike[str] | bytes', *, fit: 'Fit' = 'contain', **style: 'Any') -> 'Element'
 menu(trigger: 'Element', items: 'Sequence[tuple[str, Callable[[], Any]] | tuple[str, Callable[[], Any], dict[str, Any]]]', *, key: 'str', drop: 'float' = 44, **style: 'Any') -> 'Element'
 menus (módulo)
+number_input(value: 'Signal[float] | Signal[int]', *, min: 'float | None' = None, max: 'float | None' = None, step: 'float' = 1, decimals: 'int | None' = None, on_change: 'Callable[[float], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 pages(current: 'Signal[Any]', views: 'Mapping[Any, Callable[[], Element]]', *, key: 'str' = 'pages', **style: 'Any') -> 'Element'
 progress(value: 'Signal[float] | float', *, max: 'float' = 1.0, color: 'str | tuple[str, str, float]' = '$primary', **style: 'Any') -> 'Element'
 radio(options: 'Options', selected: 'Signal[Any]', *, key: 'str | None' = None, **style: 'Any') -> 'Element'

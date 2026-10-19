@@ -15,3 +15,11 @@ _OPEN: dict[str, Signal[bool]] = {}
 _DRAG_START: dict[str, float] = {}
 # Zona visible de cada `virtual_list` (desplazamiento y alto), o `None` sin medir.
 _VIEWPORTS: dict[str, Signal[tuple[float, float] | None]] = {}
+# Texto a medio escribir de cada `number_input` (`None`: se muestra el valor).
+_DRAFTS: dict[str, Signal[str | None]] = {}
+# Lo que se escribe en cada `combobox` (`None`: se muestra la opción elegida) y
+# la opción resaltada de su lista.
+_QUERIES: dict[str, Signal[str | None]] = {}
+_ACTIVE: dict[str, Signal[int]] = {}
+# Mes que muestra el calendario de cada `date_picker`: `(año, mes)`.
+_MONTHS: dict[str, Signal[tuple[int, int]]] = {}

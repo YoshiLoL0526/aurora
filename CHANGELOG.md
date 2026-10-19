@@ -28,6 +28,15 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   pasa sobre la ventana y `None` al salir o soltar, para resaltar la zona. En Wayland winit aún
   no los entrega. `Pilot.hover_files(...)` y `Pilot.drop_files(..., key=...)` lo simulan en los
   tests, y `examples/notepad.py` abre el archivo que se suelta sobre la ventana.
+- **Componentes nuevos de entrada**:
+  - `number_input`: campo numérico con flechas y ↑/↓, recortado a `min`/`max`, en `int` o en
+    `float` redondeado a los decimales de `step`; acepta la coma decimal y espera mientras el texto
+    está a medias o fuera de rango. Se anuncia como `spinbutton` (rol nuevo).
+  - `combobox`: un `select` en el que se escribe para filtrar las opciones (sin distinguir
+    mayúsculas ni tildes), con ↑/↓ para recorrerlas, Enter para elegir y Esc para cancelar.
+  - `date_picker`: selector de fecha (`datetime.date`) con calendario del mes, límites
+    `min`/`max`, «Hoy», semana desde lunes o el día que se pida (`first_weekday`), formato
+    configurable y teclado (días, semanas y meses con las flechas y RePág/AvPág).
 - `aurora.dialogs` y `aurora.menus` declaran su `__all__`.
 - Interno: `tests/test_api.py` fija la superficie pública (`tests/api.txt`, nombres y firmas) y
   `aurora._deprecation` reúne los ayudantes para retirar API (`@deprecated`,

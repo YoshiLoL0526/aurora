@@ -74,6 +74,7 @@ const ROLES: &[(&str, Role)] = &[
     ("section", Role::Section),
     ("separator", Role::Splitter),
     ("slider", Role::Slider),
+    ("spinbutton", Role::SpinButton),
     ("status", Role::Status),
     ("switch", Role::Switch),
     ("tab", Role::Tab),

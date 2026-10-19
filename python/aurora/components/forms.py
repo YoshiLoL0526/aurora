@@ -7,11 +7,11 @@ from typing import Any
 
 from .. import _motion as motion
 from .. import animate
-from .._icons import _CHECK
+from .._icons import _ARROW_DOWN, _ARROW_UP, _CHECK
 from ..elements import Element, TextLike, box, column, image, row, text
 from ..signal import Signal
-from ._shared import Options, _a11y_label, _field, _items, _toggle
-from ._state import _DRAG_START
+from ._shared import _INPUT_STYLE, Options, _a11y_label, _field, _items, _toggle
+from ._state import _DRAFTS, _DRAG_START
 
 
 def text_input(
@@ -340,3 +340,133 @@ def slider(
             **style,
         },
     )[rail]
+
+
+def _decimals(step: float) -> int:
+    """Decimales que hacen falta para mostrar múltiplos de `step` (`0.25` → 2)."""
+    text = f"{step:.10f}".rstrip("0")
+    return len(text.split(".")[1]) if "." in text else 0
+
+
+def number_input(
+    value: Signal[float] | Signal[int],
+    *,
+    min: float | None = None,
+    max: float | None = None,
+    step: float = 1,
+    decimals: int | None = None,
+    on_change: Callable[[float], Any] | None = None,
+    key: str | None = None,
+    **style: Any,
+) -> Element:
+    """Campo numérico: se escribe el número o se ajusta con ↑/↓ y sus flechas.
+
+    `value` se recorta a `[min, max]`. Con `step` entero y un valor entero el
+    campo trabaja con `int`; si no, con `float` redondeado a `decimals` (por
+    defecto, los de `step`: `0.25` → 2). Mientras se escribe, cada número válido
+    y dentro del rango se asigna al momento; un texto a medias (`"-"`, `"1,"`) o
+    fuera del rango espera, y al salir del campo o pulsar Enter se recorta al
+    rango o vuelve al último valor válido. La coma vale como separador decimal.
+    `on_change(valor)` se llama con cada valor nuevo.
+    """
+    if min is not None and max is not None and max < min:
+        raise ValueError("max debe ser mayor o igual que min")
+    if step <= 0:
+        raise ValueError("step debe ser positivo")
+    k = key or f"number-{id(value)}"
+    draft = _DRAFTS.setdefault(k, Signal(None))
+    current = value()
+    integer = isinstance(step, int) and isinstance(current, int) and decimals in (None, 0)
+    places = 0 if integer else (decimals if decimals is not None else _decimals(step))
+
+    def clamp(v: float) -> float:
+        if min is not None and v < min:
+            v = min
+        if max is not None and v > max:
+            v = max
+        return round(v) if integer else round(float(v), places)
+
+    def fmt(v: float) -> str:
+        return str(int(v)) if integer else f"{v:.{places}f}"
+
+    def parse(raw: str) -> float | None:
+        try:
+            v = float(raw.strip().replace(",", "."))
+        except ValueError:
+            return None
+        if v != v or v in (float("inf"), float("-inf")):
+            return None
+        if integer:
+            return int(v) if v.is_integer() else None
+        return v
+
+    def commit(v: float) -> None:
+        v = clamp(v)
+        if v != value():
+            value.set(v)  # ty: ignore[invalid-argument-type]
+            if on_change is not None:
+                on_change(v)
+
+    def typed(raw: str) -> None:
+        draft.set(raw)
+        v = parse(raw)
+        if v is not None and clamp(v) == v:
+            commit(v)
+
+    def settle(*_: Any) -> None:
+        raw = draft()
+        if raw is not None:
+            v = parse(raw)
+            if v is not None:
+                commit(v)
+            draft.set(None)
+
+    def nudge(direction: int) -> None:
+        draft.set(None)
+        commit(value() + direction * step)
+
+    def on_key(e: Any) -> bool | None:
+        if e.key in ("ArrowUp", "ArrowDown"):
+            nudge(1 if e.key == "ArrowUp" else -1)
+            return True
+        return None
+
+    can_up = max is None or current < max
+    can_down = min is None or current > min
+
+    def arrow(icon: bytes, direction: int, enabled: bool) -> Element:
+        return box(
+            key=f"{k}-{'up' if direction > 0 else 'down'}",
+            grow=1,
+            width=24,
+            align="center",
+            justify="center",
+            radius=6,
+            opacity=1.0 if enabled else 0.35,
+            focusable=False,
+            hidden=True,
+            **({"bg_hover": "$surface_hover", "on_click": lambda: nudge(direction)} if enabled else {}),
+        )[image(icon, width=12)]
+
+    shown = draft() if draft() is not None else fmt(current)
+    a11y_range = {name: v for name, v in (("value_min", min), ("value_max", max)) if v is not None}
+    field = Element(
+        "input",
+        content=shown,
+        key=f"{k}-field",
+        grow=1,
+        min_width=0,
+        on_change=typed,
+        on_submit=settle,
+        on_blur=settle,
+        on_key=on_key,
+        role="spinbutton",
+        value_step=step,
+        padding=(6, 0),
+        **a11y_range,
+    )
+    styles = {**_INPUT_STYLE, "padding": (3, 4, 3, 12), "gap": 4, "align": "center", "width": 140}
+    return row(**{**styles, "key": k, **style})[
+        field,
+        column(gap=1, height=34)[arrow(_ARROW_UP, 1, can_up), arrow(_ARROW_DOWN, -1, can_down)],
+    ]

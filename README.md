@@ -171,7 +171,7 @@ App(view, title="Mi panel", size=(1100, 720), theme=theme).run()
 | Estructura | `column`, `row`, `box`, `spacer`; hijos con `[...]` |
 | Contenido | `text` (dinámico con `lambda`), `image` (PNG, JPEG, WebP, SVG), `badge`, `stat`, `avatar`, `divider` |
 | Interacción | `button`, u `on_click=` en cualquier contenedor; hover y pressed animados; `tooltip` |
-| Entrada | `text_input`, `textarea`, `checkbox`, `switch`, `select`, `tabs`, enlazados a un `Signal` |
+| Entrada | `text_input`, `textarea`, `number_input`, `checkbox`, `switch`, `select`, `combobox`, `date_picker`, `tabs`, enlazados a un `Signal` |
 | Teclado | Tab y foco visible, Enter/Espacio activan, `on_key` con atajos (`e.matches("mod+s")`) |
 | Desplazamiento | `scroll()` con rueda suave, trackpad, barra arrastrable y teclado |
 | Layout | flexbox: `gap`, `padding`, `align`, `justify`, `grow`, `wrap`, `%`, `position="absolute"` |

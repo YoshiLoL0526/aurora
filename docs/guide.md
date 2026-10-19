@@ -560,8 +560,9 @@ con zoom.
 ### Más componentes
 
 Además de `button`, `card`, `badge` y `stat`, Aurora trae `checkbox`, `switch`, `select`, `tabs`,
-`avatar`, `divider`, `tooltip`, `progress`, `radio`, `segmented`, `slider`, `spinner`, `skeleton` y
-`field` (etiqueta + control + error), y los de superposición: `dialog`, `toast`, `menu` y
+`avatar`, `divider`, `tooltip`, `progress`, `radio`, `segmented`, `slider`, `spinner`, `skeleton`,
+`number_input`, `combobox` (buscar y elegir), `date_picker` (calendario) y `field` (etiqueta +
+control + error), y los de superposición: `dialog`, `toast`, `menu` y
 `accordion`, más `pages` (una vista por página con transición). Los controles se enlazan a un
 `Signal` igual que los campos de texto:
 

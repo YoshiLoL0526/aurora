@@ -1068,6 +1068,87 @@ lang = Signal("es")
 select(lang, [("es", "Español"), ("en", "English")], key="lang", width=220)
 ```
 
+### `combobox(value, options, *, placeholder="Buscar…", empty="Sin resultados", on_change=None, key=None, **estilo)`
+
+Como `select`, pero se escribe para buscar: la lista se abre al escribir (o con ↓, o con la flecha)
+y muestra las opciones cuya etiqueta contiene el texto, sin distinguir mayúsculas ni tildes
+(«av» encuentra «Ávila»). ↑/↓ recorren las coincidencias, Enter elige la resaltada y Esc cierra sin
+cambiar nada; al cerrar, el campo vuelve a mostrar la opción elegida. `empty` es lo que se lee
+cuando nada coincide. `on_change(valor)` se llama al elegir. El campo tiene la key `f"{key}-field"`
+y las opciones `f"{key}-opt-{índice}"`, con el índice en `options` (no en la lista filtrada).
+Útil cuando hay demasiadas opciones para un `select`.
+
+```python live
+from aurora import App, Signal, column, combobox
+from aurora.components import _state  # oculto
+
+_state._OPEN["ciudad"] = Signal(True)  # oculto
+_state._QUERIES["ciudad"] = Signal("al")  # oculto
+ciudades = ["Albacete", "Alicante", "Ávila", "Barcelona", "Málaga", "Valencia", "Valladolid"]
+ciudad = Signal("Valencia")
+
+
+def view():
+    return column(padding=20)[combobox(ciudad, ciudades, key="ciudad", width=260)]
+
+
+App(view, size=(420, 300)).run()
+```
+
+### `date_picker(value, *, min=None, max=None, placeholder="Elegir fecha", format=..., first_weekday=0, on_change=None, key=None, **estilo)`
+
+Selector de fecha: un desplegable con el calendario del mes. `value` es un `Signal` con un
+`datetime.date` (o `None` sin elegir). Se abre en el mes de la fecha elegida; las flechas de la
+cabecera cambian de mes y un clic en un día lo elige y cierra. Las fechas fuera de `[min, max]` se
+ven atenuadas y no se pueden elegir (ni navegar a meses fuera del rango). El día de hoy va marcado
+y «Hoy» lo elige.
+
+Con el calendario abierto, ←/→ mueven un día, ↑/↓ una semana y RePág/AvPág un mes (el mes visible
+sigue al valor); Enter o Esc lo cierran. `format` recibe la fecha y devuelve el texto del campo
+(por defecto `19 oct 2026`), y `first_weekday` es el primer día de la semana (0 = lunes,
+6 = domingo). Los días tienen la key `f"{key}-day-{fecha.isoformat()}"` y se anuncian completos a
+los lectores de pantalla («lunes, 19 de octubre de 2026»).
+
+```python live
+from datetime import date
+
+from aurora import App, Signal, column, date_picker
+from aurora.components import _state  # oculto
+
+_state._OPEN["entrega"] = Signal(True)  # oculto
+entrega = Signal(date(2026, 10, 19))
+
+
+def view():
+    return column(padding=20)[date_picker(entrega, min=date(2026, 10, 5), key="entrega", width=220)]
+
+
+App(view, size=(340, 440)).run()
+```
+
+### `number_input(value, *, min=None, max=None, step=1, decimals=None, on_change=None, key=None, **estilo)`
+
+Campo numérico: se escribe el número o se ajusta con ↑/↓ y con las flechas de la derecha (que se
+atenúan en los límites). `value` se recorta a `[min, max]`. Con `step` entero y un valor entero el
+campo trabaja con `int`; si no, con `float` redondeado a `decimals` (por defecto, los decimales de
+`step`: `0.25` → 2). La coma vale como separador decimal.
+
+Mientras se escribe, cada número válido y dentro del rango se asigna al momento; un texto a medias
+(`"-"`, `"1,"`) o fuera del rango espera, y al salir del campo o pulsar Enter se recorta al rango o
+vuelve al último valor válido. `on_change(valor)` se llama con cada valor nuevo. Ancho por defecto
+de 140 px; el campo tiene la key `f"{key}-field"` y es un `spinbutton` para los lectores.
+
+```python live
+from aurora import Signal, number_input, row  # oculto
+
+cantidad = Signal(3)
+precio = Signal(12.5)
+row(gap=12)[  # oculto
+    number_input(cantidad, min=1, max=99, key="cantidad"),
+    number_input(precio, step=0.5, key="precio"),
+]  # oculto
+```
+
 ### `virtual_list(count, item, *, item_height, key, gap=0, overscan=4, **estilo)`
 
 Lista desplazable de `count` filas que **solo construye las visibles**: con 100 000 filas, cada
