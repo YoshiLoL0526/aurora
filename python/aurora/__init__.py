@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 import sys
 import threading
@@ -15,7 +16,7 @@ from pathlib import Path as _Path
 from types import ModuleType
 from typing import Any, Literal, TypeVar
 
-from . import _core, _motion, animate, dialogs, menus, reactive
+from . import _core, _motion, _windowstate, animate, dialogs, menus, reactive
 from . import inspector as _inspector
 from . import reload as _reload
 from ._core import DragEvent, KeyEvent, Pilot, ScrollEvent
@@ -142,6 +143,65 @@ def _script_path() -> str | None:
     return None
 
 
+def _pair(name: str, value: object) -> tuple[float, float]:
+    """Un par de números finitos, o `TypeError`/`ValueError` claros."""
+    try:
+        a, b = value  # ty: ignore[not-iterable]
+        pair = (float(a), float(b))
+    except (TypeError, ValueError):
+        raise TypeError(f"`{name}` debe ser un par de números; llegó {value!r}") from None
+    if not all(math.isfinite(v) for v in pair):
+        raise ValueError(f"`{name}` debe ser finito; llegó {value!r}")
+    return pair
+
+
+def _xy(value: Sequence[float]) -> tuple[float, float]:
+    """Un par que llega del núcleo, como tupla de floats."""
+    return float(value[0]), float(value[1])
+
+
+def _size(name: str, value: object) -> tuple[float, float]:
+    """Un tamaño (`(ancho, alto)` en píxeles lógicos): positivo y finito."""
+    width, height = _pair(name, value)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"`{name}` debe tener ancho y alto positivos; llegó ({width:g}, {height:g})")
+    return width, height
+
+
+def _limits(
+    min_size: tuple[float, float] | None, max_size: tuple[float, float] | None
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
+    """Valida los tamaños límite: positivos y el mínimo sin superar al máximo."""
+    low = None if min_size is None else _size("min_size", min_size)
+    high = None if max_size is None else _size("max_size", max_size)
+    if low is not None and high is not None and (low[0] > high[0] or low[1] > high[1]):
+        raise ValueError(f"`min_size` {low} no puede ser mayor que `max_size` {high}")
+    return low, high
+
+
+def _window_options(
+    *,
+    resizable: bool,
+    min_size: tuple[float, float] | None,
+    max_size: tuple[float, float] | None,
+    position: tuple[float, float] | None,
+    maximized: bool,
+    fullscreen: bool,
+    always_on_top: bool,
+) -> dict[str, Any]:
+    """Las opciones de una ventana, validadas (las comparten `App` y `Window`)."""
+    min_size, max_size = _limits(min_size, max_size)
+    return {
+        "resizable": bool(resizable),
+        "min_size": min_size,
+        "max_size": max_size,
+        "position": None if position is None else _pair("position", position),
+        "maximized": bool(maximized),
+        "fullscreen": bool(fullscreen),
+        "always_on_top": bool(always_on_top),
+    }
+
+
 class App:
     """Punto de entrada de una aplicación.
 
@@ -171,6 +231,13 @@ class App:
     (switchs, casillas, pestañas, menús…): los cambios son inmediatos. Sin
     indicarlo, lo decide la variable de entorno `AURORA_MOTION` (`0`, `false`,
     `no` u `off` las desactivan).
+
+    La ventana principal admite las mismas opciones que `window(...)`:
+    `resizable`, `min_size`, `max_size`, `position`, `maximized`,
+    `fullscreen` y `always_on_top` (ver `Window`). `remember="mi-app"`
+    recuerda entre sesiones su tamaño, su posición y si estaba maximizada, en
+    el directorio de configuración del usuario (`<config>/mi-app/`); lo
+    recordado manda sobre `size`, `position` y `maximized`.
     """
 
     def __init__(
@@ -179,6 +246,14 @@ class App:
         *,
         title: str = "Aurora",
         size: tuple[float, float] = (960, 640),
+        resizable: bool = True,
+        min_size: tuple[float, float] | None = None,
+        max_size: tuple[float, float] | None = None,
+        position: tuple[float, float] | None = None,
+        maximized: bool = False,
+        fullscreen: bool = False,
+        always_on_top: bool = False,
+        remember: str | None = None,
         theme: Theme | Callable[[], Theme] = MIDNIGHT,
         menu: Sequence[dict[str, Any]] | None = None,
         app_id: str | None = None,
@@ -188,7 +263,18 @@ class App:
     ) -> None:
         self.view = view
         self.title = title
-        self.size = size
+        self.size = _size("size", size)
+        # Opciones de la ventana principal: se validan ya, aunque `app.main` se cree después.
+        self._main_options = _window_options(
+            resizable=resizable,
+            min_size=min_size,
+            max_size=max_size,
+            position=position,
+            maximized=maximized,
+            fullscreen=fullscreen,
+            always_on_top=always_on_top,
+        )
+        self.remember = None if remember is None else _windowstate.check_name(remember)
         self.theme = theme
         self.menu = list(menu) if menu is not None else None
         # Identidad en Windows (AUMID): una app empaquetada (`sys.frozen`) la
@@ -223,23 +309,47 @@ class App:
         title: str = "Aurora",
         size: tuple[float, float] | None = None,
         resizable: bool = True,
+        min_size: tuple[float, float] | None = None,
+        max_size: tuple[float, float] | None = None,
+        position: tuple[float, float] | None = None,
+        maximized: bool = False,
+        fullscreen: bool = False,
+        always_on_top: bool = False,
+        remember: str | None = None,
         on_close: Callable[[], Any] | None = None,
     ) -> Window:
         """Crea una ventana de la app, con su propia vista.
 
         Las creadas antes de `run()` se abren al arrancar; las creadas en
         marcha, al momento. `size` por defecto es el de la ventana principal.
+        Las demás opciones (tamaños límite, posición, maximizada…) se explican
+        en `Window`.
+
+        `remember="ajustes"` recuerda entre sesiones su tamaño, su posición y
+        si estaba maximizada, con esa clave, junto a la principal: necesita
+        `App(remember=...)`, que da la carpeta.
 
         `on_close` se llama al intentar cerrar la ventana (botón del sistema o
         `close()`): si devuelve un valor falso, el cierre se cancela — por
         ejemplo, para pedir confirmación con un diálogo.
         """
+        if remember is not None and self.remember is None:
+            raise ValueError(
+                "`remember` en una ventana necesita `App(remember=...)`: es la carpeta donde se guarda"
+            )
         window = Window(
             self,
             view,
             title=title,
             size=size or self.size,
             resizable=resizable,
+            min_size=min_size,
+            max_size=max_size,
+            position=position,
+            maximized=maximized,
+            fullscreen=fullscreen,
+            always_on_top=always_on_top,
+            remember=remember,
             on_close=on_close,
         )
         if self.running:
@@ -254,10 +364,11 @@ class App:
     def main(self) -> Window:
         """La ventana principal, como un `Window`.
 
-        Sirve para lo mismo que las demás: cambiar su `title` o su `size` en
-        marcha, cerrarla y reabrirla (útil con la bandeja del sistema) o ponerle
-        un `on_close` que cancele el cierre (p. ej. para pedir confirmación).
-        Su vista es la de la `App` (`view`), así que el hot reload la mantiene.
+        Sirve para lo mismo que las demás: cambiar su `title`, su `size`, su
+        `position` o si está maximizada en marcha, cerrarla y reabrirla (útil
+        con la bandeja del sistema) o ponerle un `on_close` que cancele el
+        cierre (p. ej. para pedir confirmación). Su vista es la de la `App`
+        (`view`), así que el hot reload la mantiene.
         """
         if self._main is None:
             self._main = _MainWindow(self)
@@ -375,8 +486,7 @@ class App:
         if window is None and window_id == 0:
             window = self._main
         if window is not None:
-            window._open = False
-            window._created = False
+            window._closed()
 
     def _build_view(self, owner: App | Window) -> dict:
         """Serializa la vista de `owner` (la `App` o una `Window`), con tema, movimiento e inspector.
@@ -446,6 +556,13 @@ class App:
                 title=fresh._title,
                 size=fresh._size,
                 resizable=fresh.resizable,
+                min_size=fresh._min_size,
+                max_size=fresh._max_size,
+                position=fresh._position,
+                maximized=fresh._maximized,
+                fullscreen=fresh._fullscreen,
+                always_on_top=fresh._always_on_top,
+                remember=fresh._remember,
                 on_close=fresh.on_close,
             )
             if not fresh._open:
@@ -555,8 +672,18 @@ class Window:
     """Una ventana de la app, creada con `app.window(view)`.
 
     Las creadas antes de `run()` se abren al arrancar la app; `close()` la
-    cierra sin olvidar su vista, y `open()` la vuelve a abrir. `title` y `size`
-    se pueden cambiar en marcha, desde cualquier hilo.
+    cierra sin olvidar su vista, y `open()` la vuelve a abrir. `title`,
+    `size`, `position`, `maximized`, `fullscreen`, `always_on_top`,
+    `resizable`, `min_size` y `max_size` se pueden leer y cambiar en marcha,
+    desde cualquier hilo.
+
+    Tamaños y posiciones van en píxeles lógicos. `size` es el del contenido
+    (sin el marco); `position`, la esquina superior izquierda del marco en el
+    escritorio (`None`: la elige el sistema). `min_size`/`max_size` limitan
+    lo que el usuario puede redimensionar. `fullscreen=True` es pantalla
+    completa sin bordes en el monitor de la ventana. Con la ventana abierta,
+    `size`, `position`, `maximized` y `fullscreen` dan lo que hay de verdad,
+    también si el usuario la movió o la maximizó.
     """
 
     def __init__(
@@ -567,17 +694,43 @@ class Window:
         title: str = "Aurora",
         size: tuple[float, float] = (960, 640),
         resizable: bool = True,
+        min_size: tuple[float, float] | None = None,
+        max_size: tuple[float, float] | None = None,
+        position: tuple[float, float] | None = None,
+        maximized: bool = False,
+        fullscreen: bool = False,
+        always_on_top: bool = False,
+        remember: str | None = None,
         on_close: Callable[[], Any] | None = None,
         _id: int | None = None,
     ) -> None:
+        options = _window_options(
+            resizable=resizable,
+            min_size=min_size,
+            max_size=max_size,
+            position=position,
+            maximized=maximized,
+            fullscreen=fullscreen,
+            always_on_top=always_on_top,
+        )
+        self._remember = None if remember is None else _windowstate.check_key(remember)
         self._app = app
         # La ventana principal (id 0) no se registra: la tiene la `App`.
         self._id = app._register(self) if _id is None else _id
         self.view = view
-        self.resizable = resizable
         self.on_close = on_close
         self._title = title
-        self._size = size
+        self._size = _size("size", size)
+        self._resizable: bool = options["resizable"]
+        self._min_size: tuple[float, float] | None = options["min_size"]
+        self._max_size: tuple[float, float] | None = options["max_size"]
+        self._position: tuple[float, float] | None = options["position"]
+        self._maximized: bool = options["maximized"]
+        self._fullscreen: bool = options["fullscreen"]
+        self._always_on_top: bool = options["always_on_top"]
+        # Una posición recordada solo se usa si sigue cayendo en algún monitor.
+        self._check_position = False
+        self._restore()
         # `_open`: debe estar abierta; `_created`: ya existe en el núcleo.
         self._open = True
         self._created = False
@@ -585,6 +738,51 @@ class Window:
     def __repr__(self) -> str:
         state = "abierta" if self._open else "cerrada"
         return f"<Window {self._id} {self._title!r} {state}>"
+
+    def _remember_as(self) -> tuple[str, str] | None:
+        """`(carpeta, clave)` donde se recuerda esta ventana, si se recuerda."""
+        if self._app.remember is None:
+            return None
+        if self._id == 0:
+            return self._app.remember, _windowstate.MAIN
+        if self._remember is None:
+            return None
+        return self._app.remember, self._remember
+
+    def _restore(self) -> None:
+        """Aplica lo recordado de una sesión anterior (manda sobre lo pedido)."""
+        where = self._remember_as()
+        if where is None:
+            return
+        name, key = where
+        size, position, maximized = _windowstate.restore(_windowstate.load(name).get(key))
+        if size is not None:
+            self._size = size
+        if position is not None:
+            self._position = position
+            self._check_position = True
+        if size is not None or position is not None:
+            self._maximized = maximized
+
+    def _fit(self, size: tuple[float, float]) -> tuple[float, float]:
+        """`size` recortado a `min_size`/`max_size` (no todos los sistemas lo hacen solos)."""
+        width, height = size
+        if self._min_size is not None:
+            width, height = max(width, self._min_size[0]), max(height, self._min_size[1])
+        if self._max_size is not None:
+            width, height = min(width, self._max_size[0]), min(height, self._max_size[1])
+        return width, height
+
+    def _live(self) -> dict[str, Any] | None:
+        """El estado de la ventana del sistema, si está abierta."""
+        if self._app.running and self._created:
+            return _core.window_state(self._id)
+        return None
+
+    def _set(self, **changes: Any) -> None:
+        """Pide al núcleo los cambios, si la ventana ya existe."""
+        if self._app.running and self._created:
+            _core.window_set(self._id, **changes)
 
     @property
     def title(self) -> str:
@@ -594,19 +792,100 @@ class Window:
     @title.setter
     def title(self, value: str) -> None:
         self._title = str(value)
-        if self._app.running and self._created:
-            _core.window_set(self._id, title=self._title)
+        self._set(title=self._title)
 
     @property
     def size(self) -> tuple[float, float]:
-        """El tamaño de la ventana en píxeles lógicos (se puede cambiar en marcha)."""
-        return self._size
+        """El tamaño del contenido en píxeles lógicos (se puede cambiar en marcha)."""
+        live = self._live()
+        return _xy(live["size"]) if live else self._size
 
     @size.setter
     def size(self, value: tuple[float, float]) -> None:
-        self._size = (float(value[0]), float(value[1]))
-        if self._app.running and self._created:
-            _core.window_set(self._id, size=self._size)
+        self._size = self._fit(_size("size", value))
+        self._set(size=self._size)
+
+    @property
+    def position(self) -> tuple[float, float] | None:
+        """La esquina superior izquierda del marco en el escritorio (píxeles lógicos).
+
+        `None` si la elige el sistema y aún no se sabe (o el sistema no la
+        da, como Wayland). Se puede cambiar en marcha.
+        """
+        live = self._live()
+        if live and live["position"] is not None:
+            return _xy(live["position"])
+        return self._position
+
+    @position.setter
+    def position(self, value: tuple[float, float]) -> None:
+        self._position = _pair("position", value)
+        self._check_position = False
+        self._set(position=self._position)
+
+    @property
+    def maximized(self) -> bool:
+        """Si la ventana está maximizada (se puede cambiar en marcha)."""
+        live = self._live()
+        return bool(live["maximized"]) if live else self._maximized
+
+    @maximized.setter
+    def maximized(self, value: bool) -> None:
+        self._maximized = bool(value)
+        self._set(maximized=self._maximized)
+
+    @property
+    def fullscreen(self) -> bool:
+        """Si la ventana está en pantalla completa (se puede cambiar en marcha)."""
+        live = self._live()
+        return bool(live["fullscreen"]) if live else self._fullscreen
+
+    @fullscreen.setter
+    def fullscreen(self, value: bool) -> None:
+        self._fullscreen = bool(value)
+        self._set(fullscreen=self._fullscreen)
+
+    @property
+    def always_on_top(self) -> bool:
+        """Si la ventana se queda encima de las demás (se puede cambiar en marcha)."""
+        return self._always_on_top
+
+    @always_on_top.setter
+    def always_on_top(self, value: bool) -> None:
+        self._always_on_top = bool(value)
+        self._set(always_on_top=self._always_on_top)
+
+    @property
+    def resizable(self) -> bool:
+        """Si el usuario puede redimensionar la ventana (se puede cambiar en marcha)."""
+        return self._resizable
+
+    @resizable.setter
+    def resizable(self, value: bool) -> None:
+        self._resizable = bool(value)
+        self._set(resizable=self._resizable)
+
+    @property
+    def min_size(self) -> tuple[float, float] | None:
+        """El tamaño mínimo del contenido (`None`: sin límite). Se puede cambiar en marcha."""
+        return self._min_size
+
+    @min_size.setter
+    def min_size(self, value: tuple[float, float] | None) -> None:
+        self._min_size, _ = _limits(value, self._max_size)
+        self._size = self._fit(self._size)
+        self._set(min_size=self._min_size or (0.0, 0.0))
+
+    @property
+    def max_size(self) -> tuple[float, float] | None:
+        """El tamaño máximo del contenido (`None`: sin límite). Se puede cambiar en marcha."""
+        return self._max_size
+
+    @max_size.setter
+    def max_size(self, value: tuple[float, float] | None) -> None:
+        _, self._max_size = _limits(self._min_size, value)
+        self._size = self._fit(self._size)
+        self._set(max_size=self._max_size or (0.0, 0.0))
 
     @property
     def is_open(self) -> bool:
@@ -618,15 +897,7 @@ class Window:
         self._open = True
         if self._app.running and not self._created:
             self._created = True
-            _core.window_open(
-                self._id,
-                self._build,
-                self._title,
-                self._size,
-                self.resizable,
-                self.on_close,
-                self._app._notify_closed,
-            )
+            _core.window_open(self._config())
 
     def close(self) -> None:
         """Cierra la ventana sin olvidar su vista; `open()` la vuelve a abrir."""
@@ -635,14 +906,47 @@ class Window:
             self._created = False
             _core.window_close(self._id)
 
+    def _closed(self) -> None:
+        """El núcleo avisa de que se cerró: se guarda su último estado (y se recuerda)."""
+        state = _core.window_state(self._id)
+        self._open = False
+        self._created = False
+        if state is None:
+            return
+        # Al reabrirla vuelve como estaba: el tamaño y la posición restaurables,
+        # y maximizada o en pantalla completa si lo estaba.
+        self._size = _xy(state["restored_size"])
+        if state["restored_position"] is not None:
+            self._position = _xy(state["restored_position"])
+            self._check_position = False
+        self._maximized = bool(state["maximized"])
+        self._fullscreen = bool(state["fullscreen"])
+        where = self._remember_as()
+        if where is not None:
+            _windowstate.save(
+                *where,
+                {
+                    "size": list(self._size),
+                    "position": None if self._position is None else list(self._position),
+                    "maximized": self._maximized,
+                },
+            )
+
     def _config(self) -> dict:
-        """La ventana como la espera `_core.run`."""
+        """La ventana como la esperan `_core.run` y `_core.window_open`."""
         return {
             "id": self._id,
             "build": self._build,
             "title": self._title,
-            "size": self._size,
-            "resizable": self.resizable,
+            "size": self._fit(self._size),
+            "resizable": self._resizable,
+            "min_size": self._min_size,
+            "max_size": self._max_size,
+            "position": self._position,
+            "check_position": self._check_position,
+            "maximized": self._maximized,
+            "fullscreen": self._fullscreen,
+            "always_on_top": self._always_on_top,
             "on_close": self.on_close,
             "on_closed": self._app._notify_closed,
         }
@@ -673,7 +977,7 @@ class _MainWindow(Window):
     """
 
     def __init__(self, app: App) -> None:
-        super().__init__(app, app.view, title=app.title, size=app.size, _id=0)
+        super().__init__(app, app.view, title=app.title, size=app.size, _id=0, **app._main_options)
 
     def _build(self) -> dict:
         return self._app._build()

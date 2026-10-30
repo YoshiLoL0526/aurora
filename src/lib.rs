@@ -73,6 +73,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(window::window_open, m)?)?;
     m.add_function(wrap_pyfunction!(window::window_close, m)?)?;
     m.add_function(wrap_pyfunction!(window::window_set, m)?)?;
+    m.add_function(wrap_pyfunction!(window::window_state, m)?)?;
     m.add_function(wrap_pyfunction!(window::quit, m)?)?;
     m.add_function(wrap_pyfunction!(dialog::open_file, m)?)?;
     m.add_function(wrap_pyfunction!(dialog::open_files, m)?)?;

@@ -97,6 +97,10 @@ def cerrar():
   La principal también es un `Window`: `app.main` (título y tamaño en marcha, cerrarla y
   reabrirla, `on_close` que confirme). `examples/windows.py`, `examples/notepad.py` y
   `examples/tray.py` enseñan las tres piezas en marcha.
+- Cada ventana admite `min_size`/`max_size`, `position`, `maximized`, `fullscreen` y
+  `always_on_top`, al crearla y en marcha. Con `App(view, remember="mi-app")` la app vuelve a
+  abrirse con el tamaño, la posición y el estado maximizado con que se cerró (ver
+  [Opciones de ventana](reference.md#opciones-de-ventana)).
 
 ### Abrir y guardar archivos
 

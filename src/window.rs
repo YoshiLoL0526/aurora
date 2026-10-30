@@ -9,23 +9,24 @@
 //! cualquier hilo; la configuración viaja por `PENDING`.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use skia_safe::Point;
 use tray_icon::menu::MenuEvent;
 use tray_icon::{MouseButton as TrayButton, MouseButtonState, TrayIconEvent};
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalPosition, LogicalSize};
+use winit::dpi::{LogicalPosition, LogicalSize, Size};
 use winit::event::{
     ElementState, Ime, KeyEvent, MouseButton, MouseScrollDelta, StartCause, WindowEvent,
 };
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::Key;
-use winit::window::{CursorIcon, Window, WindowId};
+use winit::window::{CursorIcon, Fullscreen, Window, WindowId, WindowLevel};
 
 use crate::keys::{KeyInput, Mods};
 use crate::runtime::{Clipboard, CursorKind, Runtime};
@@ -61,10 +62,8 @@ pub enum Command {
     Open(u64),
     /// Cierra la ventana con esa id.
     Close(u64),
-    /// Cambia el título de una ventana abierta.
-    SetTitle(u64, String),
-    /// Cambia el tamaño (píxeles lógicos) de una ventana abierta.
-    SetSize(u64, f64, f64),
+    /// Cambia algo de una ventana abierta.
+    Set(u64, Change),
     /// Pone (o reemplaza) la bandeja con su configuración pendiente.
     TrayShow,
     /// Quita la bandeja.
@@ -73,6 +72,83 @@ pub enum Command {
     Notify(crate::notify::Notify),
     /// Termina la app: cierra todas las ventanas y el bucle.
     Quit,
+}
+
+/// Un cambio en marcha de una ventana abierta (tamaños y posiciones en
+/// píxeles lógicos).
+#[derive(Debug)]
+pub enum Change {
+    Title(String),
+    Size(f64, f64),
+    Position(f64, f64),
+    /// `None` quita el límite.
+    MinSize(Option<(f64, f64)>),
+    MaxSize(Option<(f64, f64)>),
+    Maximized(bool),
+    Fullscreen(bool),
+    AlwaysOnTop(bool),
+    Resizable(bool),
+}
+
+impl Change {
+    /// Aplica el cambio a la ventana del sistema.
+    fn apply(self, window: &Window) {
+        match self {
+            Change::Title(title) => window.set_title(&title),
+            Change::Size(width, height) => {
+                let _ = window.request_inner_size(LogicalSize::new(width, height));
+            }
+            Change::Position(x, y) => window.set_outer_position(LogicalPosition::new(x, y)),
+            Change::MinSize(size) => {
+                window.set_min_inner_size(logical(size));
+                if let Some((w, h)) = size {
+                    fit(window, |cw, ch| (cw.max(w), ch.max(h)));
+                }
+            }
+            Change::MaxSize(size) => {
+                window.set_max_inner_size(logical(size));
+                if let Some((w, h)) = size {
+                    fit(window, |cw, ch| (cw.min(w), ch.min(h)));
+                }
+            }
+            Change::Maximized(on) => window.set_maximized(on),
+            Change::Fullscreen(on) => window.set_fullscreen(fullscreen(on)),
+            Change::AlwaysOnTop(on) => window.set_window_level(level(on)),
+            Change::Resizable(on) => window.set_resizable(on),
+        }
+    }
+}
+
+/// Un límite nuevo no redimensiona solo la ventana en todos los sistemas (en
+/// Windows, no): si el tamaño actual queda fuera, se pide el que cabe.
+/// Maximizada o en pantalla completa no se toca: el tamaño es del sistema.
+fn fit(window: &Window, f: impl FnOnce(f64, f64) -> (f64, f64)) {
+    if window.is_maximized() || window.fullscreen().is_some() {
+        return;
+    }
+    let size = window.inner_size().to_logical::<f64>(window.scale_factor());
+    let (width, height) = f(size.width, size.height);
+    if (width - size.width).abs() > 0.5 || (height - size.height).abs() > 0.5 {
+        let _ = window.request_inner_size(LogicalSize::new(width, height));
+    }
+}
+
+fn logical(size: Option<(f64, f64)>) -> Option<Size> {
+    size.map(|(w, h)| LogicalSize::new(w, h).into())
+}
+
+/// La pantalla completa de Aurora es «sin bordes» en el monitor actual: no
+/// cambia el modo de vídeo.
+fn fullscreen(on: bool) -> Option<Fullscreen> {
+    on.then_some(Fullscreen::Borderless(None))
+}
+
+fn level(always_on_top: bool) -> WindowLevel {
+    if always_on_top {
+        WindowLevel::AlwaysOnTop
+    } else {
+        WindowLevel::Normal
+    }
 }
 
 /// Proxy del bucle en marcha (si lo hay), para despertarlo desde cualquier hilo.
@@ -142,10 +218,85 @@ pub struct WindowConfig {
     width: f64,
     height: f64,
     resizable: bool,
+    /// Esquina superior izquierda (del marco), si no la elige el sistema.
+    position: Option<(f64, f64)>,
+    /// La posición viene de una sesión anterior: solo se usa si sigue
+    /// cayendo dentro de algún monitor.
+    check_position: bool,
+    min_size: Option<(f64, f64)>,
+    max_size: Option<(f64, f64)>,
+    maximized: bool,
+    fullscreen: bool,
+    always_on_top: bool,
     /// `on_close` del usuario: con un valor falso, la ventana no se cierra.
     on_close: Option<Py<PyAny>>,
     /// Aviso a Python (por id) cuando la ventana se cerró de verdad.
     on_closed: Option<Py<PyAny>>,
+}
+
+/// Lo que se sabe de una ventana abierta (píxeles lógicos), para que Python
+/// lo lea en marcha y lo recuerde al cerrarla.
+#[derive(Clone, Copy, Debug, Default)]
+struct State {
+    size: (f64, f64),
+    /// `None` donde el sistema no la da (Wayland).
+    position: Option<(f64, f64)>,
+    maximized: bool,
+    fullscreen: bool,
+    /// Tamaño y posición de la última vez que no estaba maximizada ni en
+    /// pantalla completa: lo que hay que restaurar.
+    restored_size: (f64, f64),
+    restored_position: Option<(f64, f64)>,
+}
+
+/// Estado de cada ventana abierta, por id de Python. La entrada sobrevive al
+/// cierre (Python lo lee en `on_closed`) y se vacía al terminar la app.
+static STATES: Mutex<BTreeMap<u64, State>> = Mutex::new(BTreeMap::new());
+
+/// Lee el estado actual de la ventana del sistema. Minimizada no cuenta: su
+/// tamaño y su posición son de mentira (en Windows, 0×0 en -32000).
+fn track(id: u64, window: &Window) {
+    if window.is_minimized() == Some(true) {
+        return;
+    }
+    let scale = window.scale_factor();
+    let size = window.inner_size().to_logical::<f64>(scale);
+    if size.width <= 0.0 || size.height <= 0.0 {
+        return;
+    }
+    let position = window
+        .outer_position()
+        .ok()
+        .map(|p| p.to_logical::<f64>(scale))
+        .map(|p| (p.x, p.y));
+    let maximized = window.is_maximized();
+    let fullscreen = window.fullscreen().is_some();
+    if let Ok(mut states) = STATES.lock() {
+        let state = states.entry(id).or_default();
+        state.size = (size.width, size.height);
+        state.position = position;
+        state.maximized = maximized;
+        state.fullscreen = fullscreen;
+        if !maximized && !fullscreen {
+            state.restored_size = state.size;
+            state.restored_position = position;
+        }
+    }
+}
+
+/// Si una ventana en `position` (píxeles lógicos) y `width` de ancho tiene
+/// a la vista el centro de su barra de título en alguno de los `monitors`
+/// (`(x, y, ancho, alto, escala)`, en píxeles físicos).
+fn on_some_monitor(
+    position: (f64, f64),
+    width: f64,
+    monitors: &[(f64, f64, f64, f64, f64)],
+) -> bool {
+    let (x, y) = (position.0 + width / 2.0, position.1 + 16.0);
+    monitors.iter().any(|&(mx, my, mw, mh, scale)| {
+        let (px, py) = (x * scale, y * scale);
+        px >= mx && px < mx + mw && py >= my && py < my + mh
+    })
 }
 
 /// Ventanas pedidas desde Python y aún sin crear. Se vacía al abrir y al
@@ -165,33 +316,16 @@ fn clear_pending() {
 }
 
 /// Abre una ventana nueva. Seguro desde cualquier hilo; si la app ya arrancó,
-/// la ventana aparece en el siguiente evento del bucle.
+/// la ventana aparece en el siguiente evento del bucle. `config` es un dict
+/// como los de `run`.
 #[pyfunction]
-#[pyo3(signature = (id, build, title, size, resizable = true, on_close = None, on_closed = None))]
-pub fn window_open(
-    id: u64,
-    build: Py<PyAny>,
-    title: String,
-    size: (f64, f64),
-    resizable: bool,
-    on_close: Option<Py<PyAny>>,
-    on_closed: Option<Py<PyAny>>,
-) {
+pub fn window_open(config: &Bound<'_, PyAny>) -> PyResult<()> {
+    let (id, config) = parse_window(config)?;
     if let Ok(mut pending) = PENDING.lock() {
-        pending.push((
-            id,
-            WindowConfig {
-                build,
-                title,
-                width: size.0,
-                height: size.1,
-                resizable,
-                on_close,
-                on_closed,
-            },
-        ));
+        pending.push((id, config));
     }
     send(Command::Open(id));
+    Ok(())
 }
 
 /// Cierra la ventana con esa id. Seguro desde cualquier hilo.
@@ -200,15 +334,106 @@ pub fn window_close(id: u64) {
     send(Command::Close(id));
 }
 
-/// Cambia el título, el tamaño (píxeles lógicos) o ambos de una ventana abierta.
+/// Cambia en marcha lo indicado de una ventana abierta (tamaños y posición en
+/// píxeles lógicos). `min_size`/`max_size` a `(0, 0)` quitan el límite.
 #[pyfunction]
-#[pyo3(signature = (id, title = None, size = None))]
-pub fn window_set(id: u64, title: Option<String>, size: Option<(f64, f64)>) {
-    if let Some(title) = title {
-        send(Command::SetTitle(id, title));
+#[pyo3(signature = (
+    id, title = None, size = None, position = None, min_size = None, max_size = None,
+    maximized = None, fullscreen = None, always_on_top = None, resizable = None,
+))]
+#[allow(clippy::too_many_arguments)]
+pub fn window_set(
+    id: u64,
+    title: Option<String>,
+    size: Option<(f64, f64)>,
+    position: Option<(f64, f64)>,
+    min_size: Option<(f64, f64)>,
+    max_size: Option<(f64, f64)>,
+    maximized: Option<bool>,
+    fullscreen: Option<bool>,
+    always_on_top: Option<bool>,
+    resizable: Option<bool>,
+) -> PyResult<()> {
+    let size = check_size("size", size, false)?;
+    let min_size = check_size("min_size", min_size, true)?;
+    let max_size = check_size("max_size", max_size, true)?;
+    let position = check_position(position)?;
+    // Se apunta ya lo pedido: leerlo justo después devuelve lo nuevo, aunque
+    // el bucle aún no lo haya aplicado (el sistema lo corrige al aplicarlo).
+    if let Ok(mut states) = STATES.lock()
+        && let Some(state) = states.get_mut(&id)
+    {
+        if let Some(size) = size {
+            state.size = size;
+            state.restored_size = size;
+        }
+        if let Some(position) = position {
+            state.position = Some(position);
+            state.restored_position = Some(position);
+        }
+        if let Some(on) = maximized {
+            state.maximized = on;
+        }
+        if let Some(on) = fullscreen {
+            state.fullscreen = on;
+        }
     }
-    if let Some((width, height)) = size {
-        send(Command::SetSize(id, width, height));
+    let limit = |s: (f64, f64)| (s.0 > 0.0 && s.1 > 0.0).then_some(s);
+    let changes = [
+        title.map(Change::Title),
+        min_size.map(|s| Change::MinSize(limit(s))),
+        max_size.map(|s| Change::MaxSize(limit(s))),
+        resizable.map(Change::Resizable),
+        always_on_top.map(Change::AlwaysOnTop),
+        // Tamaño y posición antes de maximizar: así quedan como los restaurables.
+        size.map(|(w, h)| Change::Size(w, h)),
+        position.map(|(x, y)| Change::Position(x, y)),
+        maximized.map(Change::Maximized),
+        fullscreen.map(Change::Fullscreen),
+    ];
+    for change in changes.into_iter().flatten() {
+        send(Command::Set(id, change));
+    }
+    Ok(())
+}
+
+/// Lo que se sabe ahora de una ventana: un dict con `size`, `position`,
+/// `maximized`, `fullscreen`, `restored_size` y `restored_position`, o `None`
+/// si no se ha abierto en esta ejecución.
+#[pyfunction]
+pub fn window_state(py: Python<'_>, id: u64) -> PyResult<Option<Bound<'_, PyDict>>> {
+    let Some(state) = STATES.lock().ok().and_then(|s| s.get(&id).copied()) else {
+        return Ok(None);
+    };
+    let dict = PyDict::new(py);
+    dict.set_item("size", state.size)?;
+    dict.set_item("position", state.position)?;
+    dict.set_item("maximized", state.maximized)?;
+    dict.set_item("fullscreen", state.fullscreen)?;
+    dict.set_item("restored_size", state.restored_size)?;
+    dict.set_item("restored_position", state.restored_position)?;
+    Ok(Some(dict))
+}
+
+/// Un tamaño válido: finito y positivo (con `zero`, también `(0, 0)`).
+fn check_size(name: &str, size: Option<(f64, f64)>, zero: bool) -> PyResult<Option<(f64, f64)>> {
+    match size {
+        Some((w, h)) if zero && w == 0.0 && h == 0.0 => Ok(size),
+        Some((w, h)) if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) => {
+            Err(PyValueError::new_err(format!(
+                "`{name}` debe ser positivo y finito; llegó ({w}, {h})"
+            )))
+        }
+        _ => Ok(size),
+    }
+}
+
+fn check_position(position: Option<(f64, f64)>) -> PyResult<Option<(f64, f64)>> {
+    match position {
+        Some((x, y)) if !(x.is_finite() && y.is_finite()) => Err(PyValueError::new_err(format!(
+            "`position` debe ser finita; llegó ({x}, {y})"
+        ))),
+        _ => Ok(position),
     }
 }
 
@@ -473,8 +698,10 @@ impl View {
         let window = self.window.clone();
         match event {
             WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                track(self.id, &window);
                 window.request_redraw()
             }
+            WindowEvent::Moved(_) => track(self.id, &window),
             WindowEvent::CursorMoved { position, .. } => {
                 let p = position.to_logical::<f32>(window.scale_factor());
                 let changed = self.rt.pointer_move(p.x, p.y).unwrap_or_else(|err| {
@@ -638,16 +865,59 @@ impl Host {
         id: u64,
         config: WindowConfig,
     ) -> Result<View, String> {
-        let attrs = Window::default_attributes()
+        let mut attrs = Window::default_attributes()
             .with_title(&config.title)
             .with_inner_size(LogicalSize::new(config.width, config.height))
             .with_resizable(config.resizable)
+            .with_maximized(config.maximized)
+            .with_fullscreen(fullscreen(config.fullscreen))
+            .with_window_level(level(config.always_on_top))
             .with_visible(false);
+        if let Some(size) = logical(config.min_size) {
+            attrs = attrs.with_min_inner_size(size);
+        }
+        if let Some(size) = logical(config.max_size) {
+            attrs = attrs.with_max_inner_size(size);
+        }
+        // Una posición recordada solo vale si su barra de título sigue a la
+        // vista (el monitor pudo desconectarse); si no, la elige el sistema.
+        let position = config.position.filter(|&p| {
+            if !config.check_position {
+                return true;
+            }
+            let monitors: Vec<_> = event_loop
+                .available_monitors()
+                .map(|m| {
+                    let (pos, size) = (m.position(), m.size());
+                    let (w, h) = (f64::from(size.width), f64::from(size.height));
+                    (f64::from(pos.x), f64::from(pos.y), w, h, m.scale_factor())
+                })
+                .collect();
+            on_some_monitor(p, config.width, &monitors)
+        });
+        if let Some((x, y)) = position {
+            attrs = attrs.with_position(LogicalPosition::new(x, y));
+        }
         let window = Arc::new(
             event_loop
                 .create_window(attrs)
                 .map_err(|e| format!("no se pudo crear la ventana: {e}"))?,
         );
+        if let Ok(mut states) = STATES.lock() {
+            // Lo restaurable de partida es lo pedido, aunque abra maximizada.
+            let size = (config.width, config.height);
+            states.insert(
+                id,
+                State {
+                    size,
+                    position,
+                    restored_size: size,
+                    restored_position: position,
+                    ..State::default()
+                },
+            );
+        }
+        track(id, &window);
         let rt = Runtime::new(config.build, Clipboard::System(None), self.inspector);
         let mut view = View::new(
             event_loop,
@@ -875,16 +1145,11 @@ impl Host {
         match command {
             Command::Open(id) => self.open_window(event_loop, id),
             Command::Close(id) => self.close_window(event_loop, id),
-            Command::SetTitle(id, title) => {
-                if let Some(view) = self.by_id.get(&id).and_then(|k| self.views.get_mut(k)) {
-                    view.window.set_title(&title);
-                }
-            }
-            Command::SetSize(id, width, height) => {
-                if let Some(view) = self.by_id.get(&id).and_then(|k| self.views.get_mut(k)) {
-                    let _ = view
-                        .window
-                        .request_inner_size(LogicalSize::new(width, height));
+            Command::Set(id, change) => {
+                if let Some(view) = self.by_id.get(&id).and_then(|k| self.views.get(k)) {
+                    change.apply(&view.window);
+                    // Lo que haya quedado de verdad (el sistema pudo recortarlo).
+                    track(id, &view.window);
                 }
             }
             Command::TrayShow => Python::attach(|py| self.show_tray(py)),
@@ -907,26 +1172,49 @@ impl Host {
     }
 }
 
-/// Configuración de las ventanas que llega de Python: una lista de dicts con
-/// `id`, `build`, `title`, `size`, `resizable`, `on_close` y `on_closed`.
+/// Configuración de las ventanas que llega de Python: una lista de dicts
+/// (ver `parse_window`).
 fn parse_windows(windows: &Bound<'_, PyAny>) -> PyResult<Vec<(u64, WindowConfig)>> {
-    let mut out = Vec::new();
-    for item in windows.try_iter()? {
-        let item = item?;
-        let id: u64 = item.get_item("id")?.extract()?;
-        let (width, height): (f64, f64) = item.get_item("size")?.extract()?;
-        let config = WindowConfig {
-            build: item.get_item("build")?.unbind(),
-            title: item.get_item("title")?.extract()?,
-            width,
-            height,
-            resizable: item.get_item("resizable")?.extract()?,
-            on_close: item.get_item("on_close")?.extract()?,
-            on_closed: item.get_item("on_closed")?.extract()?,
-        };
-        out.push((id, config));
-    }
-    Ok(out)
+    windows
+        .try_iter()?
+        .map(|item| parse_window(&item?))
+        .collect()
+}
+
+/// Una ventana descrita por Python: un dict con `id`, `build`, `title`,
+/// `size`, `resizable`, `on_close` y `on_closed`, y opcionalmente
+/// `position`, `check_position`, `min_size`, `max_size`, `maximized`,
+/// `fullscreen` y `always_on_top`.
+fn parse_window(item: &Bound<'_, PyAny>) -> PyResult<(u64, WindowConfig)> {
+    let dict = item.cast::<PyDict>()?;
+    let optional = |key: &str| -> PyResult<Option<Bound<'_, PyAny>>> {
+        Ok(dict.get_item(key)?.filter(|value| !value.is_none()))
+    };
+    let flag =
+        |key: &str| -> PyResult<bool> { optional(key)?.map_or(Ok(false), |value| value.extract()) };
+    let pair = |key: &str| -> PyResult<Option<(f64, f64)>> {
+        optional(key)?.map(|value| value.extract()).transpose()
+    };
+    let id: u64 = item.get_item("id")?.extract()?;
+    let (width, height): (f64, f64) = item.get_item("size")?.extract()?;
+    check_size("size", Some((width, height)), false)?;
+    let config = WindowConfig {
+        build: item.get_item("build")?.unbind(),
+        title: item.get_item("title")?.extract()?,
+        width,
+        height,
+        resizable: item.get_item("resizable")?.extract()?,
+        position: check_position(pair("position")?)?,
+        check_position: flag("check_position")?,
+        min_size: check_size("min_size", pair("min_size")?, false)?,
+        max_size: check_size("max_size", pair("max_size")?, false)?,
+        maximized: flag("maximized")?,
+        fullscreen: flag("fullscreen")?,
+        always_on_top: flag("always_on_top")?,
+        on_close: item.get_item("on_close")?.extract()?,
+        on_closed: item.get_item("on_closed")?.extract()?,
+    };
+    Ok((id, config))
 }
 
 /// Traduce una tecla de winit. Las teclas sin nombre ni carácter (muertas,
@@ -1164,6 +1452,9 @@ pub fn run(
         TrayIconEvent::set_event_handler(None::<fn(TrayIconEvent)>);
         MenuEvent::set_event_handler(None::<fn(MenuEvent)>);
         clear_pending();
+        if let Ok(mut states) = STATES.lock() {
+            states.clear();
+        }
         result?;
         Ok(host.fatal)
     });
@@ -1175,7 +1466,22 @@ pub fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::frame_dt;
+    use super::{frame_dt, on_some_monitor};
+
+    #[test]
+    fn a_remembered_position_must_land_on_a_monitor() {
+        // Dos monitores: 1920×1080 al 100 % y, a su derecha, 2560×1440 al 150 %.
+        let monitors = [
+            (0.0, 0.0, 1920.0, 1080.0, 1.0),
+            (1920.0, 0.0, 2560.0, 1440.0, 1.5),
+        ];
+        assert!(on_some_monitor((100.0, 100.0), 800.0, &monitors));
+        assert!(on_some_monitor((1400.0, 100.0), 400.0, &monitors));
+        // Medio fuera por la izquierda, pero con el título a la vista.
+        assert!(on_some_monitor((-300.0, 50.0), 800.0, &monitors));
+        assert!(!on_some_monitor((-2000.0, 50.0), 800.0, &monitors));
+        assert!(!on_some_monitor((100.0, 5000.0), 800.0, &monitors));
+    }
 
     #[test]
     fn idle_time_does_not_skip_the_start_of_a_transition() {

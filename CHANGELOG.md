@@ -7,6 +7,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 menor puede eliminar lo que se marcó como obsoleto en la anterior; cómo se retira cada cosa lo
 explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stability/).
 
+## [Sin publicar]
+
+### Añadido
+
+- **Opciones de ventana**, en `App(...)` (la principal) y en `app.window(...)`: `min_size` y
+  `max_size` (límites al redimensionar), `position` (esquina superior izquierda del marco, en
+  píxeles lógicos), `maximized`, `fullscreen` (sin bordes, en el monitor de la ventana),
+  `always_on_top` y, también en `App`, `resizable`. `Window` (y `app.main`) los lee y los cambia
+  en marcha desde cualquier hilo; con la ventana abierta, `size`, `position`, `maximized` y
+  `fullscreen` dan lo que hay de verdad, aunque el usuario la haya movido o maximizado. Al
+  cerrarla y reabrirla vuelve como estaba. Tamaños no positivos, valores no finitos o
+  `min_size` mayor que `max_size` dan `ValueError`.
+- **Recordar ventanas entre sesiones**: `App(view, remember="mi-app")` guarda al cerrar el tamaño,
+  la posición y si estaba maximizada la ventana principal en el directorio de configuración del
+  usuario (`<config>/mi-app/window-state.json`) y los restaura al arrancar; una posición
+  recordada solo se usa si sigue cayendo dentro de algún monitor. `app.window(...,
+  remember="ajustes")` hace lo mismo con una ventana adicional.
+
+### Cambiado
+
+- `Window.resizable` se aplica también en marcha (antes solo al abrir la ventana).
+- Un `size` no positivo en `App(...)` o `app.window(...)` lanza `ValueError` al crearlas (antes,
+  al pintar o al abrir la ventana).
+
 ## [0.6.0] — 2026-10-30
 
 ### Añadido

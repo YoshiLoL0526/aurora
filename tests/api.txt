@@ -1,5 +1,5 @@
 [aurora]
-class App(view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), theme: 'Theme | Callable[[], Theme]' = Theme(...), menu: 'Sequence[dict[str, Any]] | None' = None, app_id: 'str | None' = None, inspector: 'bool | None' = None, reload: 'bool | None' = None, motion: 'bool | None' = None) -> 'None'
+class App(view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, remember: 'str | None' = None, theme: 'Theme | Callable[[], Theme]' = Theme(...), menu: 'Sequence[dict[str, Any]] | None' = None, app_id: 'str | None' = None, inspector: 'bool | None' = None, reload: 'bool | None' = None, motion: 'bool | None' = None) -> 'None'
     .main (propiedad)
     .notify(self, title: 'str', body: 'str' = '', *, icon: 'str | PathLike[str] | None' = None, on_click: 'Callable[[], Any] | None' = None) -> 'None'
     .pilot(self, *, size: 'tuple[float, float] | None' = None, scale: 'float' = 1.0, inspector: 'bool' = False) -> 'Pilot'
@@ -11,7 +11,7 @@ class App(view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tupl
     .tray(self, icon: 'str | PathLike[str] | bytes', *, tooltip: 'str | None' = None, menu: 'Sequence[dict[str, Any]] | None' = None, on_click: 'Callable[[str], Any] | None' = None, on_double_click: 'Callable[[str], Any] | None' = None, template: 'bool' = False) -> 'None'
     .tray_hide(self) -> 'None'
     .watch(self, main: 'ModuleType | None' = None) -> '_reload.Reloader'
-    .window(self, view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float] | None' = None, resizable: 'bool' = True, on_close: 'Callable[[], Any] | None' = None) -> 'Window'
+    .window(self, view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float] | None' = None, resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, remember: 'str | None' = None, on_close: 'Callable[[], Any] | None' = None) -> 'Window'
     .windows(self) -> 'list[Window]'
 class AuroraDeprecationWarning(...)
 class Canvas(width: 'float', height: 'float', theme: 'Theme') -> 'None'
@@ -126,12 +126,19 @@ class Signal(value: 'T') -> 'None'
 class Theme(colors: 'dict[str, str]' = <factory>, radius: 'dict[str, float]' = <factory>, font_family: 'str' = 'Inter') -> None
     .font_family
     .resolve(self, value: 'Any') -> 'Any'
-class Window(app: 'App', view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, on_close: 'Callable[[], Any] | None' = None, _id: 'int | None' = None) -> 'None'
+class Window(app: 'App', view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, remember: 'str | None' = None, on_close: 'Callable[[], Any] | None' = None, _id: 'int | None' = None) -> 'None'
+    .always_on_top (propiedad)
     .close(self) -> 'None'
+    .fullscreen (propiedad)
     .is_open (propiedad)
+    .max_size (propiedad)
+    .maximized (propiedad)
+    .min_size (propiedad)
     .open(self) -> 'None'
     .pilot(self, *, size: 'tuple[float, float] | None' = None, scale: 'float' = 1.0, inspector: 'bool' = False) -> 'Pilot'
+    .position (propiedad)
     .render_png(self, path: 'str', *, size: 'tuple[float, float] | None' = None, scale: 'float' = 2.0) -> 'None'
+    .resizable (propiedad)
     .size (propiedad)
     .title (propiedad)
 accordion(sections: 'Sequence[tuple[Any, str, Element]]', open: 'Signal[Any]', *, key: 'str | None' = None, **style: 'Any') -> 'Element'

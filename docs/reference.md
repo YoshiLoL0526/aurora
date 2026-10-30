@@ -31,7 +31,9 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 ## App
 
 ```python
-App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, reload=None, motion=None)
+App(view, *, title="Aurora", size=(960, 640), resizable=True, min_size=None, max_size=None,
+    position=None, maximized=False, fullscreen=False, always_on_top=False, remember=None,
+    theme=MIDNIGHT, menu=None, app_id=None, inspector=None, reload=None, motion=None)
 ```
 
 | Parámetro | Tipo | Descripción |
@@ -39,6 +41,8 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 | `view` | `Callable[[], Element]` | Función sin argumentos que devuelve el árbol de la interfaz. Se llama de nuevo tras cada evento. |
 | `title` | `str` | Título de la ventana. |
 | `size` | `tuple[float, float]` | Tamaño inicial en píxeles lógicos (independientes del DPI). |
+| `resizable`, `min_size`, `max_size`, `position`, `maximized`, `fullscreen`, `always_on_top` | | Opciones de la ventana principal; las mismas que las de [`Window`](#opciones-de-ventana). |
+| `remember` | `str \| None` | Recuerda entre sesiones el tamaño, la posición y si estaba maximizada la ventana principal, en una carpeta con ese nombre del directorio de configuración del usuario (ver [Recordar ventanas](#recordar-ventanas)). |
 | `theme` | `Theme \| Callable[[], Theme]` | Tema fijo, o un `Signal[Theme]` para cambiarlo en caliente. |
 | `menu` | `Sequence[dict] \| None` | La barra de menús nativa (Windows y macOS), descrita con [`menus`](#menús-nativos): `App(view, menu=menus.bar(...))`. En Linux no hay barra nativa. |
 | `app_id` | `str \| None` | (Windows) El *AppUserModelID*: la identidad con la que Windows firma las [notificaciones](#notificaciones) y agrupa la barra de tareas. En una app empaquetada se deriva del título si no la indicas. |
@@ -49,7 +53,7 @@ App(view, *, title="Aurora", size=(960, 640), theme=MIDNIGHT, inspector=None, re
 | Método | Descripción |
 |---|---|
 | `run(*, backend="auto", keep_alive=None)` | Abre las ventanas y bloquea hasta que se cierren todas. `backend` elige dónde se pinta: `"gpu"` (Vulkan en Windows y Linux, Metal en macOS), `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de entorno `AURORA_BACKEND` (`gpu`/`cpu`) lo fuerza. `"gpu"` sin GPU disponible lanza `RuntimeError`; un valor desconocido, `ValueError`. `keep_alive=True` mantiene la app en marcha aunque no queden ventanas (para la bandeja del sistema) hasta que se llame a `quit()`. |
-| `window(view, *, title="Aurora", size=None, resizable=True, on_close=None)` | Crea una ventana adicional con su propia vista (ver [Window](#window)). `size` por defecto es el de la ventana principal. |
+| `window(view, *, title="Aurora", size=None, resizable=True, min_size=None, max_size=None, position=None, maximized=False, fullscreen=False, always_on_top=False, remember=None, on_close=None)` | Crea una ventana adicional con su propia vista (ver [Window](#window)). `size` por defecto es el de la ventana principal. `remember="clave"` la [recuerda](#recordar-ventanas) junto a la principal (necesita `App(remember=...)`). |
 | `windows()` | Las ventanas creadas con `window(...)`, en orden de creación (sin la principal). |
 | `main` | La ventana principal, como un [`Window`](#window) (ver abajo). |
 | `notify(title, body="", *, icon=None, on_click=None)` | Muestra una [notificación del sistema](#notificaciones). |
@@ -83,8 +87,13 @@ cerrar. Su vista es la de la `App` (el hot reload la mantiene).
 |---|---|
 | `view` | La función de la vista de esta ventana (se puede sustituir). |
 | `title` | El título. Asignarlo en marcha lo cambia al momento; seguro desde cualquier hilo. |
-| `size` | `(ancho, alto)` en píxeles lógicos. Asignarlo en marcha redimensiona la ventana. |
-| `resizable` | Si el usuario puede redimensionarla (se aplica al abrirla). |
+| `size` | `(ancho, alto)` del contenido (sin el marco) en píxeles lógicos. Abierta, da el tamaño real; asignarlo en marcha la redimensiona. |
+| `position` | `(x, y)` de la esquina superior izquierda del marco en el escritorio, en píxeles lógicos, o `None` si la elige el sistema. Abierta, da la real; asignarla en marcha la mueve. |
+| `maximized` | Si está maximizada. Abierta, da el estado real; asignarlo la maximiza o la restaura. |
+| `fullscreen` | Si está en pantalla completa (sin bordes, en el monitor de la ventana; no cambia el modo de vídeo). |
+| `always_on_top` | Si se queda encima de las demás ventanas. |
+| `resizable` | Si el usuario puede redimensionarla. |
+| `min_size` / `max_size` | Límites del tamaño del contenido al redimensionar, o `None` (sin límite). |
 | `on_close` | Se llama al intentar cerrarla (el botón del sistema o `close()`); si devuelve un valor falso, el cierre se cancela —por ejemplo, para pedir confirmación con un `dialog`. |
 | `is_open` | Si la ventana está abierta (o pendiente de abrir al arrancar la app). |
 | `open()` / `close()` | La abre o la cierra sin olvidar su vista; seguras desde cualquier hilo. |
@@ -93,6 +102,52 @@ cerrar. Su vista es la de la `App` (el hot reload la mantiene).
 
 La app termina al cerrarse su última ventana (o con `app.quit()`), y el inspector (F12) es
 independiente en cada ventana. Un ejemplo completo: [`examples/windows.py`](../examples/windows.py).
+
+### Opciones de ventana
+
+```python
+app = App(view, size=(900, 600), min_size=(480, 360), remember="mi-app")
+paleta = app.window(paleta_view, size=(240, 400), position=(40, 80), always_on_top=True)
+app.main.fullscreen = True  # en marcha, desde cualquier hilo
+```
+
+`App(...)` (para la principal) y `app.window(...)` aceptan las mismas opciones, todas por nombre
+y opcionales; cada una es también un miembro de `Window` que se lee y se cambia en marcha. Se
+validan al crear o asignar: un tamaño no positivo, un valor no finito o un `min_size` mayor que
+`max_size` lanzan `ValueError`, y lo que no es un par de números, `TypeError`. Al cerrar una
+ventana se guarda cómo estaba (tamaño y posición restaurables, maximizada, pantalla completa):
+`open()` la reabre igual.
+
+`size` se recorta a `min_size`/`max_size`, y cambiar un límite en marcha ajusta la ventana si
+queda fuera. Maximizada o en pantalla completa, el tamaño lo decide el sistema: en Windows ocupa
+el monitor aunque haya `max_size` (usa `resizable=False` si no debe crecer).
+
+Cada sistema pone sus límites:
+
+- **Wayland** no deja que una app coloque sus ventanas ni sabe dónde están: `position` se ignora
+  al crear y al asignar, y abierta lee `None` (o la última pedida).
+- **macOS**: `always_on_top` sube la ventana sobre las normales, no sobre otras apps a pantalla
+  completa; `fullscreen` usa la pantalla completa del sistema (un espacio propio).
+- **Linux X11**: `maximized`, `always_on_top` y la posición dependen del gestor de ventanas; la
+  mayoría los respeta.
+
+### Recordar ventanas
+
+`App(view, remember="mi-app")` recuerda entre sesiones el tamaño, la posición y si estaba
+maximizada la ventana principal: al cerrarla (o al terminar la app) lo guarda, y al arrancar lo
+restaura, por encima de `size`, `position` y `maximized`. Se guarda en
+`<config>/mi-app/window-state.json`, donde `<config>` es el directorio de configuración del
+usuario: `%APPDATA%` en Windows, `~/Library/Application Support` en macOS y `$XDG_CONFIG_HOME`
+(o `~/.config`) en Linux. El nombre es el de esa carpeta: letras, números, espacios, `.`, `-` o
+`_`.
+
+- Una ventana adicional se recuerda con `app.window(..., remember="ajustes")`, en el mismo
+  archivo (la clave `"main"` es la de la principal).
+- Una posición recordada solo se usa si la barra de título sigue cayendo dentro de algún
+  monitor (p. ej. si se desconectó el segundo); si no, la coloca el sistema.
+- Se recuerda el tamaño de antes de maximizar: al restaurarla vuelve a él.
+- La pantalla completa no se recuerda, ni nada si el proceso muere sin cerrar las ventanas. Un
+  archivo ilegible se ignora y un error al escribirlo se avisa por stderr, sin romper la app.
 
 ## Diálogos nativos
 

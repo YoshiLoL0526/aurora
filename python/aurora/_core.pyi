@@ -19,8 +19,10 @@ def run(
     """Abre las ventanas y ejecuta el bucle de eventos hasta que se cierren.
 
     `windows`: una lista de dicts con `id`, `build`, `title`, `size`
-    (`(ancho, alto)`), `resizable`, `on_close` y `on_closed`; la primera es la
-    principal: si no se puede crear, `run` falla (`RuntimeError`).
+    (`(ancho, alto)`), `resizable`, `on_close` y `on_closed`, y opcionalmente
+    `position`, `check_position` (usarla solo si cae en algún monitor),
+    `min_size`, `max_size`, `maximized`, `fullscreen` y `always_on_top`; la
+    primera es la principal: si no se puede crear, `run` falla (`RuntimeError`).
     `backend`: `"auto"`, `"gpu"` o `"cpu"` (`ValueError` con otro valor).
     `inspector`: F12 abre el inspector del árbol y el profiler de frames.
     `keep_alive`: la app sigue viva (sin ventanas) hasta que se llame a `quit()`.
@@ -28,22 +30,41 @@ def run(
     en Windows y macOS.
     """
 
-def window_open(
-    id: int,
-    build: Callable[[], dict[str, Any]],
-    title: str,
-    size: tuple[float, float],
-    resizable: bool = True,
-    on_close: Callable[[], Any] | None = None,
-    on_closed: Callable[[int], Any] | None = None,
-) -> None:
-    """Abre una ventana nueva (segura desde cualquier hilo; la abre el bucle)."""
+def window_open(config: dict[str, Any]) -> None:
+    """Abre una ventana nueva (segura desde cualquier hilo; la abre el bucle).
+
+    `config` es un dict como los de `run`.
+    """
 
 def window_close(id: int) -> None:
     """Cierra la ventana con esa id (segura desde cualquier hilo)."""
 
-def window_set(id: int, title: str | None = None, size: tuple[float, float] | None = None) -> None:
-    """Cambia el título, el tamaño o ambos de una ventana abierta."""
+def window_set(
+    id: int,
+    title: str | None = None,
+    size: tuple[float, float] | None = None,
+    position: tuple[float, float] | None = None,
+    min_size: tuple[float, float] | None = None,
+    max_size: tuple[float, float] | None = None,
+    maximized: bool | None = None,
+    fullscreen: bool | None = None,
+    always_on_top: bool | None = None,
+    resizable: bool | None = None,
+) -> None:
+    """Cambia en marcha lo indicado de una ventana abierta (píxeles lógicos).
+
+    `min_size`/`max_size` a `(0, 0)` quitan el límite. Tamaños no positivos o
+    valores no finitos dan `ValueError`.
+    """
+
+def window_state(id: int) -> dict[str, Any] | None:
+    """El estado actual de una ventana abierta en esta ejecución, o `None`.
+
+    Un dict con `size`, `position` (`None` donde el sistema no la da),
+    `maximized`, `fullscreen`, `restored_size` y `restored_position` (los de
+    la última vez que no estaba maximizada ni en pantalla completa). Tras
+    cerrarla queda el último estado, hasta que termina `run`.
+    """
 
 def quit() -> None:
     """Cierra todas las ventanas y termina la app. Segura desde cualquier hilo."""

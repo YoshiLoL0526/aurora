@@ -83,8 +83,8 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 *Lo que toda app de escritorio acaba pidiendo y hoy obliga a rodeos.*
 
-- ⏳ **Opciones de ventana**: tamaño mínimo y máximo, posición, maximizada y pantalla completa,
-  siempre encima, y recordar tamaño y posición entre sesiones
+- ✅ **Opciones de ventana**: tamaño mínimo y máximo, posición, maximizada y pantalla completa,
+  siempre encima, y recordar tamaño y posición entre sesiones (`App(..., remember="mi-app")`)
 - ⏳ Ventanas **sin marco** con barra de título propia (zonas de arrastre y botones del sistema)
 - ⏳ **Arrastrar y soltar dentro de la app**: reordenar listas y mover elementos entre
   contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot`
