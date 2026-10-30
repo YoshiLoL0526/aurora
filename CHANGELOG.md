@@ -7,7 +7,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 menor puede eliminar lo que se marcó como obsoleto en la anterior; cómo se retira cada cosa lo
 explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stability/).
 
-## [Sin publicar]
+## [0.6.0] — 2026-10-30
 
 ### Añadido
 
@@ -498,7 +498,8 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
-[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.5.0...HEAD
+[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.2.0...v0.3.0

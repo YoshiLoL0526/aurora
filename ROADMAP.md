@@ -63,7 +63,9 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ `aurora build`: empaquetado a ejecutable con un comando
 - ✅ Documentación publicada con ejemplos vivos
 
-## Hacia la 1.0 🚧
+## v0.6 — Escritorio y estabilidad ✅
+
+*Una app de Aurora se comporta como una app del sistema, y su API tiene reglas.*
 
 - ✅ Accesibilidad completa con AccessKit (lectores de pantalla, navegación por teclado)
 - ✅ Integración con el escritorio:
@@ -72,8 +74,52 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
   - ✅ Bandeja del sistema
   - ✅ Menús nativos (barra de la app y contextuales)
   - ✅ Notificaciones del sistema (`app.notify`, con callback de clic)
-- ✅ Política de estabilidad de la API: qué es público, plazos de obsolescencia y avisos (AuroraDeprecationWarning)
+  - ✅ Soltar archivos desde el explorador (`on_drop`, `on_drop_hover`)
+- ✅ Política de estabilidad de la API: qué es público, plazos de obsolescencia y avisos (`AuroraDeprecationWarning`)
+- ✅ Componentes de entrada: `number_input`, `combobox` y `date_picker`
 - ✅ Wheels precompiladas en PyPI para Windows, macOS (x86_64/arm64) y Linux
+
+## v0.7 — Ventanas y arrastre ⏳
+
+*Lo que toda app de escritorio acaba pidiendo y hoy obliga a rodeos.*
+
+- ⏳ **Opciones de ventana**: tamaño mínimo y máximo, posición, maximizada y pantalla completa,
+  siempre encima, y recordar tamaño y posición entre sesiones
+- ⏳ Ventanas **sin marco** con barra de título propia (zonas de arrastre y botones del sistema)
+- ⏳ **Arrastrar y soltar dentro de la app**: reordenar listas y mover elementos entre
+  contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot`
+- ⏳ `virtual_list` con filas de **alto variable** (chats, registros, feeds)
+
+## v0.8 — Componentes para apps complejas ⏳
+
+*Herramientas internas grandes sin construir los widgets a mano.*
+
+- ⏳ `tree`: árbol expandible con selección, teclado y virtualización
+- ⏳ `splitter`: paneles redimensionables
+- ⏳ `popover`: contenido flotante anclado a un elemento
+- ⏳ Selectores de hora y de color
+- ⏳ Texto enriquecido: tramos con estilos dentro de un párrafo y render de Markdown
+
+## v0.9 — Reconstruir menos ⏳
+
+*Que el coste de un cambio dependa de lo que cambia, no del tamaño de la vista.*
+
+- ⏳ Reconstrucción parcial: un `Signal` que cambia vuelve a ejecutar solo las partes de la vista
+  que lo leen, también fuera de `@component`
+- ⏳ Tiempo de arranque medido en los benchmarks y con objetivo
+
+## 1.0 — Criterios de salida 🎯
+
+La 1.0 sale cuando se cumplen todos, no en una fecha:
+
+- La API pública está congelada: nada pendiente de obsolescencia, y desde aquí la
+  [política de estabilidad](https://yoshilol0526.github.io/aurora/stability/) solo permite romper en versiones mayores
+- Cada componente se ve bien por defecto, anuncia su rol a los lectores de pantalla, se maneja
+  con teclado y tiene tests de render y de interacción
+- La documentación cubre toda la API, con guía, referencia y recetas para las tareas habituales
+- Ninguna limitación grave conocida en Windows, macOS y Linux (X11); las que dependan de terceros
+  (menús nativos en Linux, soltar archivos en Wayland) están documentadas
+- 60 fps en la suite de benchmarks en el hardware de referencia de la CI
 
 ---
 
