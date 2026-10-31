@@ -236,6 +236,8 @@ Los diálogos del sistema para elegir archivos o carpetas:
 | `pick_folder(*, title=None, directory=None)` | Pide una carpeta; devuelve su ruta o `None`. |
 
 `filters` son pares `(nombre, extensiones)`: `[("Imágenes", ["png", "jpg"]), ("Todo", ["*"])]`.
+Su tipo es el alias **`dialogs.Filters`** (`Sequence[tuple[str, Sequence[str]]]`), útil para anotar
+funciones propias que reciben filtros y los pasan a los diálogos.
 
 Son **síncronas**: con el diálogo abierto la app espera (el sistema corre su propio bucle de
 mensajes) y el GIL se suelta, así que los hilos y las corrutinas de `app.spawn` siguen trabajando.
@@ -332,7 +334,7 @@ app = App(
 | `menus.item(label, on_click, *, shortcut=None, enabled=True)` | Una opción; llama a `on_click()` al elegirla. `shortcut` es un atajo del sistema: `"ctrl+o"`, `"mod+s"` (`mod` es Control fuera de macOS y Comando en macOS), `"f5"`, `"shift+alt+f"`… |
 | `menus.separator()` | Una línea separadora. |
 | `menus.submenu(label, *items)` | Un submenú con sus entradas. |
-| `menus.predefined(name)` | Una entrada estándar del sistema: `"copy"`, `"paste"`, `"cut"`, `"select_all"`, `"undo"`, `"redo"`, `"delete"`, `"minimize"`, `"maximize"`, `"fullscreen"`, `"close_window"`, `"quit"`, `"about"`, `"hide"`, `"hide_others"`, `"show_all"`, `"services"` o `"bring_all_to_front"`. |
+| `menus.predefined(name)` | Una entrada estándar del sistema: `"copy"`, `"paste"`, `"cut"`, `"select_all"`, `"undo"`, `"redo"`, `"delete"`, `"minimize"`, `"maximize"`, `"fullscreen"`, `"close_window"`, `"quit"`, `"about"`, `"hide"`, `"hide_others"`, `"show_all"`, `"services"` o `"bring_all_to_front"`. Un nombre fuera de la lista lanza `ValueError`. La lista completa es el `frozenset` **`menus.PREDEFINED`** (`"copy" in menus.PREDEFINED`). |
 | `menus.bar(*items)` | La barra de la app, para `App(menu=...)`; es azúcar de una lista. |
 
 La misma descripción vale para los tres menús nativos:
@@ -629,6 +631,13 @@ propiedad de estilo admite también una función (`bg=lambda: ...`), con el mism
 | `image(src, *, fit="contain", **estilo)` | Imagen de un archivo o de bytes. Ver abajo. |
 | `canvas(draw, **estilo)` | Lienzo de dibujo inmediato. Ver abajo. |
 | `chart(y, *, kind="line", **estilo)` | Gráfico nativo (línea, área, barras, dispersión) alimentado por arrays. Ver abajo. |
+
+`Element` es la clase de todo lo que devuelven las primitivas y los componentes; no hace falta
+crearla a mano. Para anotar funciones de vista, `-> Element`. Expone `key`, `kind`, `style` (las
+propiedades), `children`, `handlers` (los `on_<evento>`, sin el prefijo: `el.handlers["click"]`) y
+`on_click` (atajo de `handlers.get("click")`), útiles en tests de la vista sin piloto.
+`el.to_spec(theme)` lo serializa al dict que recibe el núcleo, con los tokens del tema y las
+funciones ya resueltos: es lo que se depura al ver qué llega a Rust.
 
 ### `image(src, *, fit="contain", **estilo)`
 
@@ -2138,6 +2147,32 @@ elemento.
 Los valores inválidos (rigidez no positiva, duración o retardo negativos, easing desconocido,
 escala negativa) lanzan `ValueError` al crearlos.
 
+### Tipos de `animate`
+
+Las funciones de arriba devuelven valores inmutables (dataclasses congeladas) que se pueden
+guardar, comparar y reutilizar entre elementos; sus campos son los argumentos de la función:
+
+| Tipo | Lo crea | Campos |
+|---|---|---|
+| `animate.Spring` | `spring()` | `stiffness`, `damping`, `mass`, `delay` |
+| `animate.Tween` | `tween()` | `duration`, `easing`, `delay` |
+| `animate.Pulse` | `pulse()` | `duration`, `delay`, `floor` |
+| `animate.Effect` | `fade()`, `slide()`, `zoom()`, `effect()` | `opacity`, `x`, `y`, `scale`, `transition` |
+
+Y dos alias para anotar código propio: **`animate.Transition`** (`Spring | Tween`: lo que acepta
+`transition=` o `animate_layout=`) y **`animate.Easing`** (el `Literal` de los nombres de curva de
+`tween`).
+
+```python
+from aurora import animate
+
+SUAVE: animate.Transition = animate.tween(0.4, easing="ease_in_out")
+
+
+def entrada(i: int) -> animate.Effect:
+    return animate.slide(y=8, transition=animate.spring(delay=i * 0.03))
+```
+
 En los tests, `pilot.frame(dt)` avanza las animaciones `dt` segundos y devuelve `True` mientras
 alguna sigue en curso; `pilot.settle()` espera a que terminen todas (salidas incluidas).
 
@@ -2265,6 +2300,16 @@ OCEAN = Theme(
 
 Un token que no existe en el tema lanza `KeyError` al construir la vista, para que los errores
 de escritura se detecten enseguida.
+
+`Theme.resolve(value)` hace esa traducción a mano: devuelve el color o el radio de un `"$token"`,
+resuelve cada elemento de una tupla (`(0, 8, 24, "$shadow")`) y deja igual cualquier otro valor.
+Sirve para usar los colores del tema fuera de las propiedades de estilo (al dibujar en un `canvas`,
+por ejemplo):
+
+```python
+MIDNIGHT.resolve("$primary")  # "#7C5CFF"
+MIDNIGHT.resolve((0, 8, 24, "$shadow"))  # (0, 8, 24, "#00000066")
+```
 
 ## Formatos de valores
 

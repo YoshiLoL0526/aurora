@@ -46,6 +46,15 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   redimensionarla, maximizarla), y `app.pilot()` de una ventana sin marco redimensiona por los
   bordes como la ventana.
 
+- **Recetas** en la documentación (`docs/recipes.md`): formulario con validación, carga
+  asíncrona con spinner, lista grande filtrable, maestro-detalle, ajustes que se recuerdan,
+  ventana sin marco, kanban, chat, tema propio, atajos globales y tests con `Pilot`.
+- La guía trata `table`, `tree`, `splitter`, `on_resize`, `popover`, `rich_text`, `markdown`,
+  `time_picker` y `color_picker`, y la referencia documenta los tipos de `animate` (`Spring`,
+  `Tween`, `Pulse`, `Effect`, `Transition`, `Easing`), `dialogs.Filters`, `menus.PREDEFINED`,
+  `Element` y `Theme.resolve`. Un test (`tests/test_api.py`) falla si un nombre público no
+  aparece en la referencia.
+
 ### Cambiado
 
 - **Control de 60 fps en los benchmarks**: las operaciones interactivas de `benchmarks/run.py`

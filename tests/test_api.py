@@ -93,6 +93,40 @@ def test_public_surface_matches_snapshot() -> None:
     )
 
 
+REFERENCE = Path(__file__).parent.parent / "docs" / "reference.md"
+
+
+def _documented_code() -> str:
+    """El código de la referencia: bloques y fragmentos entre comillas invertidas."""
+    text = REFERENCE.read_text(encoding="utf-8")
+    return "\n".join(re.findall(r"```.*?```", text, re.S) + re.findall(r"`[^`\n]+`", text))
+
+
+def undocumented() -> list[str]:
+    """Nombres públicos (los de `surface()`) que no aparecen como código en `docs/reference.md`.
+
+    Cada nombre de `__all__` y cada método, propiedad o campo público de sus clases (`App`,
+    `Window`, `Signal`, `Pilot`, `Canvas`, `Path`, `Column`, `Theme`, los eventos…) tiene que
+    salir al menos una vez en un bloque de código o entre comillas invertidas."""
+    code = _documented_code()
+    missing = []
+    for modname, module in MODULES:
+        for name in sorted(module.__all__):
+            obj = getattr(module, name)
+            if not re.search(rf"\b{name}\b", code):
+                missing.append(f"{modname}.{name}")
+            if isinstance(obj, type):
+                for member in sorted(vars(obj)):
+                    if not member.startswith("_") and not re.search(rf"\b{member}\b", code):
+                        missing.append(f"{modname}.{name}.{member}")
+    return missing
+
+
+def test_every_public_name_is_in_the_reference() -> None:
+    missing = undocumented()
+    assert not missing, f"Falta documentar en docs/reference.md: {', '.join(missing)}"
+
+
 @pytest.mark.parametrize(("modname", "module"), MODULES)
 def test_all_names_exist(modname: str, module: ModuleType) -> None:
     missing = [n for n in module.__all__ if not hasattr(module, n)]

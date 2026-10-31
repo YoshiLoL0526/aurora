@@ -109,7 +109,7 @@ dependa de lo que cambia, no del tamaño de la vista.*
 
 *Sin funciones nuevas: cerrar lo que impide cumplir los criterios de salida de la 1.0.*
 
-- ⏳ **Documentación completa**: toda la API pública en la referencia (comprobado por un test),
+- ✅ **Documentación completa**: toda la API pública en la referencia (comprobado por un test),
   la guía al día con lo reciente y una página de recetas para las tareas habituales
 - ⏳ **Cada componente completo**: test de render, de interacción con `Pilot` y de su nodo en el
   árbol de accesibilidad, y manejo con teclado si es interactivo, con una matriz de cobertura

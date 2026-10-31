@@ -522,6 +522,77 @@ entonces un dict de key → lista). En los tests, `pilot.drag_to("prioridades:Pu
 "prioridades:Revisar PR")` lo arrastra delante de otro, y con `pilot.press("space")` y las
 flechas se prueba el teclado. Ver [`sortable`](reference.md#sortable).
 
+### Tablas, árboles y paneles
+
+Para datos tabulares no hace falta montar la rejilla a mano: `table` recibe las filas y una
+lista de `Column` y pone la cabecera fija, la ordenación al pulsar una cabecera, las columnas
+redimensionables y la virtualización (solo construye las filas visibles, como `virtual_list`):
+
+```python live continue align=stretch
+from aurora import Column, table
+
+table(
+    services(),
+    [
+        Column("name", "Servicio", width=200),
+        Column("region", "Región", width=140),
+        Column("latency_ms", "Latencia", align="end", format=lambda ms: f"{ms} ms"),
+    ],
+    key="servicios",
+    height=188,
+)
+```
+
+Cada `Column` lee el atributo (o la clave de un dict) que dice su primer argumento; `value`,
+`format` y `cell` cambian qué se ordena, cómo se escribe o qué elemento se pinta. Para jerarquías
+(carpetas, categorías, un índice), `tree` hace lo mismo con nodos expandibles: le das las raíces
+y una función con los hijos de cada nodo, y él pone la selección, el teclado (flechas, Inicio,
+Fin, Enter) y la virtualización.
+
+Las dos encajan en una vista **maestro-detalle** con `splitter`, dos paneles con un separador que
+se arrastra (o se mueve con las flechas) para repartir el espacio:
+
+```python live continue size=640x220
+from aurora import splitter, tree
+
+carpetas = [("Producción", [("API pública", []), ("Workers", [])]), ("Pruebas", [("CDN", [])])]
+elegida = Signal(("Producción", "API pública"))
+abiertas = Signal({("Producción",)})
+
+
+def view():
+    lista = tree(
+        carpetas,
+        lambda nodo: nodo[1],
+        label=lambda nodo: nodo[0],
+        selected=elegida,
+        expanded=abiertas,
+        key="carpetas",
+    )
+    detalle = column(padding=16, gap=6)[
+        text(elegida()[-1] if elegida() else "Nada elegido", size=18, weight=700),
+        text(" / ".join(elegida() or ()), color="$muted"),
+    ]
+    return column(padding=12)[splitter(lista, detalle, size=220, key="panel")]
+```
+
+Si una parte de la vista tiene que adaptarse al espacio que le toca (pasar de dos columnas a una,
+esconder una barra lateral estrecha), `on_resize` avisa con un `ResizeEvent` cada vez que el
+layout le da otro tamaño a un elemento. Como `on_scroll`, no reconstruye nada por sí solo: guarda
+lo que necesites en un `Signal` y la vista hace el resto.
+
+```python
+ancho = Signal(0.0)
+
+
+def view():
+    estrecho = ancho() < 520
+    columnas = column if estrecho else row
+    return box(grow=1, on_resize=lambda e: ancho.set(e.width))[
+        columnas(gap=16)[panel_resumen(), panel_detalle()],
+    ]
+```
+
 ## 7. Filtros y valores derivados
 
 Los valores derivados (totales, porcentajes, listas filtradas) **no se guardan**: se calculan
@@ -638,9 +709,10 @@ con zoom.
 
 Además de `button`, `card`, `badge` y `stat`, Aurora trae `checkbox`, `switch`, `select`, `tabs`,
 `avatar`, `divider`, `tooltip`, `progress`, `radio`, `segmented`, `slider`, `spinner`, `skeleton`,
-`number_input`, `combobox` (buscar y elegir), `date_picker` (calendario) y `field` (etiqueta +
-control + error), y los de superposición: `dialog`, `toast`, `menu` y
-`accordion`, más `pages` (una vista por página con transición). Los controles se enlazan a un
+`number_input`, `combobox` (buscar y elegir), `date_picker` (calendario), `time_picker` (hora,
+cada `step` minutos), `color_picker` (cuadro de color, tono, paleta y código hexadecimal) y
+`field` (etiqueta + control + error), y los de superposición: `dialog`, `toast`, `menu`,
+`popover` y `accordion`, más `pages` (una vista por página con transición). Los controles se enlazan a un
 `Signal` igual que los campos de texto:
 
 ```python live continue
@@ -655,6 +727,57 @@ column(gap=14)[
     switch(notify, "Avisarme si un servicio cae"),
     select(region, [("eu", "Europa"), ("us", "EE. UU.")], key="region", width=200),
 ]
+```
+
+Los selectores de fecha, hora y color siguen el mismo patrón, con un `Signal` del tipo de su valor
+(`datetime.date`, `datetime.time` y un `"#RRGGBB"`):
+
+```python live continue
+from datetime import date, time
+
+from aurora import color_picker, date_picker, time_picker
+
+entrega = Signal(date(2026, 11, 20))
+hora = Signal(time(9, 30))
+etiqueta = Signal("#22D3B6")
+
+row(gap=10)[
+    date_picker(entrega, key="entrega", width=170),
+    time_picker(hora, step=30, key="hora", width=130),
+    color_picker(etiqueta, key="etiqueta", width=150),
+]
+```
+
+### Texto con estilos y Markdown
+
+Un `text` tiene un solo estilo. Para mezclar negritas, código o enlaces dentro de un mismo párrafo
+(que se parte en líneas como uno solo), usa `rich_text` con tramos `span`; un `span` con
+`on_click` es un enlace, accesible con el teclado y para los lectores de pantalla:
+
+```python live continue size=480
+from aurora import markdown, rich_text, span
+
+rich_text(
+    "El servicio ",
+    span("Workers", weight=700),
+    " lleva caído desde las ",
+    span("09:41", code=True),
+    ". ",
+    span("Ver el registro", on_click=lambda: print("abrir registro")),
+)
+```
+
+Para textos largos con formato (notas de versión, ayuda, descripciones que escribe el usuario),
+`markdown(texto)` pinta títulos, listas, citas, código y enlaces sobre `rich_text`, sin
+dependencias:
+
+```python live continue size=480 align=stretch
+markdown("""
+### Incidencia en Workers
+
+- **Causa**: cola saturada tras el despliegue
+- **Estado**: mitigada, ver [el informe](https://example.com)
+""")
 ```
 
 ### Formularios
@@ -764,6 +887,32 @@ dialog(selected() is not None, detalle(...), on_close=lambda: selected.set(None)
 
 Y `toast(mensaje)` es el aviso flotante de abajo a la derecha, con punto de acento y un clic para
 descartarlo. Todo esto está en la [referencia de componentes](reference.md#componentes).
+
+### Contenido flotante con `popover`
+
+Entre un tooltip y un modal está `popover`: un panel anclado a un disparador (un botón, un icono)
+que se abre al pulsarlo y se cierra con Esc, al hacer clic fuera o al pulsar otra vez. Es el
+sitio para filtros, un formulario corto o los detalles de un elemento; si no cabe debajo, se abre
+encima.
+
+```python live continue size=480x180
+from aurora import popover, switch
+
+solo_caidos = Signal(False)
+filtros = Signal(True)  # oculto
+
+
+def view():
+    return row(padding=20)[
+        popover(
+            button("Filtros", variant="soft"),
+            column(gap=10)[switch(solo_caidos, "Solo servicios caídos")],
+            open=filtros,
+            label="Filtros",
+            width=240,
+        ),
+    ]
+```
 
 ### Teclado y atajos
 
@@ -929,5 +1078,7 @@ opciones están en la [referencia](reference.md#empaquetado-aurora-build).
 
 - Lee el código de [`examples/studio.py`](../examples/studio.py): una app completa con
   navegación, kanban, gráficos y overlays que usa todo lo de esta guía.
+- Las [recetas](recipes.md) resuelven tareas habituales en pocas líneas: formularios con
+  validación, cargas asíncronas, maestro-detalle, kanban, chat, atajos globales, tests…
 - Revisa la [referencia](reference.md) para descubrir todas las propiedades de estilo.
 - Si te interesa cómo funciona por dentro, sigue con la [arquitectura](architecture.md).
