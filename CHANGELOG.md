@@ -28,6 +28,13 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   lado de `placement` (`"bottom-start"`, `"top"`, `"right-end"`…), se vuelca al opuesto si no cabe
   y no se sale de la ventana; se cierra con Esc o al hacer clic fuera (`on_close`), su estado vive
   en un `Signal[bool]` (`open`) o en la `key`, y es un `"dialog"` no modal que toma el foco.
+- **`tree(roots, children, ...)`**: árbol expandible y virtualizado (sobre `virtual_list`). Los
+  hijos se piden bajo demanda; el conjunto desplegado (`expanded`) y el nodo elegido
+  (`selected`) se enlazan a un `Signal` o viven en la `key`; teclado de treeview (flechas, ←/→
+  para plegar y desplegar o moverse entre padre e hijo, Inicio/Fin, Enter con `on_activate`), y
+  roles `tree`/`treeitem` con nivel, posición entre hermanos y estado desplegado.
+- Propiedad de estilo **`reveal=(top, bottom)`** en los `scroll`: al cambiar, desplaza el
+  contenedor hasta mostrar esa franja de su contenido.
 - **`splitter(first, second, ...)`**: dos paneles con un separador arrastrable, en fila o en
   columna (`direction`). El tamaño del primer panel se enlaza a un `Signal[float]` (`size`) o vive
   en la `key`; respeta un mínimo por panel (`min_sizes`), se mueve con las flechas e

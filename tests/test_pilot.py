@@ -22,6 +22,7 @@ from aurora import (
     spacer,
     splitter,
     text,
+    tree,
 )
 
 
@@ -636,3 +637,112 @@ def test_on_resize_reports_the_laid_out_size():
     pilot = App(view, size=(200, 100)).pilot()
     pilot.frame()
     assert sizes == [(180, 30)]
+
+
+# --- tree -------------------------------------------------------------------------
+
+_FILES = [
+    ("src", [("app.py", []), ("ui", [("tree.py", []), ("splitter.py", [])])]),
+    ("README.md", []),
+    ("tests", [(f"test_{i}.py", []) for i in range(500)]),
+]
+
+
+def _tree_app(**kwargs):
+    view = lambda: column(padding=10)[
+        tree(_FILES, lambda n: n[1], label=lambda n: n[0], key="t", height=200, **kwargs)
+    ]
+    return App(view, size=(300, 240)).pilot()
+
+
+def _items(pilot):
+    return [n for n in pilot.a11y_tree() if n["role"] == "treeitem"]
+
+
+def test_tree_click_selects_and_chevron_expands():
+    expanded, selected, seen = Signal(set()), Signal(None), []
+    pilot = _tree_app(expanded=expanded, selected=selected, on_select=lambda n: seen.append(n[0]))
+    assert [n["key"] for n in _items(pilot)] == ["t-src", "t-README.md", "t-tests"]
+    pilot.click("t-README.md")
+    assert selected() == ("README.md",) and seen == ["README.md"]
+    x, y, _, h = pilot.rect("t-src")
+    pilot.click_at(x + 14, y + h / 2)  # el triángulo
+    assert expanded() == {("src",)}
+    assert selected() == ("README.md",)  # desplegar no cambia la selección
+    assert "t-src/app.py" in [n["key"] for n in _items(pilot)]
+
+
+def test_tree_keyboard_follows_the_treeview_pattern():
+    expanded, selected, activated = Signal(set()), Signal(None), []
+    pilot = _tree_app(expanded=expanded, selected=selected, on_activate=lambda n: activated.append(n[0]))
+    pilot.focus("t")
+    pilot.press("down")
+    assert selected() == ("src",)
+    pilot.press("right")  # despliega
+    assert expanded() == {("src",)}
+    pilot.press("right")  # baja al primer hijo
+    assert selected() == ("src", "app.py")
+    pilot.press("down")
+    pilot.press("right")
+    pilot.press("right")
+    assert selected() == ("src", "ui", "tree.py")
+    pilot.press("left")  # una hoja sube a su padre
+    assert selected() == ("src", "ui")
+    pilot.press("left")  # un padre desplegado se pliega
+    assert expanded() == {("src",)}
+    pilot.press("end")
+    assert selected() == ("tests",)
+    pilot.press("home")
+    assert selected() == ("src",)
+    pilot.press("enter")
+    assert activated == ["src"]
+
+
+def test_tree_announces_levels_positions_and_expansion():
+    pilot = _tree_app(expanded=Signal({("src",), ("src", "ui")}), selected=Signal(("src", "ui")))
+    nodes = {n["key"]: n for n in pilot.a11y_tree()}
+    assert nodes["t"]["role"] == "tree"
+    ui = nodes["t-src/ui"]
+    assert (ui["level"], ui["position_in_set"], ui["set_size"]) == (2, 2, 2)
+    assert ui["expanded"] is True and ui["selected"] is True
+    leaf = nodes["t-src/ui/splitter.py"]
+    assert leaf["level"] == 3 and leaf["expanded"] is None
+
+
+def test_tree_virtualizes_and_keeps_the_selection_in_view():
+    selected = Signal(None)
+    pilot = _tree_app(expanded=Signal({("tests",)}), selected=selected)
+    assert len(_items(pilot)) < 30  # 503 filas visibles, pocas construidas
+    pilot.focus("t")
+    pilot.press("down")
+    pilot.press("end")
+    pilot.settle()
+    assert selected() == ("tests", "test_499.py")
+    _, y, _, h = pilot.rect("t-tests/test_499.py")
+    assert y >= 10 and y + h <= 210
+
+
+def test_tree_custom_identity_and_state_by_key():
+    nodes = {1: [2, 3], 2: [], 3: [4], 4: []}
+    names = {1: "raíz", 2: "a", 3: "b", 4: "c"}
+    view = lambda: column()[
+        tree([1], lambda n: nodes[n], label=lambda n: names[n], ident=lambda n: n, key="k")
+    ]
+    pilot = App(view, size=(300, 240)).pilot()
+    pilot.focus("k")
+    pilot.press("down")
+    pilot.press("right")
+    assert [n["key"] for n in _items(pilot)] == ["k-1", "k-2", "k-3"]
+
+
+def test_scroll_reveal_scrolls_only_when_the_band_changes():
+    band = Signal((0.0, 20.0))
+    view = lambda: column()[
+        scroll(key="s", height=100, reveal=band())[[box(key=f"b{i}", height=20, shrink=0) for i in range(30)]]
+    ]
+    pilot = App(view, size=(200, 120)).pilot()
+    band.set((400.0, 420.0))
+    pilot.frame()
+    pilot.settle()
+    _, y, _, _ = pilot.rect("b20")
+    assert 0 <= y <= 80

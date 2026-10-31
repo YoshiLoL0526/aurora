@@ -152,6 +152,10 @@ pub struct Runtime {
     /// Nodos con `on_resize` en el árbol actual y el último tamaño que se les dio.
     resize_listeners: Vec<String>,
     resize_seen: HashMap<String, ResizeEvent>,
+    /// Franja que cada `scroll` con `reveal` pide mostrar, y la última que se
+    /// atendió: solo se desplaza cuando cambia (no pelea con la rueda).
+    reveals: Vec<(String, (f32, f32))>,
+    reveal_seen: HashMap<String, (f32, f32)>,
     /// Zona pintada en cada uno de los últimos frames, del más reciente al más
     /// antiguo (`None`: nada). Con ella se pone al día un lienzo que se quedó
     /// unos frames atrás (ventanas con varios buffers).
@@ -195,6 +199,8 @@ impl Runtime {
             scroll_seen: HashMap::new(),
             resize_listeners: Vec::new(),
             resize_seen: HashMap::new(),
+            reveals: Vec::new(),
+            reveal_seen: HashMap::new(),
             history: VecDeque::new(),
             canvases: Canvases::default(),
             charts: Charts::default(),
@@ -245,6 +251,7 @@ impl Runtime {
         {
             state.reveal_content(top, bottom, 0.0);
         }
+        self.apply_reveals();
         let mut rebuild = Duration::ZERO;
         if (self.notify_scroll()? | self.notify_resize()?) && self.needs_sync() {
             let t = Instant::now();
@@ -344,10 +351,12 @@ impl Runtime {
         collect_autofocus(&tree, &mut autofocus);
         self.scroll_listeners.clear();
         self.resize_listeners.clear();
+        self.reveals.clear();
         collect_listeners(
             &tree,
             &mut self.scroll_listeners,
             &mut self.resize_listeners,
+            &mut self.reveals,
         );
         let appeared = autofocus
             .iter()
@@ -552,6 +561,23 @@ impl Runtime {
         Ok(!pending.is_empty())
     }
 
+    /// Desplaza los `scroll` cuyo `reveal` cambió hasta mostrar su franja. Se
+    /// llama tras el layout, cuando el contenedor ya conoce su zona visible.
+    fn apply_reveals(&mut self) {
+        let alive = &self.reveals;
+        self.reveal_seen
+            .retain(|k, _| alive.iter().any(|(key, _)| key == k));
+        for (key, band) in &self.reveals {
+            if self.reveal_seen.get(key) == Some(band) {
+                continue;
+            }
+            if let Some(state) = self.engine.scroll.get_mut(key) {
+                state.reveal_content(band.0, band.1, 0.0);
+                self.reveal_seen.insert(key.clone(), *band);
+            }
+        }
+    }
+
     /// Rectángulo absoluto (píxeles lógicos) con el que se pintó `key` en el último frame.
     pub fn rect(&self, key: &str) -> Option<Rect> {
         self.engine
@@ -576,15 +602,25 @@ fn join(a: Option<Rect>, b: Option<Rect>) -> Option<Rect> {
     }
 }
 
-fn collect_listeners(node: &Node, scroll: &mut Vec<String>, resize: &mut Vec<String>) {
+fn collect_listeners(
+    node: &Node,
+    scroll: &mut Vec<String>,
+    resize: &mut Vec<String>,
+    reveals: &mut Vec<(String, (f32, f32))>,
+) {
     if node.style.scroll.is_some() && node.handler("scroll").is_some() {
         scroll.push(node.key.clone());
+    }
+    if node.style.scroll.is_some()
+        && let Some(band) = node.style.reveal
+    {
+        reveals.push((node.key.clone(), band));
     }
     if node.handler("resize").is_some() {
         resize.push(node.key.clone());
     }
     for child in &node.children {
-        collect_listeners(child, scroll, resize);
+        collect_listeners(child, scroll, resize, reveals);
     }
 }
 

@@ -170,6 +170,9 @@ pub struct Style {
     pub clip: bool,
     /// Contenedor desplazable: recorta a sus hijos y se desplaza en estos ejes.
     pub scroll: Option<Axis>,
+    /// Franja del contenido de un `scroll` (`top`, `bottom`, desde su inicio) que
+    /// debe verse: cuando cambia, el contenedor se desplaza hasta mostrarla.
+    pub reveal: Option<(f32, f32)>,
     // Visual
     pub bg: Option<Color>,
     pub bg_hover: Option<Color>,
@@ -563,6 +566,7 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "press_scale" => hit!("press_scale"),
         "pulse" => hit!("pulse"),
         "radius" => hit!("radius"),
+        "reveal" => hit!("reveal"),
         "right" => hit!("right"),
         "role" => hit!("role"),
         "rows" => hit!("rows"),
@@ -738,6 +742,12 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
                 )));
             }
         },
+        reveal: get(d, "reveal")?
+            .map(|v| {
+                v.extract::<(f32, f32)>()
+                    .map_err(|_| PyValueError::new_err("reveal debe ser (top, bottom)"))
+            })
+            .transpose()?,
         bg: color_of(d, "bg")?,
         bg_hover: color_of(d, "bg_hover")?,
         bg_pressed: color_of(d, "bg_pressed")?,

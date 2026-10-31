@@ -20,6 +20,7 @@ from aurora import (
     spacer,
     splitter,
     text,
+    tree,
 )
 
 
@@ -213,3 +214,28 @@ def test_splitter_paints_a_divider_line_between_the_panes(tmp_path):
     assert _png_pixel(path, int(x + w // 2), int(y + h / 2)) == (0x25, 0x2B, 0x3B)
     assert _png_pixel(path, int(x - 10), int(y + h / 2)) == (0x20, 0x30, 0x40)
     assert _png_pixel(path, int(x + w + 10), int(y + h / 2)) == (0x40, 0x20, 0x30)
+
+
+def test_tree_highlights_the_selected_row_and_indents_children(tmp_path):
+    data = [("docs", [("guía.md", [])]), ("src", [])]
+    view = lambda: column()[
+        tree(
+            data,
+            lambda n: n[1],
+            label=lambda n: n[0],
+            expanded=Signal({("docs",)}),
+            selected=Signal(("docs", "guía.md")),
+            key="t",
+        )
+    ]
+    pilot = App(view, size=(240, 160)).pilot()
+    path = tmp_path / "tree.png"
+    pilot.png(str(path))
+    x, y, w, h = pilot.rect("t-docs/guía.md")
+    # La fila elegida va teñida del primario translúcido; la otra, sobre el fondo (#0B0D14).
+    r, _, b = _png_pixel(path, int(x + w - 6), int(y + h / 2))
+    assert b > r > 0x0B and b > 0x30
+    sx, sy, sw, sh = pilot.rect("t-src")
+    assert _png_pixel(path, int(sx + sw - 6), int(sy + sh / 2)) == (0x0B, 0x0D, 0x14)
+    # El hijo empieza su contenido una sangría más a la derecha que su padre.
+    assert pilot.rect("t-docs/guía.md/0")[0] - pilot.rect("t-docs/0")[0] == 18

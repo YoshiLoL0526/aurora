@@ -1285,6 +1285,59 @@ virtual_list(len(tareas()), lambda i: fila(i, i == elegida()), item_height=36, k
 - Solo las filas construidas existen en el árbol: Tab recorre las visibles, y `Pilot.rect` de una
   fila fuera de la zona visible devuelve `None`.
 
+### `tree(roots, children, *, key, label=str, ident=None, expanded=None, selected=None, icon=None, on_select=None, on_activate=None, item_height=30, indent=18, overscan=4, **estilo)` { #tree }
+
+Árbol expandible para jerarquías: carpetas y archivos, categorías, el esquema de un documento.
+`roots` son los nodos de primer nivel y `children(nodo)` devuelve los hijos de cada uno (vacío en
+las hojas); solo se pide para los nodos visibles, así que puede cargarlos bajo demanda. Los nodos
+son cualquier objeto: `label(nodo)` da su texto, `icon(nodo)` (opcional) un elemento delante de él
+e `ident(nodo)` su identidad, única y estable; por defecto es la tupla de etiquetas desde la raíz
+(`("src", "main.py")`).
+
+```python live
+from aurora import App, Signal, column, tree
+
+archivos = [
+    ("src", [("app.py", []), ("ui", [("tree.py", []), ("splitter.py", [])])]),
+    ("docs", [("guía.md", [])]),
+    ("README.md", []),
+]
+abiertos = Signal({("src",), ("src", "ui")})
+elegido = Signal(("src", "ui", "tree.py"))
+
+
+def view():
+    return column(padding=12)[
+        tree(
+            archivos,
+            lambda nodo: nodo[1],
+            label=lambda nodo: nodo[0],
+            expanded=abiertos,
+            selected=elegido,
+            key="archivos",
+        )
+    ]
+
+
+App(view, size=(300, 230)).run()
+```
+
+- `expanded` es un `Signal` con el **conjunto** de identidades desplegadas y `selected` uno con la
+  del nodo elegido (o `None`): léelos o asígnalos desde fuera (`abiertos.set(abiertos() |
+  {("docs",)})`). Sin ellos, el estado vive en la `key`, que siempre es obligatoria.
+- Un clic elige la fila y el triángulo la despliega o la pliega. `on_select(nodo)` se llama al
+  elegir y `on_activate(nodo)` al pulsar Enter.
+- Con el árbol enfocado, ↑/↓ recorren las filas visibles, → despliega (o baja al primer hijo),
+  ← pliega (o sube al padre), Inicio/Fin van a la primera y a la última fila, y Enter llama a
+  `on_activate` (sin él, despliega o pliega). La fila elegida siempre queda a la vista.
+- Se apoya en `virtual_list`: solo construye las filas visibles, todas de `item_height`, así que
+  un árbol con decenas de miles de nodos desplegados cuesta lo mismo que uno pequeño. Como ella,
+  ocupa el espacio libre; dale `height` o `max_height` para acotarlo. `indent` es la sangría por
+  nivel.
+- Para los lectores de pantalla es un `"tree"` de `"treeitem"`s con su nivel, su posición entre
+  hermanos («2 de 5») y si están desplegados. Las filas tienen la key `f"{key}-{identidad}"` (una
+  tupla se une con `/`: `"archivos-src/app.py"`).
+
 ### `table(rows, columns, *, key, sort=None, widths=None, on_row_click=None, row_height=36, header_height=40, striped=True, empty="Sin datos", overscan=4, **estilo)`
 
 Tabla de datos con cabecera fija, **ordenación**, **columnas redimensionables** y filas
@@ -1687,6 +1740,7 @@ contenedores (como en CSS).
 | `src` | ruta o `bytes` | — | Origen de una imagen. Usa la primitiva `image()`. |
 | `fit` | `"contain"`, `"cover"`, `"fill"`, `"none"` | `"contain"` | Encaje de una imagen en su caja. |
 | `scroll` | `"x"`, `"y"`, `"both"` | — | Convierte la caja en contenedor desplazable. Usa la primitiva `scroll()`, que añade buenos valores por defecto. |
+| `reveal` | `(top, bottom)` | — | En un `scroll`: franja de su contenido (en píxeles desde su inicio) que debe verse. Cuando cambia, el contenedor se desplaza lo justo para mostrarla; si no cambia, no interfiere con la rueda. Así sigue `tree` a la fila elegida. |
 
 > **Truco: columnas de igual ancho.** `grow=1, width=0` en cada hijo de una `row` reparte el
 > espacio a partes iguales, sin importar su contenido.

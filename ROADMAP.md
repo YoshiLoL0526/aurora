@@ -94,7 +94,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 
 *Herramientas internas grandes sin construir los widgets a mano.*
 
-- ⏳ `tree`: árbol expandible con selección, teclado y virtualización
+- ✅ `tree`: árbol expandible con selección, teclado y virtualización
 - ✅ `splitter`: paneles redimensionables
 - ✅ `popover`: contenido flotante anclado a un elemento
 - ⏳ Selectores de hora y de color

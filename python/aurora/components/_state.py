@@ -7,6 +7,8 @@ indexado por la `key` del componente, no en el árbol de elementos.
 
 from __future__ import annotations
 
+from typing import Any
+
 from ..signal import Signal
 
 # Abierto/cerrado de cada `menu` y `select`.
@@ -27,3 +29,6 @@ _MONTHS: dict[str, Signal[tuple[int, int]]] = {}
 # su contenedor en el eje del reparto (lo avisa `on_resize`).
 _SPLITS: dict[str, Signal[float]] = {}
 _EXTENTS: dict[str, Signal[float | None]] = {}
+# Identidades desplegadas y nodo elegido de cada `tree` sin `Signal` propios.
+_TREE_OPEN: dict[str, Signal[set[Any]]] = {}
+_TREE_SELECTED: dict[str, Signal[Any]] = {}

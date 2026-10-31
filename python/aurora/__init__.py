@@ -54,6 +54,7 @@ from .components import (
     textarea,
     toast,
     tooltip,
+    tree,
     virtual_list,
 )
 from .elements import Element, box, column, image, row, scroll, spacer, text
@@ -125,6 +126,7 @@ __all__ = [
     "textarea",
     "toast",
     "tooltip",
+    "tree",
     "virtual_list",
 ]
 __version__ = _core.__version__
