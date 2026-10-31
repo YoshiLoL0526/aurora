@@ -95,14 +95,15 @@ dependa de lo que cambia, no del tamaño de la vista.*
   que lo leen, también fuera de `@component`
 - ✅ Tiempo de arranque medido en los benchmarks y con objetivo
 
-## v0.8 — Ventanas sin marco y arrastre ⏳
+## v0.8 — Ventanas sin marco y arrastre ✅
 
 *Lo que toda app de escritorio acaba pidiendo y hoy obliga a rodeos.*
 
-- ⏳ Ventanas **sin marco** con barra de título propia (zonas de arrastre y botones del sistema)
-- ⏳ **Arrastrar y soltar dentro de la app**: reordenar listas y mover elementos entre
-  contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot`
-- ⏳ `virtual_list` con filas de **alto variable** (chats, registros, feeds)
+- ✅ Ventanas **sin marco** con barra de título propia (zonas de arrastre y botones del sistema):
+  `decorations=False`, `window_drag` y `title_bar`
+- ✅ **Arrastrar y soltar dentro de la app**: reordenar listas y mover elementos entre
+  contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot` (`sortable`)
+- ✅ `virtual_list` con filas de **alto variable** (chats, registros, feeds), con `stick_to_end`
 
 ## 1.0 — Criterios de salida 🎯
 
