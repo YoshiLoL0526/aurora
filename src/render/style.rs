@@ -132,7 +132,7 @@ impl Engine {
             if n.style.transition.is_some() || n.style.exit.is_some() {
                 before.insert(n.key.as_str(), n);
             }
-            stack.extend(&n.children);
+            stack.extend(n.children.iter().map(|c| &**c));
         }
         if before.is_empty() && self.motion.is_empty() && self.ghosts.is_empty() {
             return;
@@ -146,7 +146,7 @@ impl Engine {
             {
                 self.retarget_style(o, n, timing);
             }
-            stack.extend(&n.children);
+            stack.extend(n.children.iter().map(|c| &**c));
         }
         let mut i = 0;
         while i < self.ghosts.len() {
@@ -171,7 +171,7 @@ impl Engine {
             if n.style.exit.is_some() && !present.contains(n.key.as_str()) {
                 exits.push(n);
             } else {
-                stack.extend(&n.children);
+                stack.extend(n.children.iter().map(|c| &**c));
             }
         }
         for node in exits {
@@ -310,7 +310,7 @@ impl Engine {
             {
                 nodes.insert(n.key.as_str(), n);
             }
-            stack.extend(&n.children);
+            stack.extend(n.children.iter().map(|c| &**c));
         }
         // Un nodo que deja de tener `animate_layout` se queda en su caja.
         for (key, m) in &mut self.motion {
@@ -498,11 +498,12 @@ impl Engine {
             }
             changed.push(new.key.clone());
         }
+        // Un hijo compartido con el árbol anterior (el mismo dict) no cambió.
         old.children
             .iter()
             .zip(&new.children)
             .zip(&lnode.children)
-            .any(|((a, b), l)| self.restyle_node(tree, a, b, l, changed))
+            .any(|((a, b), l)| !Arc::ptr_eq(a, b) && self.restyle_node(tree, a, b, l, changed))
     }
 
     /// Rehace el párrafo de un texto cuyas métricas no cambiaron (solo su

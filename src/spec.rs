@@ -518,7 +518,10 @@ pub struct Node {
     pub text_props: TextProps,
     /// Semántica de accesibilidad: lo que ven los lectores de pantalla.
     pub a11y: A11y,
-    pub children: Vec<Node>,
+    /// Compartidos: un subárbol que Python no volvió a serializar (el mismo
+    /// dict) se reutiliza sin copiarlo, y las fases siguientes lo saltan al
+    /// ver el mismo puntero (`Arc::ptr_eq`).
+    pub children: Vec<Arc<Node>>,
     /// El nodo o algún descendiente tiene `placement` (el layout solo recorre esas ramas).
     pub has_placement: bool,
     /// Manejadores de eventos por nombre (`"click"`, …), sin el prefijo `on_`.
@@ -532,7 +535,8 @@ pub struct Node {
 }
 
 impl Node {
-    /// Copia profunda (los manejadores se comparten: son referencias a Python).
+    /// Copia del nodo que comparte los hijos (los manejadores también: son
+    /// referencias a Python).
     pub fn clone_ref(&self, py: Python<'_>) -> Node {
         Node {
             key: self.key.clone(),
@@ -541,7 +545,7 @@ impl Node {
             text: self.text.clone(),
             text_props: self.text_props.clone(),
             a11y: self.a11y.clone(),
-            children: self.children.iter().map(|c| c.clone_ref(py)).collect(),
+            children: self.children.clone(),
             has_placement: self.has_placement,
             handlers: self
                 .handlers
@@ -553,16 +557,20 @@ impl Node {
         }
     }
 
-    fn collect_keys(&self, out: &mut Vec<String>) {
-        out.push(self.key.clone());
-        for child in &self.children {
-            child.collect_keys(out);
+    /// Falla con la primera key repetida del subárbol (en preorden).
+    fn check_unique<'a>(&'a self, seen: &mut HashSet<&'a str>) -> PyResult<()> {
+        if !seen.insert(&self.key) {
+            return Err(PyValueError::new_err(format!(
+                "key duplicada en el árbol de la vista: {:?}",
+                self.key
+            )));
         }
+        self.children.iter().try_for_each(|c| c.check_unique(seen))
     }
 
     /// Número de nodos del subárbol, incluido este.
     pub fn count(&self) -> usize {
-        1 + self.children.iter().map(Node::count).sum::<usize>()
+        1 + self.children.iter().map(|c| c.count()).sum::<usize>()
     }
 
     pub fn is_interactive(&self) -> bool {
@@ -987,94 +995,80 @@ pub fn parse(obj: &Bound<'_, PyAny>) -> PyResult<Node> {
     Parser::default().parse(obj)
 }
 
-/// Parser con memoria entre reconstrucciones. Los dicts de los `@component`
-/// que no cambiaron llegan como el **mismo objeto** de Python (marcados con
-/// `memo`): su `Node` se copia del parseo anterior en vez de volver a leer
-/// cada propiedad de cada dict.
+/// Parser con memoria entre reconstrucciones. Los dicts que Python no volvió
+/// a serializar (ramas de un `@component` o de la vista que no cambiaron)
+/// llegan como el **mismo objeto** marcado con `memo`: su `Node` se comparte
+/// con el parseo anterior en vez de volver a leer cada propiedad.
+///
+/// La memoria sobrevive a los parseos en que su dict no aparece (puede estar
+/// dentro de otro reutilizado entero) y se poda cuando Python ya no guarda el
+/// dict: entonces solo lo mantiene vivo esta memoria.
 #[derive(Default)]
 pub struct Parser {
     memo: HashMap<usize, Memo>,
+    /// Tamaño de la memoria tras la última poda (se poda al doblarse).
+    pruned: usize,
 }
 
 /// Nodo parseado de un dict memorizado.
 struct Memo {
     /// Mantiene vivo el dict: mientras exista, su dirección no se reutiliza.
-    _dict: Py<PyAny>,
+    dict: Py<PyAny>,
     /// Key resuelta de la raíz: de ella salen las de todo el subárbol.
     key: String,
     /// Lo heredado del padre también forma parte del resultado.
     inherited: TextProps,
-    node: Node,
-    keys: Vec<String>,
+    node: Arc<Node>,
 }
 
-struct Ctx<'a> {
-    seen: HashSet<String>,
-    /// Memoria del parseo anterior (se consume) y la de este (se rellena).
-    old: &'a mut HashMap<usize, Memo>,
-    new: HashMap<usize, Memo>,
-}
+/// Memorias por debajo de las cuales no merece la pena podar.
+const PRUNE_MIN: usize = 256;
 
 impl Parser {
     pub fn parse(&mut self, obj: &Bound<'_, PyAny>) -> PyResult<Node> {
-        let mut ctx = Ctx {
-            seen: HashSet::new(),
-            old: &mut self.memo,
-            new: HashMap::new(),
-        };
-        let node = parse_node(obj, "0", &TextProps::default(), &mut ctx)?;
-        self.memo = ctx.new;
-        Ok(node)
+        let root = parse_node(obj, "0", &TextProps::default(), &mut self.memo)?;
+        root.check_unique(&mut HashSet::new())?;
+        if self.memo.len() > PRUNE_MIN.max(self.pruned * 2) {
+            // Coste amortizado: solo cuando la memoria dobla lo que quedó en la poda anterior.
+            // SAFETY: con el GIL tomado (`obj` lo demuestra), y el dict está vivo:
+            // lo mantiene esta misma memoria.
+            self.memo
+                .retain(|_, m| unsafe { pyo3::ffi::Py_REFCNT(m.dict.as_ptr()) } > 1);
+            self.pruned = self.memo.len();
+        }
+        // La raíz compartida con la memoria se copia sin sus hijos (que se comparten).
+        Ok(Arc::try_unwrap(root).unwrap_or_else(|shared| shared.clone_ref(obj.py())))
     }
-}
-
-fn check_unique(seen: &mut HashSet<String>, key: &str) -> PyResult<()> {
-    if !seen.insert(key.to_owned()) {
-        return Err(PyValueError::new_err(format!(
-            "key duplicada en el árbol de la vista: {key:?}"
-        )));
-    }
-    Ok(())
 }
 
 fn parse_node(
     obj: &Bound<'_, PyAny>,
     path: &str,
     inherited: &TextProps,
-    ctx: &mut Ctx<'_>,
-) -> PyResult<Node> {
+    memo: &mut HashMap<usize, Memo>,
+) -> PyResult<Arc<Node>> {
     let d = obj.cast::<PyDict>()?;
     if !bool_of(d, "memo")? {
-        return parse_fresh(d, path, inherited, ctx);
+        return Ok(Arc::new(parse_fresh(d, path, inherited, memo)?));
     }
     let id = obj.as_ptr() as usize;
     let key = str_of(d, "key")?.unwrap_or_else(|| path.to_owned());
-    let hit = ctx
-        .old
-        .remove(&id)
-        .filter(|m| m.key == key && m.inherited == *inherited);
-    let memo = match hit {
-        Some(memo) => {
-            for k in &memo.keys {
-                check_unique(&mut ctx.seen, k)?;
-            }
-            memo
-        }
-        None => {
-            let node = parse_fresh(d, path, inherited, ctx)?;
-            let mut keys = Vec::new();
-            node.collect_keys(&mut keys);
-            Memo {
-                _dict: obj.clone().unbind(),
-                key,
-                inherited: inherited.clone(),
-                node,
-                keys,
-            }
-        }
-    };
-    let node = memo.node.clone_ref(obj.py());
-    ctx.new.insert(id, memo);
+    if let Some(m) = memo.get(&id)
+        && m.key == key
+        && m.inherited == *inherited
+    {
+        return Ok(m.node.clone());
+    }
+    let node = Arc::new(parse_fresh(d, path, inherited, memo)?);
+    memo.insert(
+        id,
+        Memo {
+            dict: obj.clone().unbind(),
+            key,
+            inherited: inherited.clone(),
+            node: node.clone(),
+        },
+    );
     Ok(node)
 }
 
@@ -1082,7 +1076,7 @@ fn parse_fresh(
     d: &Bound<'_, PyDict>,
     path: &str,
     inherited: &TextProps,
-    ctx: &mut Ctx<'_>,
+    memo: &mut HashMap<usize, Memo>,
 ) -> PyResult<Node> {
     let kind = match str_of(d, "kind")?.as_deref() {
         Some("text") => Kind::Text,
@@ -1100,14 +1094,13 @@ fn parse_fresh(
     let a11y = A11y::parse(&style_dict)?;
     let text_props = inherit_text(&style_dict, inherited)?;
     let key = str_of(d, "key")?.unwrap_or_else(|| path.to_owned());
-    check_unique(&mut ctx.seen, &key)?;
 
     let children = match get(d, "children")? {
         Some(list) => list
             .cast::<PyList>()?
             .iter()
             .enumerate()
-            .map(|(i, child)| parse_node(&child, &format!("{key}/{i}"), &text_props, ctx))
+            .map(|(i, child)| parse_node(&child, &format!("{key}/{i}"), &text_props, memo))
             .collect::<PyResult<Vec<_>>>()?,
         None => Vec::new(),
     };

@@ -266,13 +266,20 @@ pub(super) fn repainted_nodes(old: &Node, new: &Node, out: &mut HashSet<String>)
             .all(|(a, b)| a.key == b.key);
     if paired {
         for (a, b) in old.children.iter().zip(&new.children) {
-            repainted_nodes(a, b, out);
+            if !Arc::ptr_eq(a, b) {
+                repainted_nodes(a, b, out);
+            }
         }
         return;
     }
-    let by_key: HashMap<&str, &Node> = old.children.iter().map(|c| (c.key.as_str(), c)).collect();
+    let by_key: HashMap<&str, &Node> = old
+        .children
+        .iter()
+        .map(|c| (c.key.as_str(), &**c))
+        .collect();
     for child in &new.children {
         match by_key.get(child.key.as_str()) {
+            Some(before) if std::ptr::eq(*before, &**child) => {}
             Some(before) => repainted_nodes(before, child, out),
             None => {
                 let mut stack = vec![child];

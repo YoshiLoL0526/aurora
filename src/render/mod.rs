@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use skia_safe::{
@@ -263,7 +264,7 @@ impl Engine {
                 state.multiline = node.style.multiline;
                 alive.insert(node.key.clone());
             }
-            stack.extend(node.children.iter());
+            stack.extend(node.children.iter().map(|c| &**c));
         }
         self.inputs.retain(|k, _| alive.contains(k));
     }
@@ -279,7 +280,7 @@ impl Engine {
             {
                 images.insert(node.key.clone(), self.image_cache.load(src)?);
             }
-            stack.extend(node.children.iter());
+            stack.extend(node.children.iter().map(|c| &**c));
         }
         self.image_cache.trim(images.len());
         // Una imagen que cambió (otro archivo, o el mismo modificado) puede tener
