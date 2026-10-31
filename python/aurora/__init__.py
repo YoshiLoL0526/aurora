@@ -513,23 +513,32 @@ class App:
         La vista se lee **después** de aplicar la recarga pendiente: la recarga
         pudo haber sustituido `owner.view` por la del módulo nuevo.
         """
-        if self._reloader is not None:
-            self._apply_reload(self._reloader)
+        reloader = self._reloader
+        if reloader is not None:
+            self._apply_reload(reloader)
         reactive.begin_build(owner)
         # Los componentes leen el interruptor de movimiento al construirse.
         previous_motion = _motion.activate(self.motion)
         try:
             # El tema puede ser reactivo (p. ej. un Signal[Theme]) para alternar claro/oscuro.
             theme = self.theme if isinstance(self.theme, Theme) else self.theme()
-            root = self._root(owner.view) if self._reloader is not None else owner.view()
-            root.style.setdefault("bg", "$background")
-            root.style.setdefault("font_family", theme.font_family)
-            root.style.setdefault("color", "$text")
-            root.style.setdefault("focus_color", "$primary")
-            # Burbuja de tooltip invertida respecto al tema: destaca en claro y en oscuro.
-            root.style.setdefault("tooltip_bg", "$text")
-            root.style.setdefault("tooltip_color", "$background")
-            spec = root.to_spec(theme)
+
+            def prepare(root: Element) -> None:
+                root.style.setdefault("bg", "$background")
+                root.style.setdefault("font_family", theme.font_family)
+                root.style.setdefault("color", "$text")
+                root.style.setdefault("focus_color", "$primary")
+                # Burbuja de tooltip invertida respecto al tema: destaca en claro y en oscuro.
+                root.style.setdefault("tooltip_bg", "$text")
+                root.style.setdefault("tooltip_color", "$background")
+
+            view = owner.view
+            if reloader is None:
+                spec = reactive.build_view(owner, view, view, theme, prepare)
+            else:
+                # La vista de error (la recarga falló) no se reutiliza.
+                key = view if reloader.error is None else None
+                spec = reactive.build_view(owner, key, lambda: self._root(view), theme, prepare)
             # Con el panel del inspector abierto, se acopla a la derecha de la vista.
             info = _core.inspection()
             if info is not None and info["open"]:

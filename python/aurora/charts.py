@@ -115,6 +115,9 @@ class _Chart(Element):
 
     __slots__ = ("options",)
 
+    # Los datos se pueden modificar en el sitio sin avisar: se releen en cada reconstrucción.
+    _volatile = True
+
     def __init__(self, options: dict[str, Any], **props: Any) -> None:
         super().__init__("chart", **props)
         self.options = options

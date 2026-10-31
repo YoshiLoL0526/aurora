@@ -122,6 +122,68 @@ def list_10k(scale: float = 1.0, *, memo: bool = False) -> Bench:
     )
 
 
+# ------------------------------------------- vista grande donde cambia un solo Signal
+
+
+def big_view(scale: float = 1.0) -> Bench:
+    """10 000 filas que no cambian y una cabecera con estado: un punto cuyo color es una
+    propiedad con lambda y un contador que es un texto con lambda. Cambiar uno de los dos
+    `Signal` no vuelve a llamar a la vista: solo se reevalúa la región que lo lee y el resto
+    del árbol reutiliza su serialización (en Python y en el núcleo)."""
+    n = max(10, int(10_000 * scale))
+    online = Signal(True)
+    unread = Signal(0)
+    names = [f"Registro {i:05d} · {('ventas', 'stock', 'envíos', 'clientes')[i % 4]}" for i in range(n)]
+
+    def view():
+        return column(padding=16, gap=12)[
+            row(gap=10, align="center")[
+                box(
+                    key="estado",
+                    width=10,
+                    height=10,
+                    radius=5,
+                    bg=lambda: "$success" if online() else "$danger",
+                ),
+                text(f"{n} registros", size=20, weight=700),
+                spacer(),
+                text(lambda: f"{unread()} sin leer", key="contador", size=13, color="$muted"),
+            ],
+            scroll(key="lista", gap=2)[
+                [
+                    row(
+                        key=f"reg-{i}", gap=12, align="center", padding=(8, 14), radius=8, bg_hover="$surface"
+                    )[
+                        box(width=8, height=8, radius=4, bg="$border"),
+                        text(names[i], size=14),
+                        spacer(),
+                        text(f"{(i * 37) % 100} %", size=13, color="$muted"),
+                    ]
+                    for i in range(n)
+                ]
+            ],
+        ]
+
+    def color(pilot: Pilot) -> None:
+        online.update(lambda on: not on)
+        pilot.frame()
+
+    def count(pilot: Pilot) -> None:
+        unread.update(lambda u: u + 1)
+        pilot.frame()
+
+    return Bench(
+        App(view, size=(960, 640)),
+        {
+            "color": color,
+            "texto": count,
+            "hover": _alternate(lambda p: p.move_to(300, 90), lambda p: p.move_to(300, 130)),
+            "idle": _idle,
+        },
+        info={"items": n},
+    )
+
+
 # ------------------------------------------------------- lista virtual de 100k filas
 
 
@@ -377,6 +439,11 @@ SCENARIOS = [
         "lista_10k_memo",
         "La misma lista con cada fila como @component",
         lambda scale: list_10k(scale, memo=True),
+    ),
+    Scenario(
+        "vista_grande",
+        "10 000 filas fijas y una cabecera donde cambia un solo Signal (color o texto)",
+        big_view,
     ),
     Scenario(
         "lista_virtual_100k",

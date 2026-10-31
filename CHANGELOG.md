@@ -58,14 +58,23 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - **`markdown(source, ...)`**: render de Markdown básico sobre `rich_text` (títulos, párrafos,
   listas anidadas, citas, código en línea y en bloque, separadores, énfasis y enlaces con
   `on_link`), sin dependencias nuevas.
+- **Reconstrucción parcial**: las funciones dentro de la vista son regiones reactivas. Además del
+  contenido de `text(lambda: ...)`, cualquier propiedad de estilo admite una función
+  (`bg=lambda: ...`) y los corchetes admiten hijos calculados (`column()[lambda: [...]]`, o un
+  `Signal` de elementos). Si un cambio solo afecta a lo que leen regiones, `view()` no se vuelve
+  a llamar: se reevalúan esas regiones y el resto del árbol reutiliza su serialización, en Python
+  y en el núcleo (en una vista de 50 000 nodos, cambiar un color pasa de ~700 ms a ~4 ms).
+  `AURORA_PARTIAL=0` la desactiva.
 - **Arranque en los benchmarks**: `benchmarks/run.py` mide desde `import aurora` hasta el primer
   frame de una app típica (`arranque`, un proceso nuevo por muestra) frente a su objetivo
-  (250 ms).
+  (250 ms), y el escenario `vista_grande` mide un cambio de un solo `Signal` en una vista grande.
 
 ### Cambiado
 
 - `import aurora` es ~40 % más rápido: `asyncio` se carga al llamar a `app.spawn`, y
   `webbrowser`, `json` y `calendar` cuando se usan.
+- Un `@component` cuyo cambio solo afecta a lo que leen sus lambdas ya no se vuelve a llamar:
+  reutiliza su `Element` y se vuelve a serializar.
 - El núcleo comparte entre reconstrucciones los subárboles que llegan como el mismo dict en vez
   de copiarlos, y la fase de estilo los salta: reconstruir una lista de 10 000 filas
   `@component` cuesta un tercio que antes.

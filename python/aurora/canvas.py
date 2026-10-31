@@ -390,6 +390,9 @@ class Drawing:
 class CanvasElement(Element):
     __slots__ = ("draw",)
 
+    # `draw` puede leer estado que no avisa: se vuelve a enviar en cada reconstrucción.
+    _volatile = True
+
     def __init__(self, draw: Callable[[Canvas], Any], **props: Any) -> None:
         super().__init__("canvas", **props)
         self.draw = draw

@@ -332,12 +332,13 @@ def fila(tarea: Tarea, seleccionada: bool):
     return row(key=f"tarea-{tarea.id}", bg="$surface" if seleccionada else None)[...]
 ```
 
-`view()` se vuelve a llamar entera tras cada cambio, pero un `@component` **no se reconstruye** si
-sus argumentos son iguales (`==`) a los de la última vez y no cambió ningún `Signal` que leyera, al
-construirse o al resolver sus textos con lambda. Devuelve el mismo `Element`, que recuerda su
+Cuando `view()` se vuelve a llamar (ver [Reconstrucción parcial](#reconstrucción-parcial)), un
+`@component` **no se reconstruye** si sus argumentos son iguales (`==`) a los de la última vez y no
+cambió ningún `Signal` que leyera al construirse. Devuelve el mismo `Element`, que recuerda su
 serialización, y el núcleo reutiliza el nodo ya procesado: el coste de esa rama en Python y en el
-parseo desaparece. Es la forma de escalar listas grandes: en una de 10 000 filas, cambiar la
-selección reconstruye 2 filas en vez de 10 000.
+parseo desaparece. Si solo cambió lo que leen sus lambdas (textos, propiedades o hijos), se
+reutiliza el `Element` y solo se vuelve a serializar. Es la forma de escalar listas grandes: en
+una de 10 000 filas, cambiar la selección reconstruye 2 filas en vez de 10 000.
 
 - Pasa como argumento lo que distingue a cada instancia (`seleccionada`) en vez de leer un
   `Signal` compartido dentro: un componente que lee `selected()` depende de él y se reconstruye
@@ -350,6 +351,46 @@ selección reconstruye 2 filas en vez de 10 000.
   del componente (`on_click=lambda: selected.set(tarea.id)`).
 - Un componente puede contener otros: si cambia el de dentro, se reconstruye también el de fuera.
 - Se olvidan las instancias que no aparecen en la última reconstrucción de la vista.
+
+## Reconstrucción parcial
+
+Las **funciones** dentro de la vista son regiones reactivas: se evalúan al serializar y anotan los
+`Signal` que leen.
+
+| Región | Ejemplo |
+|---|---|
+| Contenido de un texto | `text(lambda: f"{n()} clics")` |
+| Una propiedad de estilo | `box(bg=lambda: "$success" if online() else "$danger")` |
+| Un hijo calculado | `column()[lambda: [fila(t) for t in tareas()]]` (o un `Signal` de elementos) |
+
+Si lo que cambió solo lo leen regiones, **`view()` no se vuelve a llamar**: se reevalúan esas
+regiones y el resto del árbol reutiliza su serialización, en Python y en el núcleo. En una vista
+de 50 000 nodos, cambiar el color de un punto cuesta unos milisegundos en vez de reconstruirla
+entera. Lo que lee la propia `view()` (o un componente al construirse) la reconstruye entera,
+como siempre:
+
+```python
+def view():
+    return column()[
+        text(f"{n()} clics"),  # lee `n` al construir: cambiarlo llama a view() entera
+        text(lambda: f"{n()} clics"),  # región: cambiar `n` solo reevalúa este texto
+    ]
+```
+
+- Un hijo calculado devuelve lo mismo que admiten los corchetes (un elemento, una lista, `None`…)
+  y ocupa su sitio entre sus hermanos. Lo que da se sustituye entero cuando se reevalúa; los
+  `@component` que use dentro se siguen memorizando.
+- Las keys, el foco, el scroll, los campos de texto y las transiciones se conservan igual que con
+  una reconstrucción completa: salen del árbol que llega al núcleo.
+- La vista se reconstruye entera si cambia el tema o la vista (hot reload), y también si no cambió
+  **ningún** `Signal` que lea: un `on_click` que solo modifica estado normal de Python (una lista,
+  un atributo) sigue funcionando como antes. Lo que no se ve es un cambio de estado normal que va
+  junto a un `Signal` que solo lee una región: guarda ese estado en un `Signal` o léelo dentro de
+  la región.
+- Los `chart` y los `canvas` se reenvían en cada reconstrucción, parcial o no: sus datos (un array
+  modificado en el sitio) o su `draw` pueden cambiar sin avisar.
+- `AURORA_PARTIAL=0` (u `off`, `false`, `no`) desactiva la reconstrucción parcial: la vista se
+  llama entera en cada cambio, como en las versiones anteriores. Sirve para descartarla al depurar.
 
 ## Pilot (tests de interacción)
 
@@ -494,14 +535,17 @@ column(gap=8)[text("a"), text("b")]
 ```
 
 Dentro de los corchetes se aceptan elementos, listas (se aplanan), strings (se convierten en
-`text`) y `None`/`False` (se ignoran, para poder escribir `condición and elemento`).
+`text`), `None`/`False` (se ignoran, para poder escribir `condición and elemento`) y funciones sin
+argumentos que devuelven cualquiera de esas cosas: son hijos calculados, que se reevalúan solos
+cuando cambia un `Signal` que leen ([reconstrucción parcial](#reconstrucción-parcial)). Cualquier
+propiedad de estilo admite también una función (`bg=lambda: ...`), con el mismo efecto.
 
 | Primitiva | Descripción |
 |---|---|
 | `box(**estilo)` | Contenedor genérico. Apila sus hijos en **columna** por defecto. |
 | `column(**estilo)` | Contenedor con `direction="column"`. |
 | `row(**estilo)` | Contenedor con `direction="row"`. |
-| `text(contenido, **estilo)` | Texto. `contenido` puede ser un `str` o un callable (`lambda: f"{x()}"`), que se evalúa en cada reconstrucción. Para varios estilos en un párrafo, [`rich_text`](#rich_text). |
+| `text(contenido, **estilo)` | Texto. `contenido` puede ser un `str` o un callable (`lambda: f"{x()}"`), que se evalúa al serializar y se reevalúa solo cuando cambia lo que lee ([reconstrucción parcial](#reconstrucción-parcial)). Para varios estilos en un párrafo, [`rich_text`](#rich_text). |
 | `spacer()` | Caja con `grow=1`: ocupa todo el espacio libre del eje principal. |
 | `scroll(*, axis="y", **estilo)` | Contenedor desplazable (rueda, trackpad y barra arrastrable). Ver abajo. |
 | `image(src, *, fit="contain", **estilo)` | Imagen de un archivo o de bytes. Ver abajo. |

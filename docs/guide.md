@@ -324,8 +324,23 @@ def view():
 App(view, title="Monitor", size=(900, 600)).run()
 ```
 
-`text(lambda: ...)` recibe una función en lugar de un string: se evalúa en cada actualización,
-así el texto siempre refleja el estado actual.
+`text(lambda: ...)` recibe una función en lugar de un string: siempre refleja el estado actual.
+Además es una **región**: cuando `checks` cambia, Aurora reevalúa solo esa función, sin volver a
+llamar a `view()`. Lo mismo vale para cualquier propiedad (`bg=lambda: ...`) y para un hijo
+calculado (`column()[lambda: [...]]`). En cambio, lo que lee la propia `view()` la reconstruye
+entera:
+
+```python
+def view():
+    return column(padding=32, gap=16)[
+        text(f"Leído al construir: {checks()}"),  # cambiar `checks` vuelve a llamar a view()
+        text(lambda: f"Región: {checks()}"),  # solo se reevalúa esta lambda
+        box(width=12, height=12, radius=6, bg=lambda: "$success" if checks() else "$danger"),
+    ]
+```
+
+En una vista pequeña no se nota; en una con miles de nodos, es la diferencia entre rehacerla
+entera y tocar un solo nodo ([reconstrucción parcial](reference.md#reconstrucción-parcial)).
 
 ## 6. Listas y componentes propios
 

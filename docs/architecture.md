@@ -108,7 +108,10 @@ src/                 (crate aurora_core → módulo aurora._core)
 3. **Callback.** Solo al soltar el clic sobre el mismo nodo se toma el GIL, se ejecuta el callback
    y la vista se marca como sucia.
 4. **Reconstrucción.** Se llama a `view()` y el árbol resultante se serializa a dicts en un único
-   recorrido (`Element.to_spec`), resolviendo tokens de tema y lambdas de texto.
+   recorrido (`Element.to_spec`), resolviendo tokens de tema y lambdas. Si el cambio solo lo leen
+   regiones (lambdas de textos, propiedades o hijos), `view()` no se llama: se reevalúan esas
+   regiones y el resto del árbol reutiliza sus dicts (ver
+   [Reconstrucción parcial](#reconstrucción-parcial)).
 5. **Parseo.** `spec::parse` convierte los dicts en `Node` tipados. Es el único lugar del núcleo
    que conoce la forma de los datos de Python. Cada prop se consulta con una clave ya creada e
    internada (`intern!`): fabricar y hashear un `PyString` por consulta se llevaba buena parte de
@@ -161,16 +164,14 @@ textura del tamaño de la ventana, siempre con edad 1) y cada frame lo copia ent
 se presenta: una copia de textura es casi gratis en la GPU. El frame se presenta con vsync (FIFO
 en Vulkan).
 
-### Árbol completo por actualización, con ramas memorizadas
+### Un árbol completo por actualización, sin rehacer lo que no cambió
 
-Aurora llama a la vista entera tras cada evento que cambia estado (también tras cada tecla en un
-campo de texto). Es una simplificación deliberada:
-el coste real es serializar el árbol en Python, que para apps medianas está muy por debajo de un
-frame. El diseño ya prepara la reactividad de grano fino de la v0.3:
-
-- Los nodos tienen **identidad estable** (`key` explícita o ruta en el árbol), que ya hoy se usa
-  para conservar el estado de animación entre reconstrucciones.
-- `Signal` tiene suscriptores, y es el punto natural para registrar dependencias por rama.
+A Rust le llega siempre el árbol entero, en un solo cruce: un dict anidado por actualización, nunca
+operaciones sueltas («cambia este color»). Lo que se ahorra es **producirlo**: las ramas que no
+cambiaron son los mismos dicts de la vez anterior, y el núcleo comparte sus nodos ya parseados en
+vez de volver a leerlos. Los nodos tienen **identidad estable** (`key` explícita o ruta en el
+árbol), que conserva el estado de animación, el foco, el scroll y los campos entre
+reconstrucciones.
 
 ### Reactividad de grano fino
 
@@ -180,8 +181,9 @@ ramas que no cambiaron:
 
 - **Dependencias.** Cada `Signal` tiene una versión que sube en cada `set`. Mientras un componente
   se construye hay un `Frame` en una pila (por hilo) y cada lectura de un `Signal` anota su versión
-  ahí. Lo mismo al serializar, porque los textos con lambda se evalúan en `to_spec`. Un componente
-  anidado añade sus dependencias al que lo contiene.
+  ahí (`Entry.deps`). Lo que se lee al serializar (las lambdas, que se evalúan en `to_spec`) va
+  aparte (`Entry.spec_deps`): si solo cambia eso, el componente reutiliza su `Element` y se vuelve
+  a serializar, sin llamarlo. Un componente anidado añade sus dependencias al que lo contiene.
 - **Memoria por argumentos.** La llamada se reutiliza si sus argumentos (hashables) coinciden con
   una entrada cuyas dependencias siguen en la misma versión: devuelve el mismo `Element`, cuya
   raíz guarda en `_memo` la serialización (válida para el mismo tema). Lo memorizado se guarda
@@ -192,11 +194,50 @@ ramas que no cambiaron:
 - **Parseo memorizado.** El dict de un componente lleva `memo: True` y llega a Rust como el mismo
   objeto. `spec::Parser`, que vive en el `Runtime`, guarda el `Node` de cada uno por dirección
   (sosteniendo una referencia, para que la dirección no se reutilice) junto con la key de su raíz
-  y las propiedades heredadas. Si las tres coinciden, copia el nodo en vez de leer cada propiedad
-  de cada dict.
+  y las propiedades heredadas. Si las tres coinciden, **comparte** el nodo: los hijos de un `Node`
+  son `Arc<Node>`, así que reutilizar un subárbol de 10 000 nodos cuesta un contador de
+  referencias. La memoria sobrevive a los parseos en que su dict no aparece (puede ir dentro de
+  otro reutilizado entero) y se poda, con coste amortizado, cuando Python ya no guarda el dict.
+- **Fases que saltan lo compartido.** `restyle` y el cálculo de lo repintado no bajan por un hijo
+  que es el mismo `Arc` que en el árbol anterior. Las keys duplicadas se comprueban solo en lo
+  que cambió: el parser recuerda las keys del árbol anterior y mira las que entran y salen al
+  comparar los dos árboles por puntero.
 - **Keys.** Un nodo sin key toma la de su padre más su posición, así que el subárbol de un nodo con
   key tiene las mismas keys esté donde esté: un componente con key sigue siendo reutilizable
   aunque se inserten filas antes que él, y el diff del layout lo empareja con su nodo de Taffy.
+
+### Reconstrucción parcial
+
+Un `@component` delimita una rama que se puede saltar, pero la vista que lo contiene se sigue
+llamando entera. Para que el coste dependa de lo que cambia también fuera de los componentes, las
+**funciones** dentro de la vista son regiones reactivas (`reactive.py`, `Tracker`):
+
+- **Regiones.** El contenido de `text(lambda: ...)`, una propiedad con lambda (`bg=lambda: ...`) y
+  un hijo calculado (`column()[lambda: [...]]`, un `Dynamic`) se evalúan al serializar. El
+  `Tracker` abre un `Frame` para cada elemento con alguna, anota los `Signal` que leen y guarda,
+  por elemento, el dict que produjo (`Element._spec`) y la cadena de sus antepasados.
+- **La vista como región.** `build_view` también anota lo que lee la propia `view()` (y los
+  componentes al construirse). Si después solo cambió algo que leen regiones, no se llama a
+  `view()`: las regiones afectadas se vuelven a evaluar, sus antepasados reciben un dict nuevo
+  (copia del anterior con la lista de hijos nueva) y todo lo demás devuelve su dict de siempre,
+  marcado como `memo` para que el núcleo lo comparta. Lo que dio un hijo calculado que se rehace
+  se sustituye entero, y sus regiones se vuelven a descubrir al serializarlo.
+- **Cuándo no.** La vista se llama entera, como siempre, si cambió algo que lee ella o un
+  componente al construirse, si cambió el tema o la vista (hot reload), o si **ningún** `Signal`
+  que lea esta vista cambió: un evento que solo tocó estado normal de Python (una lista que se
+  modifica en un `on_click`) o un `Signal` que se cambia para forzar la reconstrucción. Los
+  `chart` y los `canvas` se reenvían en cada reconstrucción parcial, porque sus datos o su
+  `draw` pueden cambiar sin avisar. Un componente es una sola región: dentro de él no se siguen
+  regiones sueltas.
+- **Identidad.** Las keys salen del árbol que llega a Rust, igual que con una reconstrucción
+  completa, así que el foco, el scroll, los campos y las transiciones siguen su nodo. El estado
+  de cada vista se guarda por dueño (la `App`, cada `Window`), como la memoria de los componentes.
+- **Coste.** En `benchmarks/` (`vista_grande`, 50 000 nodos), cambiar el color de un punto de la
+  cabecera pasa de reconstruir la vista entera a unos milisegundos. Un cambio que mueve la
+  geometría (un texto que cambia de ancho) sigue rehaciendo el layout del árbol en Rust: Taffy
+  reutiliza su caché, pero `reconcile`, la tinta y las regiones recorren todos los nodos.
+
+`AURORA_PARTIAL=0` desactiva la reconstrucción parcial (para descartarla al depurar).
 
 ### Cachés entre frames
 

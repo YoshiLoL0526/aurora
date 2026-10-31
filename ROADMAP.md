@@ -100,11 +100,11 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Selectores de hora y de color (`time_picker`, `color_picker`)
 - ✅ Texto enriquecido: tramos con estilos dentro de un párrafo y render de Markdown
 
-## v0.9 — Reconstruir menos 🚧
+## v0.9 — Reconstruir menos ✅
 
 *Que el coste de un cambio dependa de lo que cambia, no del tamaño de la vista.*
 
-- ⏳ Reconstrucción parcial: un `Signal` que cambia vuelve a ejecutar solo las partes de la vista
+- ✅ Reconstrucción parcial: un `Signal` que cambia vuelve a ejecutar solo las partes de la vista
   que lo leen, también fuera de `@component`
 - ✅ Tiempo de arranque medido en los benchmarks y con objetivo
 

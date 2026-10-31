@@ -39,6 +39,7 @@ de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
 |---|---|---|
 | `lista_10k` | 10 000 filas seleccionables en un `scroll` (~50 000 nodos). | `cold`, `rebuild` (cambia la selección), `hover`, `scroll`, `idle` |
 | `lista_10k_memo` | La misma lista con cada fila como `@component`: al cambiar la selección solo se reconstruyen 2 filas. | las mismas que `lista_10k` |
+| `vista_grande` | 10 000 filas fijas (~50 000 nodos) bajo una cabecera cuyo color y contador leen un `Signal` desde lambdas: la [reconstrucción parcial](../docs/architecture.md#reconstrucción-parcial) no vuelve a llamar a la vista. | `color` (cambia un `bg=lambda`), `texto` (cambia un `text(lambda)`: mueve la geometría), `hover`, `idle` |
 | `lista_virtual_100k` | 100 000 filas en una `virtual_list` con filas `@component`: solo existen las visibles. | `cold`, `rebuild`, `hover`, `scroll` (cada paso cambia el rango visible), `idle` |
 | `dashboard_50` | 50 paneles con 24 barras cada uno y datos que cambian. | `cold`, `rebuild` (avanzan los datos), `hover`, `idle` |
 | `charts_points` | Cuatro gráficos (línea, área, dispersión y dos series) de 20 000 puntos cada uno. | `cold`, `rebuild` (datos nuevos: se vuelven a grabar), `hover`, `idle` |
@@ -47,6 +48,7 @@ de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
 
 - `cold`: crear la app y pintar el primer frame (sin estado previo).
 - `rebuild`: un `Signal` cambia y la vista se reconstruye.
+- `color` / `texto`: un `Signal` que solo leen regiones cambia; se reevalúan esas regiones y no `view()`.
 - `hover` / `scroll`: el puntero se mueve o la rueda desplaza; no se toca Python.
 - `idle`: un frame sin cambios. Mide lo que se paga por frame aunque no pase nada.
 
