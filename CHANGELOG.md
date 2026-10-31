@@ -9,6 +9,8 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ## [Sin publicar]
 
+## [0.8.0] — 2026-10-31
+
 ### Añadido
 
 - **Ventanas sin marco**: opción `decorations=False` en `App(...)` y en `app.window(...)`, que
@@ -618,7 +620,8 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
-[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.7.0...HEAD
+[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.4.0...v0.5.0
