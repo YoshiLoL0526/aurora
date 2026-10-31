@@ -16,6 +16,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Inspector y profiler de frames](#inspector-y-profiler-de-frames)
 - [Hot reload](#hot-reload)
 - [Primitivas](#primitivas)
+- [Texto enriquecido](#texto-enriquecido)
 - [Teclado y foco](#teclado-y-foco)
 - [Accesibilidad](#accesibilidad)
 - [Componentes](#componentes)
@@ -500,7 +501,7 @@ Dentro de los corchetes se aceptan elementos, listas (se aplanan), strings (se c
 | `box(**estilo)` | Contenedor genérico. Apila sus hijos en **columna** por defecto. |
 | `column(**estilo)` | Contenedor con `direction="column"`. |
 | `row(**estilo)` | Contenedor con `direction="row"`. |
-| `text(contenido, **estilo)` | Texto. `contenido` puede ser un `str` o un callable (`lambda: f"{x()}"`), que se evalúa en cada reconstrucción. |
+| `text(contenido, **estilo)` | Texto. `contenido` puede ser un `str` o un callable (`lambda: f"{x()}"`), que se evalúa en cada reconstrucción. Para varios estilos en un párrafo, [`rich_text`](#rich_text). |
 | `spacer()` | Caja con `grow=1`: ocupa todo el espacio libre del eje principal. |
 | `scroll(*, axis="y", **estilo)` | Contenedor desplazable (rueda, trackpad y barra arrastrable). Ver abajo. |
 | `image(src, *, fit="contain", **estilo)` | Imagen de un archivo o de bytes. Ver abajo. |
@@ -787,6 +788,89 @@ card(
 - En los tests, `pilot.hover_files(rutas)` / `pilot.hover_files(None)` y
   `pilot.drop_files(rutas, key=...)` simulan el arrastre (sin `key` ni `at`, sin posición, como en
   macOS y Linux); `drop_files` devuelve si algún `on_drop` los recibió.
+
+## Texto enriquecido
+
+### `rich_text(*partes, key=None, **estilo)` { #rich_text }
+
+Un párrafo con **tramos de estilos distintos**: cada parte es un texto (con el estilo del
+párrafo), un `span(...)` o una lista de ellos. Todo es un único nodo de texto, así que el núcleo
+lo compone y lo parte en líneas entero: los cambios de peso, color o fuente no rompen el ajuste de
+línea, y un tramo puede partirse entre dos líneas. Los `estilo` son los de `text` (`size`, `color`,
+`line_height`, `max_lines`, `text_align`…) y valen para los tramos que no los fijan.
+
+```python live
+from aurora import App, column, rich_text, span
+
+
+def view():
+    return column(padding=20, width=340)[
+        rich_text(
+            "Pulsa ",
+            span("Guardar", weight=700),
+            " o ",
+            span("descarta los cambios", on_click=lambda: print("descartar")),
+            ". La configuración vive en ",
+            span("config.toml", code=True),
+            " y ",
+            span("no se sincroniza", italic=True, color="$danger"),
+            ".",
+            line_height=1.5,
+        )
+    ]
+
+
+App(view, size=(380, 100)).run()
+```
+
+#### `span(content, *, weight=None, color=None, italic=False, underline=False, strike=False, code=False, size=None, family=None, bg=None, on_click=None)`
+
+Un tramo de `rich_text` (devuelve un `Span`, una dataclass inmutable con esos mismos campos). Lo que
+no se fija se hereda del párrafo. `bg` pinta un fondo detrás de sus
+letras; `code=True` lo escribe en monoespaciada sobre `$surface_hover` (la constante `MONO` de
+`aurora.richtext` es esa lista de fuentes). Con `on_click` el tramo es un **enlace**: en `$primary`
+y subrayado (salvo que se fije otro `color` o `underline`), con cursor de mano, recibe clics en
+todas las líneas que ocupe y se anuncia como `"link"` (con su texto como nombre) a los lectores de
+pantalla, que pueden activarlo. Las zonas de los enlaces tienen la key
+`f"{key}#link-{n}-{parte}"` (`n`, el orden del enlace en el párrafo; `parte`, el trozo por línea),
+útil con `Pilot.click`.
+
+### `markdown(source, *, on_link=None, gap=12, key=None, **estilo)` { #markdown }
+
+Render de Markdown básico, en Python sobre `rich_text` y sin dependencias: títulos (`#` a
+`######`), párrafos, listas con viñetas y numeradas (anidadas por sangría), citas (`>`), código en
+línea y en bloque (con ```` ``` ```` o `~~~`), separadores (`---`), énfasis (`*cursiva*`,
+`**negrita**`, `~~tachado~~`), enlaces y escapes con `\`. Devuelve una columna (los `estilo` van a
+ella y `gap` separa los bloques) cuyos párrafos se ajustan al ancho disponible.
+
+Los enlaces llaman a `on_link(url)`; sin él, los `http(s)://` y `mailto:` se abren en el navegador
+y el resto se ignora. Para los lectores de pantalla, los títulos son `"heading"`s con su nivel y
+las listas, `"list"`s de `"listitem"`s. No admite tablas, imágenes ni HTML (su texto se muestra tal
+cual).
+
+```python live
+from aurora import App, column, markdown
+
+NOTAS = """
+## Novedades
+
+La versión trae **texto enriquecido** y un render de *Markdown*:
+
+- tramos con `código`, ~~tachado~~ y [enlaces](https://example.com)
+- listas anidadas:
+  1. numeradas
+  2. y con viñetas
+
+> Los párrafos se parten al ancho disponible.
+"""
+
+
+def view():
+    return column(padding=20, width=420)[markdown(NOTAS)]
+
+
+App(view, size=(460, 260)).run()
+```
 
 ## Teclado y foco
 

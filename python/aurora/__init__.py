@@ -62,6 +62,7 @@ from .components import (
 from .elements import Element, box, column, image, row, scroll, spacer, text
 from .reactive import component
 from .resources import resource
+from .richtext import Span, markdown, rich_text, span
 from .signal import Signal
 from .table import Column, table
 from .theme import DAYLIGHT, MIDNIGHT, Theme
@@ -81,6 +82,7 @@ __all__ = [
     "ResizeEvent",
     "ScrollEvent",
     "Signal",
+    "Span",
     "Theme",
     "Window",
     "accordion",
@@ -103,6 +105,7 @@ __all__ = [
     "divider",
     "field",
     "image",
+    "markdown",
     "menu",
     "menus",
     "number_input",
@@ -111,6 +114,7 @@ __all__ = [
     "progress",
     "radio",
     "resource",
+    "rich_text",
     "row",
     "scroll",
     "segmented",
@@ -118,6 +122,7 @@ __all__ = [
     "skeleton",
     "slider",
     "spacer",
+    "span",
     "spinner",
     "splitter",
     "stat",

@@ -60,6 +60,8 @@ pub(super) struct ParagraphKey {
     letter_spacing: u32,
     max_lines: Option<usize>,
     align: Option<String>,
+    /// Huella de los tramos de un texto enriquecido (0 sin tramos).
+    spans: u64,
 }
 
 impl ParagraphKey {
@@ -74,6 +76,7 @@ impl ParagraphKey {
             letter_spacing: tp.letter_spacing.to_bits(),
             max_lines: style.max_lines,
             align: style.text_align.clone(),
+            spans: style.spans.as_ref().map_or(0, |s| s.hash),
         }
     }
 }
@@ -119,7 +122,18 @@ impl Engine {
         });
         let mut builder = ParagraphBuilder::new(&ps, self.fonts.clone());
         builder.push_style(&ts);
-        builder.add_text(text);
+        match &style.spans {
+            None => {
+                builder.add_text(text);
+            }
+            Some(spans) => {
+                for (span, range) in spans.ranges(text) {
+                    builder.push_style(&span_style(&ts, tp, span));
+                    builder.add_text(&text[range]);
+                    builder.pop();
+                }
+            }
+        }
         builder.build()
     }
 
@@ -181,6 +195,48 @@ impl Engine {
             acc.wrapping_add(h.finish())
         })
     }
+}
+
+/// Estilo de un tramo: el del párrafo con lo que el tramo cambia.
+fn span_style(base: &TextStyle, tp: &TextProps, span: &Span) -> TextStyle {
+    let mut ts = base.clone();
+    if let Some(color) = span.color {
+        ts.set_color(color);
+    }
+    if let Some(size) = span.size {
+        ts.set_font_size(size);
+    }
+    if let Some(families) = &span.family {
+        ts.set_font_families(families);
+    }
+    if span.weight.is_some() || span.italic {
+        ts.set_font_style(FontStyle::new(
+            Weight::from(span.weight.unwrap_or(tp.weight)),
+            Width::NORMAL,
+            if span.italic {
+                Slant::Italic
+            } else {
+                Slant::Upright
+            },
+        ));
+    }
+    if let Some(bg) = span.bg {
+        let mut paint = Paint::default();
+        paint.set_color(bg).set_anti_alias(true);
+        ts.set_background_paint(&paint);
+    }
+    let mut decoration = TextDecoration::NO_DECORATION;
+    if span.underline {
+        decoration |= TextDecoration::UNDERLINE;
+    }
+    if span.strike {
+        decoration |= TextDecoration::LINE_THROUGH;
+    }
+    if !decoration.is_empty() {
+        ts.set_decoration_type(decoration);
+        ts.set_decoration_color(span.color.unwrap_or(tp.color));
+    }
+    ts
 }
 
 /// Un campo ocupa el ancho que le den (o `INPUT_WIDTH`) y el alto de una línea;

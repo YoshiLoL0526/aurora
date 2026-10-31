@@ -90,7 +90,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
   contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot`
 - ⏳ `virtual_list` con filas de **alto variable** (chats, registros, feeds)
 
-## v0.8 — Componentes para apps complejas ⏳
+## v0.8 — Componentes para apps complejas ✅
 
 *Herramientas internas grandes sin construir los widgets a mano.*
 
@@ -98,7 +98,7 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ `splitter`: paneles redimensionables
 - ✅ `popover`: contenido flotante anclado a un elemento
 - ✅ Selectores de hora y de color (`time_picker`, `color_picker`)
-- ⏳ Texto enriquecido: tramos con estilos dentro de un párrafo y render de Markdown
+- ✅ Texto enriquecido: tramos con estilos dentro de un párrafo y render de Markdown
 
 ## v0.9 — Reconstruir menos ⏳
 

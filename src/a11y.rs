@@ -263,6 +263,30 @@ struct Builder<'a> {
 }
 
 impl Builder<'_> {
+    /// Los enlaces de un texto enriquecido, como hijos `Link` del texto: con
+    /// su texto de nombre, los bounds de su primera línea y la acción de clic.
+    fn links(&mut self, node: &Node, children: &mut Vec<NodeId>) {
+        let (Some(spans), Some(text)) = (node.style.spans.as_ref(), node.text.as_deref()) else {
+            return;
+        };
+        for (span, range) in spans.ranges(text) {
+            let Some(link) = span.link else {
+                continue;
+            };
+            let key = crate::spec::link_key(&node.key, link, 0);
+            let id = self.state.id(&key);
+            let mut ac = AcNode::new(Role::Link);
+            ac.set_label(text[range].to_owned());
+            if let Some(region) = self.regions.get(key.as_str()) {
+                ac.set_bounds(physical(region.rect, self.scale));
+            }
+            ac.add_action(Action::Click);
+            self.nodes.push((id, ac));
+            self.keys.push((id, key));
+            children.push(id);
+        }
+    }
+
     /// El nodo de accesibilidad de `node` con su subárbol, o `None` si todo él
     /// es decorativo (no se anuncia nada).
     fn node(&mut self, node: &Node) -> Option<NodeId> {
@@ -281,6 +305,7 @@ impl Builder<'_> {
                 children.push(id);
             }
         }
+        self.links(node, &mut children);
         let scroll = node.style.scroll.is_some();
         self.in_scroll = outer_scroll;
         let meaningful = meaningful(node);

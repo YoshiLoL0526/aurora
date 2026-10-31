@@ -107,6 +107,7 @@ pub(super) fn same_geometry(a: &Node, b: &Node) -> bool {
                 && ta.letter_spacing == tb.letter_spacing
                 && sa.max_lines == sb.max_lines
                 && sa.text_align == sb.text_align
+                && sa.spans == sb.spans
         }
         // Su párrafo depende de demasiadas cosas (placeholder, colores…) y la imagen
         // se carga por `src`: cualquier cambio rehace el layout.
@@ -350,6 +351,9 @@ impl<'a> Geometry<'a> {
             scroll: node.style.scroll,
             parent,
         });
+        if let Some(spans) = node.style.spans.as_ref().filter(|s| s.has_links()) {
+            self.collect_links(node, lnode, spans, rect, layout, index, layer, clip);
+        }
         let mut child_layer = layer;
         if let Some(axis) = node.style.scroll {
             let bw = node.style.border_width;
@@ -387,6 +391,59 @@ impl<'a> Geometry<'a> {
                 child_layer,
                 child_clip,
             );
+        }
+    }
+}
+
+impl Geometry<'_> {
+    /// Regiones de los enlaces de un texto enriquecido: una por línea de cada
+    /// enlace, hijas de la del texto, con la key de `spec::link_key`.
+    #[allow(clippy::too_many_arguments)]
+    fn collect_links(
+        &mut self,
+        node: &Node,
+        lnode: &LayoutNode,
+        spans: &crate::spec::Spans,
+        rect: Rect,
+        layout: &taffy::Layout,
+        parent: usize,
+        layer: usize,
+        clip: Rect,
+    ) {
+        let Some(Leaf::Text(ctx)) = self.tree.get_node_context(lnode.id) else {
+            return;
+        };
+        let text = node.text.as_deref().unwrap_or("");
+        let (b, pad) = (layout.border, layout.padding);
+        let origin = (rect.left + b.left + pad.left, rect.top + b.top + pad.top);
+        for (span, range) in spans.ranges(text) {
+            let Some(link) = span.link else {
+                continue;
+            };
+            for (part, r) in range_rects(&ctx.paragraph, text, range)
+                .into_iter()
+                .enumerate()
+            {
+                let r = r.with_offset(origin);
+                self.regions.push(HitRegion {
+                    key: crate::spec::link_key(&node.key, link, part),
+                    rect: r,
+                    clip,
+                    object_clip: clip,
+                    local: r,
+                    ink: r,
+                    own: r,
+                    layer,
+                    interactive: true,
+                    capture: false,
+                    focusable: false,
+                    editable: false,
+                    tooltip: false,
+                    cursor: Some(Cursor::Pointer),
+                    scroll: None,
+                    parent: Some(parent),
+                });
+            }
         }
     }
 }

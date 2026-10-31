@@ -91,6 +91,122 @@ impl Axis {
     }
 }
 
+/// Tramo de un texto enriquecido (`rich_text`): un trozo del texto del nodo
+/// con su propio estilo. Lo que no fija lo hereda del nodo.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Span {
+    /// Longitud del tramo en caracteres (los tramos se suceden sin huecos).
+    pub chars: usize,
+    pub color: Option<Color>,
+    /// Fondo detrás de los glifos (código en línea).
+    pub bg: Option<Color>,
+    pub weight: Option<i32>,
+    pub size: Option<f32>,
+    /// Familias en orden de preferencia (`"Cascadia Mono, Consolas"`).
+    pub family: Option<Vec<String>>,
+    pub italic: bool,
+    pub underline: bool,
+    pub strike: bool,
+    /// Número de enlace: su clic llama a `on_link(número)` del nodo.
+    pub link: Option<usize>,
+}
+
+/// Los tramos de un texto y una huella de todos ellos (para la caché de párrafos).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Spans {
+    pub list: Vec<Span>,
+    pub hash: u64,
+}
+
+impl Spans {
+    fn parse(v: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let invalid = || {
+            PyValueError::new_err(
+                "spans debe ser una secuencia de (chars, color, bg, weight, size, family, italic, underline, strike, link)",
+            )
+        };
+        let mut list = Vec::new();
+        for item in v.try_iter()? {
+            let item = item?;
+            #[allow(clippy::type_complexity)]
+            let (chars, color, bg, weight, size, family, italic, underline, strike, link): (
+                usize,
+                Option<String>,
+                Option<String>,
+                Option<f32>,
+                Option<f32>,
+                Option<String>,
+                bool,
+                bool,
+                bool,
+                Option<usize>,
+            ) = item.extract().map_err(|_| invalid())?;
+            list.push(Span {
+                chars,
+                color: color.map(|c| parse_color(&c)).transpose()?,
+                bg: bg.map(|c| parse_color(&c)).transpose()?,
+                weight: weight.map(|w| w as i32),
+                size,
+                family: family.map(|f| f.split(',').map(|s| s.trim().to_owned()).collect()),
+                italic,
+                underline,
+                strike,
+                link,
+            });
+        }
+        let mut h = std::hash::DefaultHasher::new();
+        for s in &list {
+            use std::hash::Hash;
+            (s.chars, s.weight, s.size.map(f32::to_bits), &s.family).hash(&mut h);
+            (s.italic, s.underline, s.strike, s.link).hash(&mut h);
+            let argb = |c: Color| u32::from_be_bytes([c.a(), c.r(), c.g(), c.b()]);
+            (s.color.map(argb), s.bg.map(argb)).hash(&mut h);
+        }
+        Ok(Self {
+            list,
+            hash: std::hash::Hasher::finish(&h),
+        })
+    }
+
+    /// Cada tramo con su rango de bytes en `text` (los que se pasan del final
+    /// quedan vacíos).
+    pub fn ranges(&self, text: &str) -> Vec<(&Span, std::ops::Range<usize>)> {
+        let bounds: Vec<usize> = text
+            .char_indices()
+            .map(|(i, _)| i)
+            .chain([text.len()])
+            .collect();
+        let at = |chars: usize| bounds[chars.min(bounds.len() - 1)];
+        let mut consumed = 0;
+        self.list
+            .iter()
+            .map(|span| {
+                let range = at(consumed)..at(consumed + span.chars);
+                consumed += span.chars;
+                (span, range)
+            })
+            .collect()
+    }
+
+    /// Si algún tramo es un enlace.
+    pub fn has_links(&self) -> bool {
+        self.list.iter().any(|s| s.link.is_some())
+    }
+}
+
+/// Key de la región de una parte (una línea) de un enlace de un texto
+/// enriquecido: no es un nodo, pero recibe clics como si lo fuera.
+pub fn link_key(owner: &str, link: usize, part: usize) -> String {
+    format!("{owner}#link-{link}-{part}")
+}
+
+/// El nodo dueño y el número de enlace de una key de `link_key`.
+pub fn parse_link_key(key: &str) -> Option<(&str, usize)> {
+    let (owner, rest) = key.rsplit_once("#link-")?;
+    let (link, _part) = rest.split_once('-')?;
+    Some((owner, link.parse().ok()?))
+}
+
 /// Lado del ancla en el que se coloca una capa superior con `placement`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {
@@ -199,6 +315,8 @@ pub struct Style {
     /// Toma el foco al aparecer en la vista.
     pub autofocus: bool,
     // Texto (nivel párrafo, no heredable)
+    /// Tramos con estilo propio de un texto enriquecido.
+    pub spans: Option<Arc<Spans>>,
     pub max_lines: Option<usize>,
     pub text_align: Option<String>,
     // Campos de texto
@@ -578,6 +696,7 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "shadow" => hit!("shadow"),
         "shrink" => hit!("shrink"),
         "sort" => hit!("sort"),
+        "spans" => hit!("spans"),
         "src" => hit!("src"),
         "style" => hit!("style"),
         "text" => hit!("text"),
@@ -781,6 +900,9 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
                 })?,
             ),
         },
+        spans: get(d, "spans")?
+            .map(|v| Spans::parse(&v).map(Arc::new))
+            .transpose()?,
         max_lines: f32_of(d, "max_lines")?.map(|n| n as usize),
         text_align: str_of(d, "text_align")?,
         multiline: bool_of(d, "multiline")?,

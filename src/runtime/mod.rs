@@ -477,12 +477,24 @@ impl Runtime {
         event: &str,
         arg: Option<Py<PyAny>>,
     ) -> PyResult<Option<Py<PyAny>>> {
-        let Some(cb) = self
-            .tree
-            .as_ref()
-            .and_then(|tree| tree.find(key))
-            .and_then(|node| node.handler(event))
-        else {
+        let Some(tree) = self.tree.as_ref() else {
+            return Ok(None);
+        };
+        let mut arg = arg;
+        let cb = match tree.find(key) {
+            Some(node) => node.handler(event),
+            // El clic en un enlace de un texto enriquecido es `on_link(número)` del texto.
+            None => match spec::parse_link_key(key) {
+                Some((owner, link)) if event == "click" => {
+                    arg = Some(Python::attach(|py| {
+                        link.into_pyobject(py).map(|n| n.into_any().unbind())
+                    })?);
+                    tree.find(owner).and_then(|node| node.handler("link"))
+                }
+                _ => None,
+            },
+        };
+        let Some(cb) = cb else {
             return Ok(None);
         };
         let result = inspect::lend(&mut self.inspector, || {

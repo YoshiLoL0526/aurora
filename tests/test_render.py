@@ -18,8 +18,10 @@ from aurora import (
     color_picker,
     column,
     popover,
+    rich_text,
     row,
     spacer,
+    span,
     splitter,
     text,
     time_picker,
@@ -264,3 +266,26 @@ def test_color_and_time_pickers_paint_their_value(tmp_path):
     shade = _png_pixel(path, int(ox + ow - 8), int(oy + oh / 2))
     assert all(abs(a - b) <= 3 for a, b in zip(shade, (0x1A, 0x1F, 0x2E), strict=True))
     _state._OPEN.clear()
+
+
+def test_rich_text_paints_each_span_with_its_own_background(tmp_path):
+    view = lambda: column(padding=10)[
+        row()[rich_text(span("MMMMMM", bg="#ff0000"), span("MMMMMM", bg="#0000ff"), size=20, key="r")]
+    ]
+    pilot = App(view, size=(300, 80)).pilot()
+    x, y, w, _ = pilot.rect("r")
+    path = tmp_path / "rich.png"
+    pilot.png(str(path))
+    # Mitad izquierda roja, derecha azul (en el borde superior de la línea, por encima de las letras).
+    assert _png_pixel(path, int(x + 2), int(y + 2)) == (0xFF, 0x00, 0x00)
+    assert _png_pixel(path, int(x + w - 3), int(y + 2)) == (0x00, 0x00, 0xFF)
+
+
+def test_rich_text_link_regions_follow_the_span(tmp_path):
+    view = lambda: column(padding=10)[
+        rich_text("Antes ", span("enlace", on_click=lambda: None), " después", key="r")
+    ]
+    pilot = App(view, size=(300, 80)).pilot()
+    x, _, w, _ = pilot.rect("r")
+    lx, _, lw, _ = pilot.rect("r#link-0-0")
+    assert x < lx and lx + lw < x + w

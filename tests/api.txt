@@ -126,6 +126,18 @@ class Signal(value: 'T') -> 'None'
     .subscribe(self, fn: 'Callable[[T], None]') -> 'Callable[[], None]'
     .update(self, fn: 'Callable[[T], T]') -> 'None'
     .value (propiedad)
+class Span(content: 'str', weight: 'int | None' = None, color: 'str | None' = None, italic: 'bool' = False, underline: 'bool' = False, strike: 'bool' = False, code: 'bool' = False, size: 'float | None' = None, family: 'str | None' = None, bg: 'str | None' = None, on_click: 'Callable[[], Any] | None' = None) -> None
+    .bg
+    .code
+    .color
+    .content
+    .family
+    .italic
+    .on_click
+    .size
+    .strike
+    .underline
+    .weight
 class Theme(colors: 'dict[str, str]' = <factory>, radius: 'dict[str, float]' = <factory>, font_family: 'str' = 'Inter') -> None
     .font_family
     .resolve(self, value: 'Any') -> 'Any'
@@ -164,6 +176,7 @@ dialogs (módulo)
 divider(*, vertical: 'bool' = False, color: 'str' = '$border', **style: 'Any') -> 'Element'
 field(control: 'Element', *, label: 'str | None' = None, hint: 'str | None' = None, error: 'str | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 image(src: 'str | os.PathLike[str] | bytes', *, fit: 'Fit' = 'contain', **style: 'Any') -> 'Element'
+markdown(source: 'str', *, on_link: 'Callable[[str], Any] | None' = None, gap: 'float' = 12, key: 'str | None' = None, **style: 'Any') -> 'Element'
 menu(trigger: 'Element', items: 'Sequence[tuple[str, Callable[[], Any]] | tuple[str, Callable[[], Any], dict[str, Any]]]', *, key: 'str', drop: 'float | None' = None, placement: 'str' = 'bottom-start', **style: 'Any') -> 'Element'
 menus (módulo)
 number_input(value: 'Signal[float] | Signal[int]', *, min: 'float | None' = None, max: 'float | None' = None, step: 'float' = 1, decimals: 'int | None' = None, on_change: 'Callable[[float], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
@@ -172,6 +185,7 @@ popover(trigger: 'Element', content: 'Element', *, open: 'Signal[bool] | None' =
 progress(value: 'Signal[float] | float', *, max: 'float' = 1.0, color: 'str | tuple[str, str, float]' = '$primary', **style: 'Any') -> 'Element'
 radio(options: 'Options', selected: 'Signal[Any]', *, key: 'str | None' = None, **style: 'Any') -> 'Element'
 resource(path: 'str | os.PathLike[str]') -> 'str'
+rich_text(*parts: 'Spans', key: 'str | None' = None, **style: 'Any') -> 'Element'
 row(**style: 'Any') -> 'Element'
 scroll(*, axis: "Literal['x', 'y', 'both']" = 'y', **style: 'Any') -> 'Element'
 segmented(options: 'Options', selected: 'Signal[Any]', *, width: 'float' = 220, key: 'str | None' = None, **style: 'Any') -> 'Element'
@@ -179,6 +193,7 @@ select(value: 'Signal[Any]', options: 'Options', *, placeholder: 'str' = 'Elegir
 skeleton(*, lines: 'int' = 1, width: 'str | float' = '100%', height: 'float' = 14, gap: 'float' = 8, **style: 'Any') -> 'Element'
 slider(value: 'Signal[float]', *, min: 'float' = 0.0, max: 'float' = 1.0, width: 'float' = 180, on_change: 'Callable[[float], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 spacer() -> 'Element'
+span(content: 'str', *, weight: 'int | None' = None, color: 'str | None' = None, italic: 'bool' = False, underline: 'bool' = False, strike: 'bool' = False, code: 'bool' = False, size: 'float | None' = None, family: 'str | None' = None, bg: 'str | None' = None, on_click: 'Callable[[], Any] | None' = None) -> 'Span'
 spinner(*, size: 'float' = 8, gap: 'float' = 5, tone: 'str' = '$primary', key: 'str | None' = None, **style: 'Any') -> 'Element'
 splitter(first: 'Element', second: 'Element', *, size: 'Signal[float] | float' = 240, direction: "Literal['row', 'column']" = 'row', min_sizes: 'tuple[float, float]' = (80, 80), step: 'float' = 16, on_change: 'Callable[[float], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 stat(label: 'str', value: 'TextLike', delta: 'str | None' = None, *, positive: 'bool' = True) -> 'Element'

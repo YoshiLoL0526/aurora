@@ -19,7 +19,8 @@ use skia_safe::{
     gradient::{self, Colors as GradientColors, Gradient as SkGradient},
     surfaces,
     textlayout::{
-        FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, TextAlign, TextStyle,
+        FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, TextAlign, TextDecoration,
+        TextStyle,
     },
 };
 use taffy::{
@@ -33,7 +34,7 @@ use crate::image::{Decoded, Fit, ImageCache, ImageError, Loaded};
 use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
 use crate::motion::{IDENTITY, Timing, Track, Vec4};
 use crate::scroll::{BAR_WIDTH, ScrollState};
-use crate::spec::{Axis, Cursor, Edges, Kind, Len, Node, Style, TextProps};
+use crate::spec::{Axis, Cursor, Edges, Kind, Len, Node, Span, Style, TextProps};
 
 mod draw;
 mod geom;

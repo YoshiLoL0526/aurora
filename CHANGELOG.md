@@ -51,6 +51,13 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   (`layer="overlay"`): colocan el elemento junto a su ancla (el hermano anterior en el flujo o el
   contenedor), con la misma lógica de volcado
   que usa ahora también la burbuja de los tooltips.
+- **Texto enriquecido**: `rich_text(*partes, ...)` compone un párrafo con tramos de estilos
+  distintos (`span(...)`: peso, color, cursiva, subrayado, tachado, tamaño, fuente, fondo y
+  `code`). El núcleo lo compone y lo parte en líneas como un único texto; los tramos con
+  `on_click` son enlaces (cursor de mano, clic en todas sus líneas y rol `"link"` accesible).
+- **`markdown(source, ...)`**: render de Markdown básico sobre `rich_text` (títulos, párrafos,
+  listas anidadas, citas, código en línea y en bloque, separadores, énfasis y enlaces con
+  `on_link`), sin dependencias nuevas.
 
 ### Cambiado
 
