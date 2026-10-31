@@ -22,7 +22,8 @@ def menu(
     items: Sequence[tuple[str, Callable[[], Any]] | tuple[str, Callable[[], Any], dict[str, Any]]],
     *,
     key: str,
-    drop: float = 44,
+    drop: float | None = None,
+    placement: str = "bottom-start",
     **style: Any,
 ) -> Element:
     """Menú de acciones: `trigger` (el elemento que se pulsa) abre una lista.
@@ -30,8 +31,9 @@ def menu(
     Cada opción es `(etiqueta, on_click)` o `(etiqueta, on_click, estilo)` — el
     estilo extra va al texto, para una acción peligrosa: `{"color": "$danger"}`.
     La lista se pinta por encima (`layer="overlay"`), entra deslizándose y se
-    cierra al elegir, al hacer clic fuera o con Esc. `drop` es la distancia del
-    panel al borde superior del disparador, y `key` (obligatoria, como en
+    cierra al elegir, al hacer clic fuera o con Esc. Se coloca debajo del
+    disparador (o en el lado de `placement`) y se vuelca si no cabe; `drop` lo
+    fija en cambio a esa distancia del borde superior del disparador. `key` (obligatoria, como en
     `virtual_list`) guarda el estado de abierto. Las opciones tienen la key
     `f"{key}-item-{índice}"`.
     """
@@ -65,6 +67,7 @@ def menu(
         backdrop(close),
         panel(
             top=drop,
+            placement=placement,
             min_width=180,
             content=column(gap=2, role="menu")[[option(i, entry) for i, entry in enumerate(items)]],
         ),
@@ -157,6 +160,79 @@ def tooltip(child: Element, tip: str) -> Element:
     return child
 
 
+def popover(
+    trigger: Element,
+    content: Element,
+    *,
+    open: Signal[bool] | None = None,
+    placement: str = "bottom-start",
+    offset: float = 6,
+    label: str | None = None,
+    on_close: Callable[[], Any] | None = None,
+    key: str | None = None,
+    **style: Any,
+) -> Element:
+    """Contenido flotante anclado a `trigger`: pulsarlo abre y cierra `content`.
+
+    El panel se pinta por encima del resto (`layer="overlay"`) en el lado de
+    `placement` (`"bottom-start"`, `"top"`, `"right-end"`…: un lado y, si se
+    quiere, la alineación `start`/`center`/`end`), a `offset` píxeles; si ahí no
+    cabe se vuelca al lado opuesto, y nunca se sale de la ventana. Se cierra con
+    Esc o al hacer clic fuera, y entonces llama a `on_close()`.
+
+    El estado vive en `open` (un `Signal[bool]`, para abrirlo o cerrarlo desde
+    fuera) o, sin él, en la `key`: hace falta una de las dos. Para los lectores
+    de pantalla es un `"dialog"` no modal con nombre `label`; toma el foco al
+    abrirse (salvo que el contenido traiga un `autofocus`), y el disparador
+    anuncia si está desplegado. Los `estilo` van al panel (`width`, `padding`, `gap`…).
+    """
+    if open is None and key is None:
+        raise ValueError("popover necesita una key o un Signal open")
+    k = key or f"popover-{id(open)}"
+    open_ = open if open is not None else open_signal(k)
+
+    def close() -> None:
+        if open_():
+            open_.set(False)
+            if on_close is not None:
+                on_close()
+
+    def on_key(e: Any) -> bool | None:
+        if open_() and e.matches("escape"):
+            close()
+            return True
+        return None
+
+    flip = toggle(open_)
+    clicked = trigger.handlers.get("click")
+
+    def on_trigger() -> None:
+        if open_():
+            close()
+            return
+        if clicked is not None:
+            clicked()
+        flip()
+
+    trigger.handlers["click"] = on_trigger
+    trigger.style["expanded"] = open_()
+    shown: dict[str, Any] = {
+        "role": "dialog",
+        "label": label,
+        "padding": 12,
+        "min_width": 200,
+        "focusable": True,
+        **style,
+    }
+    if not _has_autofocus(content):
+        shown.setdefault("autofocus", True)
+    opened = open_() and [
+        backdrop(close),
+        panel(key=f"{k}-panel", placement=placement, offset=offset, content=content, **shown),
+    ]
+    return column(key=k, on_key=on_key)[trigger, opened]
+
+
 def select(
     value: Signal[Any],
     options: Options,
@@ -237,8 +313,7 @@ def select(
     opened = open_() and [
         backdrop(close),
         panel(
-            top=_SELECT_HEIGHT + 6,
-            right=0,
+            width="100%",
             content=scroll(max_height=240, gap=2, role="listbox")[
                 [option(i, v, label) for i, (v, label) in enumerate(items)]
             ],

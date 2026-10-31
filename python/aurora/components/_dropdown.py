@@ -1,8 +1,9 @@
-"""Mecánica compartida por los desplegables (`menu` y `select`).
+"""Mecánica compartida por lo que se abre sobre la vista anclado a un disparador
+(`menu`, `select`, `combobox`, `date_picker`, `popover`…).
 
-Los dos se abren sobre el resto de la vista con la misma receta: un fondo
-invisible que cierra al hacer clic fuera, un panel anclado con la entrada y la
-salida animadas, y Esc (o Enter, en el `select`) para cerrarlos.
+Todos siguen la misma receta: un fondo invisible que cierra al hacer clic fuera,
+un panel anclado (que se vuelca si no cabe) con la entrada y la salida animadas,
+y Esc (o Enter, en los selectores) para cerrarlos.
 """
 
 from __future__ import annotations
@@ -54,22 +55,40 @@ def backdrop(close: Callable[[], Any]) -> Element:
     )
 
 
-def panel(*, top: float, content: Element, **style: Any) -> Element:
-    """Panel del desplegable: por encima del resto (`layer="overlay"`), anclado a `top`,
-    con la animación de entrada/salida común. Los `style` extra ajustan el anclaje
-    (`min_width`, `right`…)."""
+def panel(
+    *,
+    content: Element,
+    top: float | None = None,
+    placement: str = "bottom-start",
+    offset: float = 6,
+    **style: Any,
+) -> Element:
+    """Panel del desplegable: por encima del resto (`layer="overlay"`), con la
+    animación de entrada/salida común.
+
+    Se ancla al disparador (el hermano anterior en el flujo): el núcleo lo
+    coloca en el lado de `placement` (`"bottom-start"`, `"top-end"`, `"right"`…)
+    a `offset` píxeles, lo vuelca al lado opuesto si no cabe y lo desplaza lo
+    justo para no salirse de la ventana. Con `top` se fija en cambio a esa
+    distancia del borde superior del contenedor, sin volcarse. Los `style` extra
+    ajustan el panel (`min_width`, `width="100%"` para igualar al disparador…).
+    """
+    anchor: dict[str, Any] = (
+        {"top": top, "left": 0} if top is not None else {"placement": placement, "offset": offset}
+    )
     return box(
-        layer="overlay",
-        position="absolute",
-        top=top,
-        left=0,
-        padding=4,
-        radius="$md",
-        bg="$surface",
-        border_width=1,
-        border_color="$border",
-        shadow=(0, 12, 32, "$shadow"),
-        enter=motion.entering(animate.slide(y=-6)),
-        exit=motion.leaving(animate.fade()),
-        **style,
+        **{
+            "layer": "overlay",
+            "position": "absolute",
+            **anchor,
+            "padding": 4,
+            "radius": "$md",
+            "bg": "$surface",
+            "border_width": 1,
+            "border_color": "$border",
+            "shadow": (0, 12, 32, "$shadow"),
+            "enter": motion.entering(animate.slide(y=-6)),
+            "exit": motion.leaving(animate.fade()),
+            **style,
+        }
     )[content]

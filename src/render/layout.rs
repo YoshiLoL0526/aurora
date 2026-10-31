@@ -62,6 +62,19 @@ pub struct LayoutNode {
     /// repintar: contiene capas superiores (se encolan al recorrerlo) o campos de
     /// texto (su geometría se recalcula al pintarlos).
     pub(super) sticky: bool,
+    /// Lo que se mueve el nodo respecto a donde lo dejó Taffy: una capa superior
+    /// con `placement` (ver `place.rs`). Cero en el resto.
+    pub(super) shift: Point,
+}
+
+impl LayoutNode {
+    /// Posición del nodo respecto a su padre, con `shift`.
+    pub(super) fn location(&self, layout: &taffy::Layout) -> Point {
+        Point::new(
+            layout.location.x + self.shift.x,
+            layout.location.y + self.shift.y,
+        )
+    }
 }
 
 impl Engine {
@@ -206,6 +219,7 @@ impl Engine {
             ink: Rect::default(),
             own: Rect::default(),
             sticky: false,
+            shift: Point::default(),
         }
     }
 
@@ -291,6 +305,8 @@ impl Engine {
 
         // Layout final de cada párrafo con su ancho de contenido definitivo.
         finalize_text(tree, &lroot);
+        let mut lroot = lroot;
+        self.place_anchored(tree, root, &mut lroot, width, height);
         cache.root = Some(lroot);
     }
 }

@@ -24,9 +24,20 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   usuario (`<config>/mi-app/window-state.json`) y los restaura al arrancar; una posición
   recordada solo se usa si sigue cayendo dentro de algún monitor. `app.window(...,
   remember="ajustes")` hace lo mismo con una ventana adicional.
+- **`popover(trigger, content, ...)`**: contenido flotante anclado a un elemento. Se coloca en el
+  lado de `placement` (`"bottom-start"`, `"top"`, `"right-end"`…), se vuelca al opuesto si no cabe
+  y no se sale de la ventana; se cierra con Esc o al hacer clic fuera (`on_close`), su estado vive
+  en un `Signal[bool]` (`open`) o en la `key`, y es un `"dialog"` no modal que toma el foco.
+- Propiedades de estilo **`placement`** y **`offset`** para las capas superiores
+  (`layer="overlay"`): colocan el elemento junto a su ancla (el hermano anterior en el flujo o el
+  contenedor), con la misma lógica de volcado
+  que usa ahora también la burbuja de los tooltips.
 
 ### Cambiado
 
+- `menu`, `select`, `combobox` y `date_picker` abren su panel con `placement`: si no cabe debajo
+  del disparador se abre encima. `menu` acepta `placement`, y su `drop` pasa a ser opcional (por
+  defecto `None`: el panel se coloca solo, 6 px por debajo del disparador).
 - `Window.resizable` se aplica también en marcha (antes solo al abrir la ventana).
 - Un `size` no positivo en `App(...)` o `app.window(...)` lanza `ValueError` al crearlas (antes,
   al pintar o al abrir la ventana).

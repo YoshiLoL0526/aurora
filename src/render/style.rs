@@ -241,10 +241,8 @@ impl Engine {
         }
         let region = self.regions.iter().rev().find(|r| r.key == node.key)?;
         let layout = cache.tree.layout(lnode.id).ok()?;
-        let origin = Point::new(
-            region.local.left - layout.location.x,
-            region.local.top - layout.location.y,
-        );
+        let at = lnode.location(layout);
+        let origin = Point::new(region.local.left - at.x, region.local.top - at.y);
         let (rect, ink) = match self.motion.get(&node.key) {
             Some(m) => (shown_rect(m, region.local), motion_ink(m, region)),
             None => (region.local, region.ink),

@@ -139,8 +139,7 @@ def combobox(
     opened = open_() and [
         backdrop(close),
         panel(
-            top=_HEIGHT + 6,
-            right=0,
+            width="100%",
             content=scroll(max_height=240, gap=2, role="listbox")[listing],
         ),
     ]
@@ -388,5 +387,5 @@ def date_picker(
         spacer(),
         image(_CHEVRON, width=14),
     ]
-    opened = open_() and [backdrop(lambda: open_.set(False)), panel(top=_HEIGHT + 6, content=calendar_panel)]
+    opened = open_() and [backdrop(lambda: open_.set(False)), panel(content=calendar_panel)]
     return column(**{"min_width": 180, **style})[trigger, opened]

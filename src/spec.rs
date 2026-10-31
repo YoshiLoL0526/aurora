@@ -91,6 +91,52 @@ impl Axis {
     }
 }
 
+/// Lado del ancla en el que se coloca una capa superior con `placement`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+/// Alineación con el ancla en el otro eje.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Align {
+    Start,
+    Center,
+    End,
+}
+
+/// Colocación junto al ancla (`placement="bottom-start"`, `offset=6`): ver `render/place.rs`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub side: Side,
+    pub align: Align,
+    /// Distancia al ancla.
+    pub gap: f32,
+}
+
+impl Placement {
+    fn parse(name: &str, gap: f32) -> Option<Self> {
+        let (side, align) = name.split_once('-').unwrap_or((name, "center"));
+        let side = match side {
+            "top" => Side::Top,
+            "bottom" => Side::Bottom,
+            "left" => Side::Left,
+            "right" => Side::Right,
+            _ => return None,
+        };
+        let align = match align {
+            "start" => Align::Start,
+            "center" => Align::Center,
+            "end" => Align::End,
+            _ => return None,
+        };
+        Some(Self { side, align, gap })
+    }
+}
+
 /// Longitud: píxeles lógicos o porcentaje del contenedor ("50%").
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Len {
@@ -141,6 +187,10 @@ pub struct Style {
     /// Capa superior: se maqueta en su sitio pero se pinta (y recibe eventos)
     /// después de todo el árbol (desplegables, tooltips, modales).
     pub overlay: bool,
+    /// Capa superior colocada junto a su ancla (el hermano anterior en el flujo
+    /// o, si no hay, el contenedor), volcada al lado opuesto si no cabe y sin
+    /// salirse de la ventana.
+    pub placement: Option<Placement>,
     /// Recibe el foco con Tab y con clic. Por defecto, los nodos con `on_click`.
     pub focusable: Option<bool>,
     /// Toma el foco al aparecer en la vista.
@@ -343,6 +393,8 @@ pub struct Node {
     /// Semántica de accesibilidad: lo que ven los lectores de pantalla.
     pub a11y: A11y,
     pub children: Vec<Node>,
+    /// El nodo o algún descendiente tiene `placement` (el layout solo recorre esas ramas).
+    pub has_placement: bool,
     /// Manejadores de eventos por nombre (`"click"`, …), sin el prefijo `on_`.
     pub handlers: HashMap<String, Py<PyAny>>,
     /// Solo en `Kind::Canvas`: `draw(width, height, force)` devuelve el lote de
@@ -364,6 +416,7 @@ impl Node {
             text_props: self.text_props.clone(),
             a11y: self.a11y.clone(),
             children: self.children.iter().map(|c| c.clone_ref(py)).collect(),
+            has_placement: self.has_placement,
             handlers: self
                 .handlers
                 .iter()
@@ -492,11 +545,13 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "min_width" => hit!("min_width"),
         "modal" => hit!("modal"),
         "multiline" => hit!("multiline"),
+        "offset" => hit!("offset"),
         "opacity" => hit!("opacity"),
         "overflow" => hit!("overflow"),
         "padding" => hit!("padding"),
         "placeholder" => hit!("placeholder"),
         "placeholder_color" => hit!("placeholder_color"),
+        "placement" => hit!("placement"),
         "position" => hit!("position"),
         "position_in_set" => hit!("position_in_set"),
         "press_scale" => hit!("press_scale"),
@@ -699,6 +754,16 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
                     "layer inválida: {other:?} (usa \"base\" u \"overlay\")"
                 )));
             }
+        },
+        placement: match str_of(d, "placement")? {
+            None => None,
+            Some(name) => Some(
+                Placement::parse(&name, f32_of(d, "offset")?.unwrap_or(0.0)).ok_or_else(|| {
+                    PyValueError::new_err(format!(
+                        "placement inválido: {name:?} (usa \"top\", \"bottom\", \"left\" o \"right\", con \"-start\", \"-center\" o \"-end\")"
+                    ))
+                })?,
+            ),
         },
         max_lines: f32_of(d, "max_lines")?.map(|n| n as usize),
         text_align: str_of(d, "text_align")?,
@@ -929,6 +994,7 @@ fn parse_fresh(
         None => None,
     };
 
+    let has_placement = style.placement.is_some() || children.iter().any(|c| c.has_placement);
     Ok(Node {
         key,
         kind,
@@ -937,6 +1003,7 @@ fn parse_fresh(
         text_props,
         a11y,
         children,
+        has_placement,
         handlers: parse_handlers(d)?,
         draw,
         chart,

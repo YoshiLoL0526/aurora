@@ -39,6 +39,7 @@ mod draw;
 mod geom;
 mod layout;
 mod paint;
+mod place;
 mod png;
 mod style;
 mod text;
@@ -51,6 +52,7 @@ use self::draw::*;
 use self::geom::*;
 use self::layout::*;
 use self::paint::*;
+use self::place::*;
 use self::style::*;
 use self::text::*;
 

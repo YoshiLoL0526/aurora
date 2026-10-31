@@ -1,6 +1,7 @@
 //! Fase de pintura: repintado por zonas y recorrido del árbol.
 
 use super::*;
+use crate::spec::{Align, Placement, Side};
 
 /// Tooltip pintado en el último frame.
 #[derive(Clone, PartialEq)]
@@ -243,7 +244,6 @@ impl Engine {
     fn tooltip(&self, root: &Node, width: f32, height: f32) -> Option<Tooltip> {
         const PAD: (f32, f32) = (10.0, 6.0);
         const GAP: f32 = 8.0;
-        const MARGIN: f32 = 8.0;
         const MAX_WIDTH: f32 = 260.0;
         if self.tip.alpha <= 0.0 {
             return None;
@@ -272,13 +272,13 @@ impl Engine {
         );
         p.layout(tw + 0.5);
         let (w, h) = (tw + 2.0 * PAD.0, th + 2.0 * PAD.1);
-        let x = (owner.center_x() - w / 2.0).clamp(MARGIN, (width - MARGIN - w).max(MARGIN));
-        let below = owner.bottom + GAP;
-        let y = if below + h <= height - MARGIN {
-            below
-        } else {
-            (owner.top - GAP - h).max(MARGIN)
+        let below = Placement {
+            side: Side::Bottom,
+            align: Align::Center,
+            gap: GAP,
         };
+        let bounds = Rect::new(0.0, 0.0, width, height).with_inset((WINDOW_MARGIN, WINDOW_MARGIN));
+        let Point { x, y } = place(owner, (w, h), below, bounds);
         let bubble = Rect::from_xywh(x, y, w, h);
         let shadow = bubble
             .with_offset((0.0, TIP_SHADOW_DY))
@@ -509,9 +509,10 @@ impl<'a> Painter<'a> {
         }
         let canvas = self.canvas;
         let layout = self.tree.layout(lnode.id).expect("layout");
+        let at = lnode.location(layout);
         let rect = Rect::from_xywh(
-            origin.x + layout.location.x,
-            origin.y + layout.location.y,
+            origin.x + at.x,
+            origin.y + at.y,
             layout.size.width,
             layout.size.height,
         );

@@ -160,10 +160,11 @@ dialogs (módulo)
 divider(*, vertical: 'bool' = False, color: 'str' = '$border', **style: 'Any') -> 'Element'
 field(control: 'Element', *, label: 'str | None' = None, hint: 'str | None' = None, error: 'str | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 image(src: 'str | os.PathLike[str] | bytes', *, fit: 'Fit' = 'contain', **style: 'Any') -> 'Element'
-menu(trigger: 'Element', items: 'Sequence[tuple[str, Callable[[], Any]] | tuple[str, Callable[[], Any], dict[str, Any]]]', *, key: 'str', drop: 'float' = 44, **style: 'Any') -> 'Element'
+menu(trigger: 'Element', items: 'Sequence[tuple[str, Callable[[], Any]] | tuple[str, Callable[[], Any], dict[str, Any]]]', *, key: 'str', drop: 'float | None' = None, placement: 'str' = 'bottom-start', **style: 'Any') -> 'Element'
 menus (módulo)
 number_input(value: 'Signal[float] | Signal[int]', *, min: 'float | None' = None, max: 'float | None' = None, step: 'float' = 1, decimals: 'int | None' = None, on_change: 'Callable[[float], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 pages(current: 'Signal[Any]', views: 'Mapping[Any, Callable[[], Element]]', *, key: 'str' = 'pages', **style: 'Any') -> 'Element'
+popover(trigger: 'Element', content: 'Element', *, open: 'Signal[bool] | None' = None, placement: 'str' = 'bottom-start', offset: 'float' = 6, label: 'str | None' = None, on_close: 'Callable[[], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 progress(value: 'Signal[float] | float', *, max: 'float' = 1.0, color: 'str | tuple[str, str, float]' = '$primary', **style: 'Any') -> 'Element'
 radio(options: 'Options', selected: 'Signal[Any]', *, key: 'str | None' = None, **style: 'Any') -> 'Element'
 resource(path: 'str | os.PathLike[str]') -> 'str'

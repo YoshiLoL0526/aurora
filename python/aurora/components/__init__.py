@@ -15,7 +15,7 @@ from .feedback import progress, skeleton, spinner, toast
 from .forms import checkbox, field, number_input, radio, slider, switch, text_input, textarea
 from .lists import virtual_list
 from .navigation import accordion, pages, segmented, tabs
-from .overlays import dialog, menu, select, tooltip
+from .overlays import dialog, menu, popover, select, tooltip
 from .pickers import combobox, date_picker
 
 __all__ = [
@@ -33,6 +33,7 @@ __all__ = [
     "menu",
     "number_input",
     "pages",
+    "popover",
     "progress",
     "radio",
     "segmented",

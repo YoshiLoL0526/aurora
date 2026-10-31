@@ -116,6 +116,7 @@ pub(super) fn same_geometry(a: &Node, b: &Node) -> bool {
         && taffy_style(sa) == taffy_style(sb)
         // Lo que cambia las regiones o la tinta.
         && sa.overlay == sb.overlay
+        && sa.placement == sb.placement
         && sa.capture == sb.capture
         && sa.focusable == sb.focusable
         && sa.tooltip.is_some() == sb.tooltip.is_some()
@@ -134,9 +135,10 @@ pub(super) fn compute_ink(
     origin: Point,
 ) {
     let layout = tree.layout(lnode.id).expect("layout");
+    let at = lnode.location(layout);
     let rect = Rect::from_xywh(
-        origin.x + layout.location.x,
-        origin.y + layout.location.y,
+        origin.x + at.x,
+        origin.y + at.y,
         layout.size.width,
         layout.size.height,
     );
@@ -322,9 +324,10 @@ impl<'a> Geometry<'a> {
         clip: Rect,
     ) {
         let layout = self.tree.layout(lnode.id).expect("layout");
+        let at = lnode.location(layout);
         let rect = Rect::from_xywh(
-            origin.x + layout.location.x,
-            origin.y + layout.location.y,
+            origin.x + at.x,
+            origin.y + at.y,
             layout.size.width,
             layout.size.height,
         );

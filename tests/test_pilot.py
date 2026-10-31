@@ -2,11 +2,12 @@
 
 import asyncio
 import threading
+from datetime import date
 
 import pytest
 from test_render import _png_pixel
 
-from aurora import MIDNIGHT, App, Signal, _core, box, button, column, row, text
+from aurora import MIDNIGHT, App, Signal, _core, box, button, column, date_picker, popover, row, spacer, text
 
 
 def test_click_runs_handler_and_rebuilds():
@@ -442,3 +443,83 @@ def test_drop_handler_error_surfaces():
     pilot = App(lambda: box(key="z", width=50, height=50, on_drop=boom), size=(100, 100)).pilot()
     with pytest.raises(RuntimeError, match="fallo al soltar"):
         pilot.drop_files(["a"], key="z")
+
+
+# --- popover ----------------------------------------------------------------------
+
+
+def _popover_app(open_, *, bottom=False, **kwargs):
+    def view():
+        pop = popover(
+            button("Abrir", key="btn"), text("Contenido", key="body"), open=open_, key="pop", **kwargs
+        )
+        return column(padding=10)[spacer() if bottom else None, row()[pop]]
+
+    return App(view, size=(400, 300)).pilot()
+
+
+def test_popover_opens_below_and_closes_with_escape_or_outside_click():
+    open_, closed = Signal(False), []
+    pilot = _popover_app(open_, label="Detalles", on_close=lambda: closed.append(True))
+    assert pilot.rect("pop-panel") is None
+    pilot.click("btn")
+    assert open_()
+    bx, by, _, bh = pilot.rect("btn")
+    px, py, *_ = pilot.rect("pop-panel")
+    assert (px, py) == (bx, by + bh + 6)
+    nodes = {n["key"]: n for n in pilot.a11y_tree()}
+    assert nodes["pop-panel"]["role"] == "dialog"
+    assert nodes["pop-panel"]["label"] == "Detalles"
+    assert nodes["btn"]["expanded"] is True
+    pilot.press("escape")
+    assert not open_() and closed == [True]
+    pilot.click("btn")
+    pilot.click_at(380, 280)  # fuera del panel
+    assert not open_() and closed == [True, True]
+    pilot.click("btn")
+    pilot.click("btn")  # el disparador también lo cierra
+    assert not open_()
+
+
+def test_popover_flips_above_when_there_is_no_room_below():
+    pilot = _popover_app(Signal(True), bottom=True)
+    _, by, _, _ = pilot.rect("btn")
+    _, py, _, ph = pilot.rect("pop-panel")
+    assert py + ph == by - 6
+
+
+def test_popover_side_placement_stays_inside_the_window():
+    pilot = _popover_app(Signal(True), placement="right-center", width=380)
+    x, _, w, _ = pilot.rect("pop-panel")
+    assert x >= 8 and x + w <= 400 - 8
+
+
+def test_popover_needs_a_key_or_a_signal():
+    with pytest.raises(ValueError, match="popover"):
+        popover(button("x"), text("y"))
+
+
+def test_invalid_placement_is_a_clear_error():
+    view = lambda: column()[box(layer="overlay", position="absolute", placement="debajo")]
+    with pytest.raises(ValueError, match="placement"):
+        App(view, size=(100, 100)).pilot()
+
+
+def test_dropdown_panels_flip_near_the_bottom_edge():
+    view = lambda: column(padding=10)[spacer(), date_picker(Signal(date(2026, 3, 10)), key="dp")]
+    pilot = App(view, size=(360, 460)).pilot()
+    pilot.click("dp")
+    _, ty, _, _ = pilot.rect("dp")
+    _, dy, _, _ = pilot.rect("dp-day-2026-03-10")
+    assert dy < ty  # el calendario se abre hacia arriba
+
+
+def test_popover_anchors_to_the_trigger_even_in_a_stretched_wrapper():
+    def view():
+        pop = popover(button("Abrir", key="btn"), text("Hola"), open=Signal(True), key="pop")
+        return row(padding=20, height=300)[pop]  # la fila estira al envoltorio en vertical
+
+    pilot = App(view, size=(400, 300)).pilot()
+    _, by, _, bh = pilot.rect("btn")
+    assert pilot.rect("pop")[3] > bh
+    assert pilot.rect("pop-panel")[1] == by + bh + 6

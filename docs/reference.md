@@ -1324,6 +1324,48 @@ image("info.svg", width=16, tooltip="Se actualiza cada hora")
 La burbuja usa los colores heredables `tooltip_bg` y `tooltip_color`, que por defecto invierten el
 tema (`$text` sobre `$background`), así destaca en claro y en oscuro.
 
+### `popover(trigger, content, *, open=None, placement="bottom-start", offset=6, label=None, on_close=None, key=None, **estilo)` { #popover }
+
+Contenido flotante anclado a un elemento: pulsar `trigger` abre y cierra un panel con `content`
+(un formulario corto, filtros, detalles…). El panel se pinta por encima del resto
+(`layer="overlay"`) en el lado de `placement`, a `offset` píxeles del disparador: `"top"`,
+`"bottom"`, `"left"` o `"right"`, opcionalmente con la alineación (`"bottom-start"`,
+`"right-center"`, `"top-end"`…). Si en ese lado no cabe se **vuelca** al opuesto, y en el otro eje
+se desplaza lo justo para no salirse de la ventana. Se cierra con Esc, al hacer clic fuera o
+pulsando otra vez el disparador, y entonces llama a `on_close()`.
+
+El estado vive en `open` (un `Signal[bool]`, para abrirlo o cerrarlo desde fuera) o, sin él, en la
+`key`: hace falta una de las dos (`ValueError` si no). Para los lectores de pantalla el panel es un
+`"dialog"` no modal con nombre `label`, toma el foco al abrirse (salvo que el contenido traiga un
+`autofocus`) y el disparador anuncia si está desplegado (`expanded`). Los `estilo` van al panel
+(`width`, `padding`, `gap`…); el panel tiene la key `f"{key}-panel"`.
+
+```python live
+from aurora import App, Signal, button, column, popover, row, switch, text
+
+filtros = Signal(True)  # oculto
+avisos, archivados = Signal(True), Signal(False)
+
+
+def view():
+    contenido = column(gap=10)[
+        text("Mostrar", size=12, weight=600, color="$muted"),
+        switch(avisos, "Avisos"),
+        switch(archivados, "Archivados"),
+    ]
+    return row(padding=20)[
+        popover(button("Filtros", variant="soft"), contenido, open=filtros, label="Filtros", width=200)
+    ]
+
+
+App(view, size=(320, 200)).run()
+```
+
+La colocación es la propiedad de estilo [`placement`](#apariencia) (con `offset`), que sirve a
+cualquier elemento con `layer="overlay"`: se ancla a su **hermano anterior** que ocupa sitio en el
+flujo (en `popover`, el disparador) o, si no lo hay, a su contenedor. La usan también `menu`, `select`, `combobox` y `date_picker`,
+así que todos se abren hacia arriba cuando no caben debajo.
+
 ### `dialog(open, content, *, title=None, on_close=None, width=420, key=None, **estilo)`
 
 Diálogo modal: fondo oscurecido y tarjeta centrada con `content`. Con un `Signal[bool]` en `open`
@@ -1375,15 +1417,16 @@ box(width=380, height=200, bg="$background", padding=18)[
 ]
 ```
 
-### `menu(trigger, items, *, key, drop=44, **estilo)`
+### `menu(trigger, items, *, key, drop=None, placement="bottom-start", **estilo)`
 
 Menú de acciones: `trigger` es el elemento que se pulsa (normalmente un botón o un "⋯") y `items`
 la lista de opciones, `(etiqueta, on_click)` o `(etiqueta, on_click, estilo)` — el estilo extra va
 al texto, para una acción peligrosa: `{"color": "$danger"}`. La lista se pinta por encima
 (`layer="overlay"`), entra deslizándose y se cierra al elegir, al hacer clic fuera o con Esc.
-`drop` es la distancia del panel al borde superior del disparador y `key` (obligatoria, como en
-`virtual_list`) guarda el estado de abierto: las opciones tienen la key
-`f"{key}-item-{índice}"`.
+Se abre debajo del disparador (o en el lado de `placement`, como un [`popover`](#popover)) y se
+vuelca encima si no cabe; `drop` lo fija en cambio a esa distancia del borde superior del
+disparador. `key` (obligatoria, como en `virtual_list`) guarda el estado de abierto: las opciones
+tienen la key `f"{key}-item-{índice}"`.
 
 ```python
 menu(
@@ -1615,6 +1658,7 @@ contenedores (como en CSS).
 | `tooltip` | texto | Texto de ayuda que aparece al dejar el puntero encima. Ver [`tooltip`](#tooltipchild-tip). |
 | `cursor` | `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"`, `"crosshair"` | Cursor del ratón sobre el elemento y sus hijos (salvo que un hijo fije otro). Durante un `on_drag` se mantiene el del elemento arrastrado. |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
+| `placement`, `offset` | `"bottom"`, `"top-start"`, `"right-end"`… · número | Solo con `layer="overlay"`: coloca el elemento junto a su ancla —el hermano anterior que ocupa sitio en el flujo o, si no lo hay, el contenedor—, en ese lado y con esa alineación (`start`, `center` —la de por defecto— o `end`), a `offset` píxeles. Si no cabe se vuelca al lado opuesto, y nunca se sale de la ventana. Ver [`popover`](#popover). |
 | `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |
 
 ### Texto

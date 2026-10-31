@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from aurora import MIDNIGHT, App, _core, box, card, column, row, text
+from aurora import MIDNIGHT, App, Signal, _core, box, button, card, column, popover, row, spacer, text
 
 
 def _png_size(path: Path) -> tuple[int, int]:
@@ -165,3 +165,23 @@ def test_inspector_outlines_the_selected_node(tmp_path):
     assert (r, g, b) == (0x20, 0x20, 0x20)
     label = _png_pixel(out, int(x + 4), int(y - 6))
     assert max(label) < 0x40
+
+
+# --- componentes de la v0.8 ---------------------------------------------------------
+
+
+def test_popover_paints_its_panel_where_it_was_placed(tmp_path):
+    view = lambda: column(padding=10)[
+        spacer(),
+        row()[popover(button("Abrir", key="btn"), text("Hola"), open=Signal(True), key="pop", width=160)],
+    ]
+    app = App(view, size=(300, 240))
+    pilot = app.pilot()
+    pilot.settle()
+    x, y, w, h = pilot.rect("pop-panel")
+    _, by, _, _ = pilot.rect("btn")
+    assert y + h < by  # volcado encima del botón
+    path = tmp_path / "popover.png"
+    pilot.png(str(path))
+    # Panel con el color de superficie del tema (MIDNIGHT: #131722), cerca de su borde inferior.
+    assert _png_pixel(path, int(x + w - 20), int(y + h - 6)) == (0x13, 0x17, 0x22)
