@@ -9,6 +9,8 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ## [Sin publicar]
 
+## [0.7.0] — 2026-10-31
+
 ### Añadido
 
 - **Opciones de ventana**, en `App(...)` (la principal) y en `app.window(...)`: `min_size` y
@@ -581,7 +583,8 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
-[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.6.0...HEAD
+[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.3.0...v0.4.0

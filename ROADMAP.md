@@ -79,34 +79,30 @@ Leyenda: ✅ hecho · 🚧 en curso · ⏳ planificado
 - ✅ Componentes de entrada: `number_input`, `combobox` y `date_picker`
 - ✅ Wheels precompiladas en PyPI para Windows, macOS (x86_64/arm64) y Linux
 
-## v0.7 — Ventanas y arrastre ⏳
+## v0.7 — Ventanas, componentes y reconstruir menos ✅
 
-*Lo que toda app de escritorio acaba pidiendo y hoy obliga a rodeos.*
+*Herramientas internas grandes sin construir los widgets a mano, y que el coste de un cambio
+dependa de lo que cambia, no del tamaño de la vista.*
 
 - ✅ **Opciones de ventana**: tamaño mínimo y máximo, posición, maximizada y pantalla completa,
   siempre encima, y recordar tamaño y posición entre sesiones (`App(..., remember="mi-app")`)
-- ⏳ Ventanas **sin marco** con barra de título propia (zonas de arrastre y botones del sistema)
-- ⏳ **Arrastrar y soltar dentro de la app**: reordenar listas y mover elementos entre
-  contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot`
-- ⏳ `virtual_list` con filas de **alto variable** (chats, registros, feeds)
-
-## v0.8 — Componentes para apps complejas ✅
-
-*Herramientas internas grandes sin construir los widgets a mano.*
-
 - ✅ `tree`: árbol expandible con selección, teclado y virtualización
 - ✅ `splitter`: paneles redimensionables
 - ✅ `popover`: contenido flotante anclado a un elemento
 - ✅ Selectores de hora y de color (`time_picker`, `color_picker`)
 - ✅ Texto enriquecido: tramos con estilos dentro de un párrafo y render de Markdown
-
-## v0.9 — Reconstruir menos ✅
-
-*Que el coste de un cambio dependa de lo que cambia, no del tamaño de la vista.*
-
 - ✅ Reconstrucción parcial: un `Signal` que cambia vuelve a ejecutar solo las partes de la vista
   que lo leen, también fuera de `@component`
 - ✅ Tiempo de arranque medido en los benchmarks y con objetivo
+
+## v0.8 — Ventanas sin marco y arrastre ⏳
+
+*Lo que toda app de escritorio acaba pidiendo y hoy obliga a rodeos.*
+
+- ⏳ Ventanas **sin marco** con barra de título propia (zonas de arrastre y botones del sistema)
+- ⏳ **Arrastrar y soltar dentro de la app**: reordenar listas y mover elementos entre
+  contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot`
+- ⏳ `virtual_list` con filas de **alto variable** (chats, registros, feeds)
 
 ## 1.0 — Criterios de salida 🎯
 
