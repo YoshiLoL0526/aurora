@@ -19,6 +19,7 @@ cada muestra en un proceso nuevo (`startup.py`), y lo compara con su objetivo (`
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import platform
@@ -239,7 +240,15 @@ def format_markdown(results: dict, meta: dict, baseline: dict | None = None) -> 
     return "\n".join(out)
 
 
+def _utf8_output() -> None:
+    """La salida lleva `✅`, `·`, `≤`… que no caben en consolas cp1252 de Windows."""
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_output()
     names = [STARTUP, *(s.name for s in SCENARIOS)]
     parser = argparse.ArgumentParser(description="Suite de benchmarks de Aurora (ms por frame).")
     parser.add_argument("scenarios", nargs="*", help=f"por defecto, todos: {', '.join(names)}")
