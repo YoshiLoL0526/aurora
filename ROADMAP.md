@@ -105,7 +105,7 @@ dependa de lo que cambia, no del tamaño de la vista.*
   contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot` (`sortable`)
 - ✅ `virtual_list` con filas de **alto variable** (chats, registros, feeds), con `stick_to_end`
 
-## v0.9 — Endurecimiento 🚧
+## v0.9 — Endurecimiento ✅
 
 *Sin funciones nuevas: cerrar lo que impide cumplir los criterios de salida de la 1.0.*
 

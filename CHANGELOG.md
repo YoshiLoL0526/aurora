@@ -9,42 +9,9 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ## [Sin publicar]
 
-## [0.8.0] — 2026-10-31
+## [0.9.0] — 2026-10-31
 
 ### Añadido
-
-- **Ventanas sin marco**: opción `decorations=False` en `App(...)` y en `app.window(...)`, que
-  `Window.decorations` lee y cambia en marcha. La propiedad de estilo **`window_drag`** marca
-  zonas que mueven la ventana (`"move"`; doble clic: maximizar o restaurar) o la redimensionan
-  desde un borde (`"n"`, `"se"`…) sin quitarles los clics a los controles que contengan; sin
-  marco, los bordes de una ventana redimensionable la siguen redimensionando. `Window.minimize()`
-  y `Window.request_close()` (cerrar pasando por `on_close`, como el botón del sistema)
-  completan los botones, y **`current_window()`** da la ventana cuya vista se construye.
-- **`title_bar(title, ...)`**: barra de título lista para ventanas sin marco, con icono,
-  acciones y los botones de minimizar, maximizar o restaurar, y cerrar, al estilo de Windows y
-  Linux o de macOS (`controls`).
-- **Arrastrar y soltar dentro de la app**: `sortable(items, item, ...)` reordena una lista
-  arrastrando sus elementos, y varias con el mismo `group` forman un tablero kanban entre cuyas
-  listas pasan. El elemento sigue al puntero, una línea marca dónde caerá, un clic sin mover no
-  arrastra, y con el teclado se coge con Espacio, se mueve con las flechas (también a la lista
-  de al lado), se suelta con Espacio y se cancela con Esc, con anuncios para el lector de
-  pantalla. `on_move` recibe un `MoveEvent` (elemento, origen, destino e índices) cuyo `apply`
-  hace el movimiento sobre tus datos.
-- Propiedad de estilo **`drop_target`** y atributos **`target`** e **`index`** de `DragEvent`: la
-  zona de soltar bajo el puntero durante un `on_drag` y la posición en la que caería entre sus
-  hijos arrastrables. `Pilot.drag_to(key, to)` arrastra hasta otro nodo o un punto.
-- `Pilot.a11y_tree()` incluye `live` (las regiones vivas).
-- **`virtual_list` con filas de alto variable**: sin `item_height`, cada fila mide lo que pida su
-  contenido; las no vistas se suponen de `estimated_height` (40 por defecto) y se corrigen al
-  medirse sin que salte lo que se está viendo. `stick_to_end=True` empieza al final y sigue los
-  elementos nuevos mientras se esté al final (chats, registros). Con `item_height` funciona igual
-  que antes.
-- Propiedades de estilo de `scroll` **`scroll_anchor`** (mantiene quieto lo visible cuando cambia
-  el contenido de encima, como `overflow-anchor` de CSS) y **`stick_to_end`**.
-- Cursores `"ns-resize"`, `"ew-resize"`, `"nesw-resize"` y `"nwse-resize"`.
-- `Pilot.window_requests` apunta lo que las pulsaciones piden a la ventana (moverla,
-  redimensionarla, maximizarla), y `app.pilot()` de una ventana sin marco redimensiona por los
-  bordes como la ventana.
 
 - **Recetas** en la documentación (`docs/recipes.md`): formulario con validación, carga
   asíncrona con spinner, lista grande filtrable, maestro-detalle, ajustes que se recuerdan,
@@ -88,6 +55,43 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - Cobertura por componente: `tests/test_coverage.py` pinta cada componente público con sus valores
   por defecto en los dos temas, comprueba su rol y nombre accesibles y que los decorativos no
   roban foco ni clics, y fija la matriz de pruebas de `docs/coverage.md`.
+
+## [0.8.0] — 2026-10-31
+
+### Añadido
+
+- **Ventanas sin marco**: opción `decorations=False` en `App(...)` y en `app.window(...)`, que
+  `Window.decorations` lee y cambia en marcha. La propiedad de estilo **`window_drag`** marca
+  zonas que mueven la ventana (`"move"`; doble clic: maximizar o restaurar) o la redimensionan
+  desde un borde (`"n"`, `"se"`…) sin quitarles los clics a los controles que contengan; sin
+  marco, los bordes de una ventana redimensionable la siguen redimensionando. `Window.minimize()`
+  y `Window.request_close()` (cerrar pasando por `on_close`, como el botón del sistema)
+  completan los botones, y **`current_window()`** da la ventana cuya vista se construye.
+- **`title_bar(title, ...)`**: barra de título lista para ventanas sin marco, con icono,
+  acciones y los botones de minimizar, maximizar o restaurar, y cerrar, al estilo de Windows y
+  Linux o de macOS (`controls`).
+- **Arrastrar y soltar dentro de la app**: `sortable(items, item, ...)` reordena una lista
+  arrastrando sus elementos, y varias con el mismo `group` forman un tablero kanban entre cuyas
+  listas pasan. El elemento sigue al puntero, una línea marca dónde caerá, un clic sin mover no
+  arrastra, y con el teclado se coge con Espacio, se mueve con las flechas (también a la lista
+  de al lado), se suelta con Espacio y se cancela con Esc, con anuncios para el lector de
+  pantalla. `on_move` recibe un `MoveEvent` (elemento, origen, destino e índices) cuyo `apply`
+  hace el movimiento sobre tus datos.
+- Propiedad de estilo **`drop_target`** y atributos **`target`** e **`index`** de `DragEvent`: la
+  zona de soltar bajo el puntero durante un `on_drag` y la posición en la que caería entre sus
+  hijos arrastrables. `Pilot.drag_to(key, to)` arrastra hasta otro nodo o un punto.
+- `Pilot.a11y_tree()` incluye `live` (las regiones vivas).
+- **`virtual_list` con filas de alto variable**: sin `item_height`, cada fila mide lo que pida su
+  contenido; las no vistas se suponen de `estimated_height` (40 por defecto) y se corrigen al
+  medirse sin que salte lo que se está viendo. `stick_to_end=True` empieza al final y sigue los
+  elementos nuevos mientras se esté al final (chats, registros). Con `item_height` funciona igual
+  que antes.
+- Propiedades de estilo de `scroll` **`scroll_anchor`** (mantiene quieto lo visible cuando cambia
+  el contenido de encima, como `overflow-anchor` de CSS) y **`stick_to_end`**.
+- Cursores `"ns-resize"`, `"ew-resize"`, `"nesw-resize"` y `"nwse-resize"`.
+- `Pilot.window_requests` apunta lo que las pulsaciones piden a la ventana (moverla,
+  redimensionarla, maximizarla), y `app.pilot()` de una ventana sin marco redimensiona por los
+  bordes como la ventana.
 
 ## [0.7.0] — 2026-10-31
 
@@ -663,7 +667,8 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
-[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.8.0...HEAD
+[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.5.0...v0.6.0
