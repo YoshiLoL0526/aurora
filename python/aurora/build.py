@@ -22,11 +22,10 @@ import importlib.util
 import os
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
-import tomllib
 
 _KEYS = {"script", "name", "icon", "include", "onefile", "console", "upx", "dist"}
 _DEFAULT_SCRIPTS = ("main.py", "app.py")

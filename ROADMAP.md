@@ -105,6 +105,19 @@ dependa de lo que cambia, no del tamaño de la vista.*
   contenedores (kanban), con vista previa, accesible por teclado y simulable con `Pilot` (`sortable`)
 - ✅ `virtual_list` con filas de **alto variable** (chats, registros, feeds), con `stick_to_end`
 
+## v0.9 — Endurecimiento 🚧
+
+*Sin funciones nuevas: cerrar lo que impide cumplir los criterios de salida de la 1.0.*
+
+- ⏳ **Documentación completa**: toda la API pública en la referencia (comprobado por un test),
+  la guía al día con lo reciente y una página de recetas para las tareas habituales
+- ⏳ **Cada componente completo**: test de render, de interacción con `Pilot` y de su nodo en el
+  árbol de accesibilidad, y manejo con teclado si es interactivo, con una matriz de cobertura
+  que comprueba un test
+- ⏳ **Control de 60 fps en CI**: presupuesto de 16,7 ms por frame para las operaciones
+  interactivas de los benchmarks, y la CI falla si se pasa
+- ✅ Pequeños arreglos: `target-version` de ruff alineado con `requires-python`
+
 ## 1.0 — Criterios de salida 🎯
 
 La 1.0 sale cuando se cumplen todos, no en una fecha:
