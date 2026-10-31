@@ -28,6 +28,7 @@ from aurora import (
     time_picker,
     title_bar,
     tree,
+    virtual_list,
 )
 from aurora.components import _state
 
@@ -341,3 +342,19 @@ def test_sortable_marks_where_the_item_will_land(tmp_path):
     # Entre «uno» y «dos» no hay línea: el fondo.
     _, y1, _, h1 = pilot.rect("l:uno")
     assert _png_pixel(path, 100, int((y1 + h1 + y2) / 2)) == (0x0B, 0x0D, 0x14)
+
+
+def test_variable_virtual_list_paints_each_row_at_its_height(tmp_path):
+    # Filas de 20 y 50 px alternas, sin `item_height`: cada una se pinta donde la mide el layout.
+    colors = ["#FF0000", "#0000FF"]
+    item = lambda i: box(height=20 if i % 2 else 50, bg=colors[i % 2])
+    view = lambda: column()[virtual_list(1000, item, key="vl-render", estimated_height=30)]
+    pilot = App(view, size=(100, 200)).pilot()
+    pilot.settle()
+    path = tmp_path / "variable.png"
+    pilot.png(str(path))
+    # 0–50 rojo, 50–70 azul, 70–120 rojo, 120–140 azul…
+    assert _png_pixel(path, 50, 25) == (255, 0, 0)
+    assert _png_pixel(path, 50, 60) == (0, 0, 255)
+    assert _png_pixel(path, 50, 95) == (255, 0, 0)
+    assert _png_pixel(path, 50, 130) == (0, 0, 255)

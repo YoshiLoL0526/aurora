@@ -224,7 +224,7 @@ title_bar(title: 'TextLike | None' = None, *, icon: 'Element | None' = None, act
 toast(message: 'Signal[str | None] | TextLike | None', *, on_close: 'Callable[[], Any] | None' = None, tone: 'str' = '$accent', key: 'str | None' = None, **style: 'Any') -> 'Element | None'
 tooltip(child: 'Element', tip: 'str') -> 'Element'
 tree(roots: 'Sequence[N]', children: 'Callable[[N], Sequence[N]]', *, key: 'str', label: 'Callable[[N], TextLike]' = <class 'str'>, ident: 'Callable[[N], Hashable] | None' = None, expanded: 'Signal[set[Any]] | None' = None, selected: 'Signal[Any] | None' = None, icon: 'Callable[[N], Element | None] | None' = None, on_select: 'Callable[[N], Any] | None' = None, on_activate: 'Callable[[N], Any] | None' = None, item_height: 'float' = 30, indent: 'float' = 18, overscan: 'int' = 4, **style: 'Any') -> 'Element'
-virtual_list(count: 'int', item: 'Callable[[int], Element]', *, item_height: 'float', key: 'str', gap: 'float' = 0, overscan: 'int' = 4, role: 'str' = 'list', item_role: 'str' = 'listitem', **style: 'Any') -> 'Element'
+virtual_list(count: 'int', item: 'Callable[[int], Element]', *, item_height: 'float | None' = None, estimated_height: 'float' = 40, key: 'str', gap: 'float' = 0, overscan: 'int' = 4, stick_to_end: 'bool' = False, role: 'str' = 'list', item_role: 'str' = 'listitem', **style: 'Any') -> 'Element'
 
 [aurora.animate]
 Easing = typing.Literal['linear', 'ease', 'ease_in', 'ease_out', 'ease_in_out']

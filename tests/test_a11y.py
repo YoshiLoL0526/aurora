@@ -211,6 +211,19 @@ def test_la_lista_virtual_anuncia_posiciones():
     assert items and items[0]["position_in_set"] == 1 and items[0]["set_size"] == 100
 
 
+def test_la_lista_virtual_de_alto_variable_anuncia_posiciones():
+    pilot = _pilot(
+        lambda: virtual_list(100, lambda i: column()[text("x\n" * (i % 3) + str(i))], key="vl-var"),
+        size=(320, 200),
+    )
+    items = _role_of(pilot, "listitem")
+    assert items and items[0]["position_in_set"] == 1 and items[0]["set_size"] == 100
+    # Los límites son los medidos: cada fila empieza donde acaba la anterior.
+    tops = [i["bounds"][1] for i in items[:4]]
+    bottoms = [i["bounds"][3] for i in items[:4]]
+    assert tops[1:] == bottoms[:-1] and bottoms[1] - tops[1] > bottoms[0] - tops[0]
+
+
 def test_los_bounds_son_logicos_con_escala():
     view = lambda: column()[box(key="b", width=100, height=20, role="region")]
     pilot = _pilot(view, scale=2.0)

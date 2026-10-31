@@ -157,6 +157,9 @@ struct ScrollLayer {
     max: Point,
     /// Caja de relleno del `scroll`, en coordenadas locales de la capa padre.
     viewport: Rect,
+    /// `scroll_anchor` y `stick_to_end` del nodo.
+    anchor: bool,
+    stick: bool,
 }
 
 /// Lo que se pintó de una capa en el último frame.
@@ -397,6 +400,7 @@ impl Engine {
             let lroot = cache.root.as_mut().expect("layout calculado");
             compute_ink(&cache.tree, root, lroot, Point::default());
             let old = self.geometry(&cache.tree, root, lroot);
+            self.anchor_scrolls(&old.0, &old.1);
             self.start_motions(root, &old.0, &old.1, resized);
             self.refresh_moving();
             match self.repainted.replace(HashSet::new()) {

@@ -493,6 +493,11 @@ def view():
     ]
 ```
 
+Si las filas no miden lo mismo (mensajes, comentarios), quita `item_height`: cada una mide lo que
+pida su contenido, las que no se han visto se suponen de `estimated_height`, y al medirse lo que
+estás viendo no salta. Para un chat, `stick_to_end=True` mantiene a la vista el último mensaje
+mientras no subas a leer.
+
 ### Reordenar arrastrando
 
 Para una lista que el usuario ordena a mano (prioridades, una cola de reproducción) o un tablero

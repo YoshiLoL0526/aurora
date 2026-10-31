@@ -32,6 +32,13 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   zona de soltar bajo el puntero durante un `on_drag` y la posición en la que caería entre sus
   hijos arrastrables. `Pilot.drag_to(key, to)` arrastra hasta otro nodo o un punto.
 - `Pilot.a11y_tree()` incluye `live` (las regiones vivas).
+- **`virtual_list` con filas de alto variable**: sin `item_height`, cada fila mide lo que pida su
+  contenido; las no vistas se suponen de `estimated_height` (40 por defecto) y se corrigen al
+  medirse sin que salte lo que se está viendo. `stick_to_end=True` empieza al final y sigue los
+  elementos nuevos mientras se esté al final (chats, registros). Con `item_height` funciona igual
+  que antes.
+- Propiedades de estilo de `scroll` **`scroll_anchor`** (mantiene quieto lo visible cuando cambia
+  el contenido de encima, como `overflow-anchor` de CSS) y **`stick_to_end`**.
 - Cursores `"ns-resize"`, `"ew-resize"`, `"nesw-resize"` y `"nwse-resize"`.
 - `Pilot.window_requests` apunta lo que las pulsaciones piden a la ventana (moverla,
   redimensionarla, maximizarla), y `app.pilot()` de una ventana sin marco redimensiona por los

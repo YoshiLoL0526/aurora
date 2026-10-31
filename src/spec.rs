@@ -289,6 +289,12 @@ pub struct Style {
     /// Franja del contenido de un `scroll` (`top`, `bottom`, desde su inicio) que
     /// debe verse: cuando cambia, el contenedor se desplaza hasta mostrarla.
     pub reveal: Option<(f32, f32)>,
+    /// Un `scroll` que mantiene quieto lo que se ve cuando cambia el alto del
+    /// contenido de más arriba (filas que se miden, contenido que se carga).
+    pub scroll_anchor: bool,
+    /// Un `scroll` que, si estaba al final, sigue al final cuando el contenido
+    /// crece (y empieza ahí): un chat o un registro.
+    pub stick_to_end: bool,
     // Visual
     pub bg: Option<Color>,
     pub bg_hover: Option<Color>,
@@ -783,6 +789,7 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "role" => hit!("role"),
         "rows" => hit!("rows"),
         "scroll" => hit!("scroll"),
+        "scroll_anchor" => hit!("scroll_anchor"),
         "scrollbar_color" => hit!("scrollbar_color"),
         "selected" => hit!("selected"),
         "selection_color" => hit!("selection_color"),
@@ -792,6 +799,7 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "sort" => hit!("sort"),
         "spans" => hit!("spans"),
         "src" => hit!("src"),
+        "stick_to_end" => hit!("stick_to_end"),
         "style" => hit!("style"),
         "text" => hit!("text"),
         "text_align" => hit!("text_align"),
@@ -1015,6 +1023,8 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
             })?),
         },
         drop_target: bool_of(d, "drop_target")?,
+        scroll_anchor: bool_of(d, "scroll_anchor")?,
+        stick_to_end: bool_of(d, "stick_to_end")?,
         window_drag: match str_of(d, "window_drag")? {
             None => None,
             Some(name) => Some(WindowDrag::parse(&name).ok_or_else(|| {

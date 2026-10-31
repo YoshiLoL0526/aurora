@@ -811,7 +811,7 @@ Recorta su contenido a su caja (respetando `radius` y `border_width`) y lo despl
   zona visible, en píxeles lógicos) en el primer frame y cada vez que alguno cambia. A diferencia
   de los demás manejadores no reconstruye la vista por sí solo (se llama en cada frame de
   desplazamiento): si cambias un `Signal` en él, la vista se reconstruye en ese mismo frame. Para
-  listas muy largas, [`virtual_list`](#virtual_listcount-item--item_height-key-gap0-overscan4-estilo)
+  listas muy largas, [`virtual_list`](#virtual_list)
   ya lo usa por ti.
 
 ```python
@@ -1605,10 +1605,11 @@ puede construir otro tipo de arrastre (soltar en una papelera, en una carpeta de
 | `target`, `index` | La key de la lista de destino (la misma si se reordena) y dónde queda en ella, ya quitado de la de origen. |
 | `apply(datos)` | Una copia de tus datos con el movimiento hecho: con una lista (reordenar una sola `sortable`), la lista nueva; con un dict de key de lista → elementos (un tablero), el dict nuevo. No cambia los originales. |
 
-### `virtual_list(count, item, *, item_height, key, gap=0, overscan=4, **estilo)`
+### `virtual_list(count, item, *, item_height=None, estimated_height=40, key, gap=0, overscan=4, stick_to_end=False, **estilo)` { #virtual_list }
 
 Lista desplazable de `count` filas que **solo construye las visibles**: con 100 000 filas, cada
-reconstrucción crea unas pocas decenas y desplazarse cuesta lo mismo que con 20.
+reconstrucción crea unas pocas decenas y desplazarse cuesta lo mismo que con 20. Las filas pueden
+medir todas lo mismo (`item_height`) o cada una lo suyo.
 
 ```python
 @component
@@ -1631,6 +1632,58 @@ virtual_list(len(tareas()), lambda i: fila(i, i == elegida()), item_height=36, k
 - Con filas `@component`, las que siguen visibles no se reconstruyen.
 - Solo las filas construidas existen en el árbol: Tab recorre las visibles, y `Pilot.rect` de una
   fila fuera de la zona visible devuelve `None`.
+
+#### Filas de alto variable
+
+Sin `item_height`, cada fila mide lo que pida su contenido: mensajes de un chat, tarjetas con
+textos de distinto largo. Las que aún no se han construido se suponen de `estimated_height`; al
+construirse, el layout las mide y la lista corrige su alto total. Lo que se está viendo **no
+salta** al corregirse lo de encima (la lista usa `scroll_anchor`), y si se estaba al final se sigue
+viendo el final.
+
+```python live size=360x260 align=stretch
+from aurora import App, Signal, box, column, text, virtual_list
+
+mensajes = Signal(
+    [
+        "Hola",
+        "¿Has visto la nueva versión? Las listas virtuales ya admiten filas de alto variable.",
+        "Sí 🙂",
+        "Y si estás al final, los mensajes nuevos se siguen viendo sin tocar nada.",
+    ]
+    * 50
+)
+
+
+def burbuja(i):
+    mio = i % 2 == 1
+    return box(padding=(4, 12), align="end" if mio else "start")[
+        box(padding=(8, 12), radius=14, max_width=240, bg="$primary" if mio else "$surface")[
+            text(mensajes()[i], size=13, color="#FFFFFF" if mio else "$text")
+        ]
+    ]
+
+
+def view():
+    return column(padding=(8, 0))[
+        virtual_list(len(mensajes()), burbuja, key="chat", estimated_height=48, stick_to_end=True),
+    ]
+
+
+App(view, size=(360, 260)).run()
+```
+
+- Los altos medidos se guardan por índice en la `key`: si cambia el contenido de una fila
+  visible, se vuelve a medir sola; una que no se ve conserva su último alto hasta que vuelva a
+  construirse.
+- Cuanto más se acerque `estimated_height` a la media real, más fiel es la barra de
+  desplazamiento antes de haber visto las filas. Sin `item_height`, la fila no ocupa un hueco
+  fijo: su raíz no necesita `grow=1`.
+- Medir una fila nueva cuesta O(log n) y saber qué filas se ven, O(log² n): con 100 000 filas
+  sigue construyendo solo las visibles.
+- `stick_to_end=True` (también con `item_height`) empieza al final y, mientras se esté al final,
+  lo sigue cuando llegan filas nuevas: un chat o un registro. Si el usuario sube a leer, no se
+  mueve.
 
 ### `tree(roots, children, *, key, label=str, ident=None, expanded=None, selected=None, icon=None, on_select=None, on_activate=None, item_height=30, indent=18, overscan=4, **estilo)` { #tree }
 
@@ -2114,6 +2167,8 @@ contenedores (como en CSS).
 | `src` | ruta o `bytes` | — | Origen de una imagen. Usa la primitiva `image()`. |
 | `fit` | `"contain"`, `"cover"`, `"fill"`, `"none"` | `"contain"` | Encaje de una imagen en su caja. |
 | `scroll` | `"x"`, `"y"`, `"both"` | — | Convierte la caja en contenedor desplazable. Usa la primitiva `scroll()`, que añade buenos valores por defecto. |
+| `scroll_anchor` | `bool` | `False` | En un `scroll`: cuando cambia el contenido (algo crece, aparece o se carga por encima de lo visible), corrige el desplazamiento para que el primer nodo que se veía arriba siga en su sitio; si estaba al final, el último que se veía abajo. Como `overflow-anchor` de CSS. `virtual_list` lo activa sin `item_height`. |
+| `stick_to_end` | `bool` | `False` | En un `scroll`: empieza al final y, si está al final cuando el contenido crece, sigue al final. Para chats y registros. |
 | `reveal` | `(top, bottom)` | — | En un `scroll`: franja de su contenido (en píxeles desde su inicio) que debe verse. Cuando cambia, el contenedor se desplaza lo justo para mostrarla; si no cambia, no interfiere con la rueda. Así sigue `tree` a la fila elegida. |
 
 > **Truco: columnas de igual ancho.** `grow=1, width=0` en cada hijo de una `row` reparte el

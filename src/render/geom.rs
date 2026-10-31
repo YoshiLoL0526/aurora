@@ -126,6 +126,8 @@ pub(super) fn same_geometry(a: &Node, b: &Node) -> bool {
         && sa.focusable == sb.focusable
         && sa.tooltip.is_some() == sb.tooltip.is_some()
         && sa.scroll == sb.scroll
+        && sa.scroll_anchor == sb.scroll_anchor
+        && sa.stick_to_end == sb.stick_to_end
         && sa.window_drag == sb.window_drag
         && sa.drop_target == sb.drop_target
         && sa.clip == sb.clip
@@ -378,6 +380,8 @@ impl<'a> Geometry<'a> {
                 axis,
                 max: Point::new(layout.scroll_width(), layout.scroll_height()),
                 viewport,
+                anchor: node.style.scroll_anchor,
+                stick: node.style.stick_to_end,
             };
             child_layer = self.layers.len();
             let owner = format!("scroll:{}", node.key);
@@ -564,6 +568,82 @@ impl Engine {
             std::mem::replace(&mut self.regions, g.regions),
             std::mem::replace(&mut self.layers, g.layers),
         )
+    }
+
+    /// Tras un layout, corrige el desplazamiento de los `scroll` con
+    /// `stick_to_end` (si estaban al final, siguen al final) y `scroll_anchor`
+    /// (el primer nodo que se veía arriba se queda donde estaba aunque cambie
+    /// lo de encima). `old` son las regiones y capas del layout anterior.
+    pub(super) fn anchor_scrolls(&mut self, old: &[HitRegion], old_layers: &[Layer]) {
+        for (i, layer) in self.layers.iter().enumerate() {
+            let Some(s) = layer.scroll.as_ref().filter(|s| s.anchor || s.stick) else {
+                continue;
+            };
+            let max = Point::new(s.max.x.max(0.0), s.max.y.max(0.0));
+            let Some(state) = self.scroll.get_mut(&s.key) else {
+                // Primera vez: un `stick_to_end` empieza al final.
+                if s.stick {
+                    self.scroll.entry(s.key.clone()).or_default().jump_to(max);
+                }
+                continue;
+            };
+            if s.stick && state.at_end() {
+                state.jump_to(max);
+                continue;
+            }
+            if !s.anchor || state.dragging || state.offset == Point::default() {
+                continue;
+            }
+            let Some((then, vp)) = old_layers
+                .iter()
+                .position(|l| l.owner == layer.owner)
+                .and_then(|o| Some((o, old_layers[o].scroll.as_ref()?.viewport)))
+            else {
+                continue;
+            };
+            // El primer nodo (en orden de árbol) que empieza dentro de la zona
+            // visible; o, si se estaba al final, el último que acaba en ella (así
+            // se sigue viendo el final aunque las últimas filas crezcan al medirse).
+            let start = Point::new(vp.left, vp.top) + state.offset;
+            let end = Point::new(vp.right, vp.bottom) + state.offset;
+            let edge = |r: &HitRegion| -> Point {
+                if state.at_end() {
+                    Point::new(r.local.right, r.local.bottom)
+                } else {
+                    Point::new(r.local.left, r.local.top)
+                }
+            };
+            let inside = |r: &&HitRegion| {
+                r.layer == then
+                    && if state.at_end() {
+                        r.local.bottom <= end.y + 0.5
+                            && r.local.right <= end.x + 0.5
+                            && r.local.bottom > start.y
+                    } else {
+                        r.local.top >= start.y - 0.5
+                            && r.local.left >= start.x - 0.5
+                            && r.local.top < end.y
+                    }
+            };
+            let before = if state.at_end() {
+                old.iter().rev().find(inside)
+            } else {
+                old.iter().find(inside)
+            };
+            let Some(before) = before else {
+                continue;
+            };
+            let Some(after) = self
+                .regions
+                .iter()
+                .find(|r| r.layer == i && r.key == before.key)
+            else {
+                continue;
+            };
+            let origin = |v: Rect| Point::new(v.left, v.top);
+            let delta = (edge(after) - origin(s.viewport)) - (edge(before) - origin(vp));
+            state.shift(delta);
+        }
     }
 
     /// Zona dañada por un layout incremental: la tinta propia, vieja y nueva,

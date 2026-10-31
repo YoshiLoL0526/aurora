@@ -9,7 +9,7 @@ from typing import Any, Generic, TypeVar
 from .._icons import _CHEVRON, _CHEVRON_RIGHT
 from ..elements import Element, TextLike, box, column, image, row, scroll, text
 from ..signal import Signal
-from ._state import _TREE_OPEN, _TREE_SELECTED, _VIEWPORTS
+from ._state import _HEIGHTS, _TREE_OPEN, _TREE_SELECTED, _VIEWPORTS
 
 N = TypeVar("N")
 
@@ -21,28 +21,55 @@ def virtual_list(
     count: int,
     item: Callable[[int], Element],
     *,
-    item_height: float,
+    item_height: float | None = None,
+    estimated_height: float = 40,
     key: str,
     gap: float = 0,
     overscan: int = 4,
+    stick_to_end: bool = False,
     role: str = "list",
     item_role: str = "listitem",
     **style: Any,
 ) -> Element:
     """Lista desplazable de `count` filas que solo construye las visibles.
 
-    `item(i)` devuelve la fila `i`. Todas las filas miden `item_height` (más `gap`
-    entre ellas), así que la lista sabe su alto total y qué filas caen en la zona
-    visible sin construirlas: con 100 000 filas, cada reconstrucción crea unas pocas
-    decenas. Se reconstruye al desplazarse solo cuando cambia el rango visible;
-    `overscan` filas de más por cada lado cubren el desplazamiento entre medias.
+    `item(i)` devuelve la fila `i`. Con `item_height`, todas las filas miden eso
+    (más `gap` entre ellas), así que la lista sabe su alto total y qué filas caen en
+    la zona visible sin construirlas: con 100 000 filas, cada reconstrucción crea unas
+    pocas decenas. Se reconstruye al desplazarse solo cuando cambia el rango visible;
+    `overscan` filas de más por cada lado cubren el desplazamiento entre medias. Cada
+    fila ocupa un hueco de todo el ancho y `item_height` de alto: dale `grow=1` a su
+    raíz para que lo rellene.
 
-    Cada fila ocupa un hueco de todo el ancho y `item_height` de alto: dale `grow=1`
-    a su raíz para que lo rellene. `key` es obligatoria: guarda la posición y la zona
-    visible. Con `@component`, las filas que siguen visibles no se reconstruyen.
+    Sin `item_height`, cada fila mide lo que pida su contenido (mensajes, tarjetas):
+    las que no se han visto aún se suponen de `estimated_height` y, al construirse,
+    el layout las mide y la lista corrige su alto total sin que salte lo que se está
+    viendo. Cuanto más se acerque la estimación a la media, más fiel es la barra.
+
+    `stick_to_end=True` empieza al final y, mientras se esté al final, lo sigue
+    cuando llegan filas nuevas (un chat, un registro).
+
+    `key` es obligatoria: guarda la posición, la zona visible y los altos medidos
+    (por índice). Con `@component`, las filas que siguen visibles no se reconstruyen.
     Para los lectores de pantalla es una `"list"` de `"listitem"`s (con su posición);
     `table` cambia esos roles con `role`/`item_role`.
     """
+    row_props = lambda i: {"role": item_role, "position_in_set": i + 1, "set_size": count}
+    if item_height is None:
+        return _variable(
+            count,
+            item,
+            estimated=estimated_height,
+            key=key,
+            gap=gap,
+            overscan=overscan,
+            role=role,
+            row_props=row_props,
+            stick_to_end=stick_to_end,
+            **style,
+        )
+    if stick_to_end:
+        style["stick_to_end"] = True
     return _virtual(
         count,
         item,
@@ -51,7 +78,7 @@ def virtual_list(
         gap=gap,
         overscan=overscan,
         role=role,
-        row_props=lambda i: {"role": item_role, "position_in_set": i + 1, "set_size": count},
+        row_props=row_props,
         **style,
     )
 
@@ -100,6 +127,133 @@ def _virtual(
         for i in range(first, last)
     ]
     return scroll(key=key, on_scroll=on_scroll, role=role, **style)[box(height=total, shrink=0)[rows]]
+
+
+class _Heights:
+    """Altos medidos de las filas de una `virtual_list` de alto variable.
+
+    Guarda, por fila, cuánto difiere su alto medido del estimado en un árbol de
+    Fenwick: el inicio de la fila `i` es `i` filas estimadas más la suma de las
+    diferencias de las anteriores, en O(log n), y medir una fila cuesta lo mismo.
+    """
+
+    __slots__ = ("diff", "tree", "version")
+
+    def __init__(self) -> None:
+        self.tree = [0.0]  # tree[i] (desde 1) suma las diferencias de (i - i&-i, i]
+        self.diff: dict[int, float] = {}
+        self.version = Signal(0)
+
+    def resize(self, count: int) -> None:
+        n = len(self.tree) - 1
+        if count < n:
+            # Cada nodo solo depende de los anteriores: recortar sigue siendo válido.
+            del self.tree[count + 1 :]
+            self.diff = {i: d for i, d in self.diff.items() if i < count}
+        elif count - n <= 64:
+            # Pocas filas nuevas (un chat que crece): se añaden en O(log n) cada una.
+            for i in range(n + 1, count + 1):
+                self.tree.append(self.before(i - 1) - self.before(i - (i & -i)))
+        else:
+            self.tree = [0.0] * (count + 1)
+            for i, d in self.diff.items():
+                self._add(i, d)
+
+    def _add(self, i: int, d: float) -> None:
+        i += 1
+        while i < len(self.tree):
+            self.tree[i] += d
+            i += i & -i
+
+    def before(self, i: int) -> float:
+        """Suma de las diferencias de las filas anteriores a `i`."""
+        total = 0.0
+        while i > 0:
+            total += self.tree[i]
+            i -= i & -i
+        return total
+
+    def measure(self, i: int, diff: float) -> None:
+        """Apunta la diferencia medida de la fila `i`; si cambia, la lista se reconstruye."""
+        old = self.diff.get(i, 0.0)
+        if i < len(self.tree) - 1 and abs(diff - old) >= 0.5:
+            self.diff[i] = diff
+            self._add(i, diff - old)
+            self.version.set(self.version() + 1)
+
+
+def _variable(
+    count: int,
+    item: Callable[[int], Element],
+    *,
+    estimated: float,
+    key: str,
+    gap: float,
+    overscan: int,
+    role: str,
+    row_props: Callable[[int], dict[str, Any]],
+    stick_to_end: bool,
+    **style: Any,
+) -> Element:
+    """`virtual_list` sin `item_height`: las filas van en flujo y se miden al maquetarse.
+    Las que no se ven las sustituyen dos rellenos con su alto (medido o estimado), y el
+    núcleo mantiene quieto lo que se ve (`scroll_anchor`) cuando cambian."""
+    if estimated <= 0:
+        raise ValueError("estimated_height debe ser positivo")
+    viewport = _VIEWPORTS.setdefault(key, Signal(None))
+    heights: _Heights = _HEIGHTS.setdefault(key, _Heights())
+    heights.version()
+    heights.resize(count)
+    stride = estimated + gap
+
+    def start(i: int) -> float:
+        """Dónde empieza la fila `i` (o, con `i == count`, el final más un `gap`)."""
+        return i * stride + heights.before(i)
+
+    def index_at(y: float) -> int:
+        """La fila que ocupa la altura `y` del contenido."""
+        lo, hi = 0, count
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if start(mid) <= y:
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo
+
+    def visible(y: float, height: float) -> tuple[int, int]:
+        first = max(0, index_at(y) - overscan)
+        last = min(count, index_at(y + height) + 1 + overscan)
+        return first, max(first, last)
+
+    def on_scroll(e: Any) -> None:
+        current = viewport()
+        if current is None or visible(*current) != visible(e.y, e.height):
+            viewport.set((e.y, e.height))
+
+    def measured(i: int) -> Callable[[Any], None]:
+        return lambda e: heights.measure(i, e.height - estimated)
+
+    first, last = visible(*(viewport() or (0.0, _GUESSED_HEIGHT)))
+    total = max(0.0, start(count) - gap)
+    rows = [
+        column(key=f"{key}#{i}", shrink=0, on_resize=measured(i), **row_props(i))[item(i)]
+        for i in range(first, last)
+    ]
+    # Lo que no se construye, arriba y abajo, lo ocupan los rellenos.
+    content = (
+        column(gap=gap, shrink=0, padding=(start(first), 0, start(count) - start(last), 0))[rows]
+        if rows
+        else box(height=total, shrink=0)
+    )
+    return scroll(
+        key=key,
+        on_scroll=on_scroll,
+        role=role,
+        scroll_anchor=True,
+        stick_to_end=stick_to_end,
+        **style,
+    )[content]
 
 
 @dataclass(frozen=True, slots=True)

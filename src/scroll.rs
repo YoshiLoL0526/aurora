@@ -104,6 +104,24 @@ impl ScrollState {
         self.offset = self.clamp(self.offset);
     }
 
+    /// Está al final del contenido (o hacia allí va): `stick_to_end` lo mantiene.
+    pub fn at_end(&self) -> bool {
+        self.target.x >= self.max.x - 0.5 && self.target.y >= self.max.y - 0.5
+    }
+
+    /// Salta a `p` sin animación (los límites se ajustan al colocar la capa).
+    pub fn jump_to(&mut self, p: Point) {
+        self.offset = p;
+        self.target = p;
+    }
+
+    /// Mueve el desplazamiento (y su destino, si se está animando) `delta`
+    /// píxeles: lo que se veía sigue en su sitio aunque el contenido cambie.
+    pub fn shift(&mut self, delta: Point) {
+        self.offset += delta;
+        self.target += delta;
+    }
+
     fn clamp(&self, p: Point) -> Point {
         Point::new(p.x.clamp(0.0, self.max.x), p.y.clamp(0.0, self.max.y))
     }
