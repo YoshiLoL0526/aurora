@@ -557,15 +557,12 @@ impl Node {
         }
     }
 
-    /// Falla con la primera key repetida del subárbol (en preorden).
-    fn check_unique<'a>(&'a self, seen: &mut HashSet<&'a str>) -> PyResult<()> {
-        if !seen.insert(&self.key) {
-            return Err(PyValueError::new_err(format!(
-                "key duplicada en el árbol de la vista: {:?}",
-                self.key
-            )));
+    /// Las keys del subárbol, en preorden.
+    fn collect_keys<'a>(&'a self, out: &mut Vec<&'a str>) {
+        out.push(&self.key);
+        for child in &self.children {
+            child.collect_keys(out);
         }
-        self.children.iter().try_for_each(|c| c.check_unique(seen))
     }
 
     /// Número de nodos del subárbol, incluido este.
@@ -1008,6 +1005,10 @@ pub struct Parser {
     memo: HashMap<usize, Memo>,
     /// Tamaño de la memoria tras la última poda (se poda al doblarse).
     pruned: usize,
+    /// Último árbol devuelto y sus keys: las de uno nuevo se comprueban solo en
+    /// lo que cambió respecto a él (ver `key_changes`).
+    prev: Option<Arc<Node>>,
+    keys: HashSet<String>,
 }
 
 /// Nodo parseado de un dict memorizado.
@@ -1027,7 +1028,7 @@ const PRUNE_MIN: usize = 256;
 impl Parser {
     pub fn parse(&mut self, obj: &Bound<'_, PyAny>) -> PyResult<Node> {
         let root = parse_node(obj, "0", &TextProps::default(), &mut self.memo)?;
-        root.check_unique(&mut HashSet::new())?;
+        self.check_keys(&root)?;
         if self.memo.len() > PRUNE_MIN.max(self.pruned * 2) {
             // Coste amortizado: solo cuando la memoria dobla lo que quedó en la poda anterior.
             // SAFETY: con el GIL tomado (`obj` lo demuestra), y el dict está vivo:
@@ -1036,8 +1037,84 @@ impl Parser {
                 .retain(|_, m| unsafe { pyo3::ffi::Py_REFCNT(m.dict.as_ptr()) } > 1);
             self.pruned = self.memo.len();
         }
-        // La raíz compartida con la memoria se copia sin sus hijos (que se comparten).
-        Ok(Arc::try_unwrap(root).unwrap_or_else(|shared| shared.clone_ref(obj.py())))
+        // Copia de la raíz sin sus hijos (que se comparten): la otra se queda en `prev`.
+        let node = root.clone_ref(obj.py());
+        self.prev = Some(root);
+        Ok(node)
+    }
+
+    /// Falla si el árbol nuevo repite alguna key. Un árbol válido no repite
+    /// ninguna, así que basta con mirar las que entran: no pueden estar entre
+    /// las del árbol anterior que siguen, ni repetirse entre ellas.
+    fn check_keys(&mut self, root: &Node) -> PyResult<()> {
+        let (mut removed, mut added) = (Vec::new(), Vec::new());
+        match &self.prev {
+            Some(prev) => key_changes(prev, root, &mut removed, &mut added),
+            None => root.collect_keys(&mut added),
+        }
+        let removed: HashSet<&str> = removed.into_iter().collect();
+        let mut fresh = HashSet::with_capacity(added.len());
+        for key in &added {
+            let kept = self.keys.contains(*key) && !removed.contains(key);
+            if kept || !fresh.insert(*key) {
+                return Err(PyValueError::new_err(format!(
+                    "key duplicada en el árbol de la vista: {key:?}"
+                )));
+            }
+        }
+        for key in removed {
+            self.keys.remove(key);
+        }
+        self.keys.extend(added.into_iter().map(str::to_owned));
+        Ok(())
+    }
+}
+
+/// Keys que salen (`removed`) y que entran (`added`) al pasar de `old` a `new`,
+/// sin recorrer los subárboles compartidos (el mismo `Arc`): cuesta lo que
+/// cambió más los hijos de los nodos que cambiaron.
+fn key_changes<'a>(
+    old: &'a Node,
+    new: &'a Node,
+    removed: &mut Vec<&'a str>,
+    added: &mut Vec<&'a str>,
+) {
+    if old.key != new.key {
+        removed.push(&old.key);
+        added.push(&new.key);
+    }
+    let (a, b) = (&old.children, &new.children);
+    // Lo habitual: los mismos hijos en el mismo orden (compartidos o con la misma key).
+    if a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.key == y.key) {
+        for (x, y) in a.iter().zip(b) {
+            if !Arc::ptr_eq(x, y) {
+                key_changes(x, y, removed, added);
+            }
+        }
+        return;
+    }
+    let before: HashSet<*const Node> = a.iter().map(Arc::as_ptr).collect();
+    let mut after = HashSet::with_capacity(b.len());
+    for child in b {
+        if !after.insert(Arc::as_ptr(child)) {
+            // El mismo subárbol dos veces entre hermanos: sus keys se repiten.
+            child.collect_keys(added);
+        }
+    }
+    // Los hijos que no siguen, por key: uno nuevo con la misma key se compara con él.
+    let mut gone: HashMap<&str, &Node> = a
+        .iter()
+        .filter(|c| !after.contains(&Arc::as_ptr(c)))
+        .map(|c| (c.key.as_str(), &**c))
+        .collect();
+    for child in b.iter().filter(|c| !before.contains(&Arc::as_ptr(c))) {
+        match gone.remove(child.key.as_str()) {
+            Some(was) => key_changes(was, child, removed, added),
+            None => child.collect_keys(added),
+        }
+    }
+    for was in gone.into_values() {
+        was.collect_keys(removed);
     }
 }
 
