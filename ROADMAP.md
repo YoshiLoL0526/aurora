@@ -111,9 +111,10 @@ dependa de lo que cambia, no del tamaño de la vista.*
 
 - ✅ **Documentación completa**: toda la API pública en la referencia (comprobado por un test),
   la guía al día con lo reciente y una página de recetas para las tareas habituales
-- ⏳ **Cada componente completo**: test de render, de interacción con `Pilot` y de su nodo en el
+- ✅ **Cada componente completo**: test de render, de interacción con `Pilot` y de su nodo en el
   árbol de accesibilidad, y manejo con teclado si es interactivo, con una matriz de cobertura
-  que comprueba un test
+  que comprueba un test ([`docs/coverage.md`](https://yoshilol0526.github.io/aurora/coverage/)). Quedan para la 1.0 los enlaces
+  de `rich_text`/`markdown` en el orden de Tab y el zoom de `chart` con el teclado
 - ✅ **Control de 60 fps en CI**: presupuesto de 16,7 ms por frame para las operaciones
   interactivas de los benchmarks, y la CI falla si se pasa
 - ✅ Pequeños arreglos: `target-version` de ruff alineado con `requires-python`

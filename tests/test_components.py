@@ -643,7 +643,7 @@ def test_spinner_is_static_with_motion_off(tmp_path):
 def test_skeleton_draws_lines_with_a_shorter_last(tmp_path):
     view = lambda: column(width=200, bg="#000000")[skeleton(lines=2, height=10, gap=6)]
     pilot = App(view, size=(220, 60)).pilot()
-    block = (26, 31, 46)  # $surface_hover
+    block = (32, 38, 58)  # $surface_pressed
     assert _pixel(pilot, tmp_path, 100, 5) == block  # primera línea, ancho completo
     assert _pixel(pilot, tmp_path, 100, 21) == block  # segunda línea (hasta el 60 %)
     assert _pixel(pilot, tmp_path, 150, 21) == (0, 0, 0)

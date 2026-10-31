@@ -51,6 +51,27 @@ def textarea(
     return _field(value, on_change, on_submit, key, styles)
 
 
+_NAMED_ROLES = frozenset(
+    ("textbox", "textarea", "combobox", "spinbutton", "slider", "checkbox", "switch", "radiogroup", "listbox")
+)
+
+
+def _name_control(control: Element, label: str) -> bool:
+    """Da `label` como nombre accesible al primer control del subárbol (un campo de
+    texto o un nodo con rol de control) si no tiene uno. Devuelve si lo nombró."""
+    stack = [control]
+    while stack:
+        node = stack.pop()
+        if node.kind == "input" or node.style.get("role") in _NAMED_ROLES:
+            # La raíz de un `@component` reutiliza su serialización: no se toca.
+            if node.style.get("label") is not None or node._memo is not None:
+                return node.style.get("label") is not None
+            node.style["label"] = label
+            return True
+        stack.extend(reversed([c for c in node.children if isinstance(c, Element)]))
+    return False
+
+
 def field(
     control: Element,
     *,
@@ -67,8 +88,10 @@ def field(
     la columna (`gap`, `width`, `grow`…).
     """
     message = error if error else hint
+    named = label is not None and _name_control(control, label)
     return column(**{"gap": 6, "key": key, **style})[
-        label is not None and text(label, size=12, weight=600),
+        # Si el control lleva el nombre, el texto visible no se anuncia dos veces.
+        label is not None and text(label, size=12, weight=600, hidden=named),
         control,
         message is not None and text(message, size=11, color="$danger" if error else "$muted"),
     ]
@@ -180,11 +203,20 @@ def radio(options: Options, selected: Signal[Any], *, key: str | None = None, **
 
     `options` son valores (o pares `(valor, etiqueta)`) y `selected`, el `Signal`
     con el valor activo. Cada fila (círculo y etiqueta) se activa con clic, Enter
-    o Espacio y tiene la key `f"{key}-{valor}"`. El punto interior entra
+    o Espacio y tiene la key `f"{key}-{valor}"`; con el foco en el grupo, las
+    flechas eligen la opción anterior o la siguiente. El punto interior entra
     encogiéndose, como la marca de un `checkbox`.
     """
     items = _items(options)
+    values = [v for v, _ in items]
     base = key or f"radio-{id(selected)}"
+
+    def on_key(e: Any) -> bool | None:
+        if e.key in ("ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight") and selected() in values:
+            step = 1 if e.key in ("ArrowDown", "ArrowRight") else -1
+            selected.set(values[(values.index(selected()) + step) % len(values)])
+            return True
+        return None
 
     def option(index: int, value: Any, label: str) -> Element:
         on = selected() == value
@@ -223,7 +255,7 @@ def radio(options: Options, selected: Signal[Any], *, key: str | None = None, **
             on_click=lambda v=value: selected.set(v),
         )[circle, text(label, transition=motion.fast(), hidden=True)]
 
-    return column(**{"gap": 10, "role": "radiogroup", **style})[
+    return column(**{"gap": 10, "role": "radiogroup", "on_key": on_key, **style})[
         [option(i, v, label) for i, (v, label) in enumerate(items)]
     ]
 
@@ -449,6 +481,7 @@ def number_input(
         )[image(icon, width=12)]
 
     shown = draft() if draft() is not None else fmt(current)
+    name = style.pop("label", None)  # el nombre lo lleva el campo, que es el que tiene el rol
     a11y_range = {name: v for name, v in (("value_min", min), ("value_max", max)) if v is not None}
     field = Element(
         "input",
@@ -461,6 +494,7 @@ def number_input(
         on_blur=settle,
         on_key=on_key,
         role="spinbutton",
+        label=name,
         value_step=step,
         padding=(6, 0),
         **a11y_range,

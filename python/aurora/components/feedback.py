@@ -80,8 +80,9 @@ def skeleton(
     `estilo` van a cada bloque (`bg`, `radius`, `width`…).
     """
     # Marcador de carga: decorativo, no se anuncia.
+    # `$surface_pressed` y no `$surface_hover`: este casi no se distingue del fondo claro.
     base = {
-        "bg": "$surface_hover",
+        "bg": "$surface_pressed",
         "radius": "$sm",
         "pulse": motion.pulse(1.6, floor=0.55),
         "hidden": True,

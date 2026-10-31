@@ -252,6 +252,7 @@ def select(
     k = key or f"select-{id(value)}"
     open_ = open_signal(k)
     current = next((label for v, label in items if v == value()), None)
+    name = style.pop("label", None)  # el nombre lo lleva el disparador, que es el que tiene el rol
 
     def close() -> None:
         open_.set(False)
@@ -287,6 +288,7 @@ def select(
         expanded=open_(),
         value=current,
         placeholder=placeholder,
+        label=name,
     )[
         current is not None and text(current, max_lines=1, hidden=True),
         current is None and text(placeholder, color="$muted", max_lines=1, hidden=True),

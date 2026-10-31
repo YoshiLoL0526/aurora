@@ -844,7 +844,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`. |
 | `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
 | `role` | Rol de accesibilidad para los lectores de pantalla: `"button"`, `"checkbox"`, `"switch"`, `"radio"`, `"radiogroup"`, `"slider"`, `"textbox"`, `"combobox"`, `"option"`, `"tab"`, `"tablist"`, `"dialog"`, `"menu"`, `"menuitem"`, `"list"`, `"listitem"`, `"table"`, `"row"`, `"cell"`, `"columnheader"`, `"progressbar"`, `"image"`, `"heading"`, `"status"`, `"link"`, `"region"`, `"separator"`… (los nombres de ARIA en minúscula). Un rol desconocido lanza `ValueError`. Ver [Accesibilidad](#accesibilidad). |
-| `label` | Nombre con el que el lector anuncia el elemento. Por defecto, su texto (`text`, o el de un botón o casilla). |
+| `label` | Nombre con el que el lector anuncia el elemento. Por defecto, su texto (`text`, o el de un botón o casilla). En los controles compuestos (`select`, `combobox`, `number_input`, los selectores de fecha, hora y color) va al nodo que tiene el rol, y `field(..., label=)` lo pone en el control que envuelve. |
 | `description` | Texto secundario de ayuda; si no se indica, el `tooltip` hace de descripción. |
 | `value` | Valor anunciado: texto (`"3 de 10"`) o número (`0.5`). En un campo de texto, el valor es lo que hay escrito. |
 | `checked` | `bool`. Estado de `checkbox` y `switch` (las casillas y los interruptores lo ponen solos). |
@@ -1251,7 +1251,8 @@ column(gap=12)[
 
 Grupo de botones de opción: uno activo a la vez. `options` son valores (o pares `(valor, etiqueta)`)
 y `selected`, el `Signal` con el valor activo. Cada fila (círculo y etiqueta) se activa con clic,
-Enter o Espacio y tiene la key `f"{key}-{valor}"`. El punto interior entra encogiéndose.
+Enter o Espacio y tiene la key `f"{key}-{valor}"`; con el foco en el grupo, las flechas eligen la
+opción anterior o la siguiente. El punto interior entra encogiéndose.
 
 ```python live
 from aurora import Signal, radio  # oculto
@@ -2011,7 +2012,9 @@ accordion(
 
 Campo de formulario: etiqueta encima, el control y, debajo, un mensaje de ayuda o de error. `error`
 sustituye a `hint` en color de peligro (`$danger`): pásalo con el texto del problema y quítalo
-cuando el valor sea válido. Los `estilo` van a la columna (`gap`, `width`, `grow`…).
+cuando el valor sea válido. Los `estilo` van a la columna (`gap`, `width`, `grow`…). La etiqueta
+es también el nombre accesible del control (si no trae uno), así que el lector anuncia «Correo,
+campo de texto» y no la etiqueta suelta.
 
 ```python live
 from aurora import Signal, field, text_input  # oculto

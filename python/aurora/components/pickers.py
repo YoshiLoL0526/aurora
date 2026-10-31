@@ -51,6 +51,7 @@ def combobox(
     """
     items = _items(options)
     k = key or f"combobox-{id(value)}"
+    name = style.pop("label", None)  # el nombre lo lleva el campo, que es el que tiene el rol
     open_ = open_signal(k)
     query = _QUERIES.setdefault(k, Signal(None))
     active = _ACTIVE.setdefault(k, Signal(0))
@@ -116,6 +117,7 @@ def combobox(
         on_key=on_key,
         role="combobox",
         expanded=open_(),
+        label=name,
     )
 
     def option(i: int, v: Any, label: str, n: int) -> Element:
@@ -379,6 +381,7 @@ def date_picker(
     ]
 
     label = format(current) if current is not None else None
+    name = style.pop("label", None)  # el nombre lo lleva el disparador, que es el que tiene el rol
     trigger = row(
         **{**_INPUT_STYLE, "padding": (0, 12)},
         key=k,
@@ -392,6 +395,7 @@ def date_picker(
         expanded=open_(),
         value=label,
         placeholder=placeholder,
+        label=name,
     )[
         image(_CALENDAR, width=16),
         text(label or placeholder, color="$text" if label else "$muted", max_lines=1, hidden=True),
@@ -510,6 +514,7 @@ def time_picker(
         reveal=(focus * (_OPTION + gap), (focus + 1) * (_OPTION + gap)) if focus >= 0 else None,
     )[[option(i, t) for i, t in enumerate(times)]]
     label = show(current) if current is not None else None
+    name = style.pop("label", None)  # el nombre lo lleva el disparador, que es el que tiene el rol
     trigger = row(
         **{**_INPUT_STYLE, "padding": (0, 12)},
         key=k,
@@ -523,6 +528,7 @@ def time_picker(
         expanded=open_(),
         value=label,
         placeholder=placeholder,
+        label=name,
     )[
         image(_CLOCK, width=16),
         text(label or placeholder, color="$text" if label else "$muted", max_lines=1, hidden=True),
@@ -809,7 +815,7 @@ def color_picker(
         role="combobox",
         expanded=open_(),
         value=current,
-        label="Color",
+        label=style.pop("label", "Color"),
     )[
         box(width=24, height=24, radius=6, bg=current, border_width=1, border_color="#80808040", shrink=0),
         text(current, size=13, max_lines=1, hidden=True),

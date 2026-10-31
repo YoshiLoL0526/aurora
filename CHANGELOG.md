@@ -73,6 +73,22 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - El parseo del árbol en el núcleo solo busca en cada dict las claves que tiene: la fase `parse`
   cuesta entre la mitad y un tercio (en `typing`, de ~8 a ~3 ms).
 
+### Corregido
+
+- `field(control, label=...)` da su etiqueta como nombre accesible al control que envuelve (el
+  campo de texto, el desplegable…); antes el lector anunciaba el texto suelto y el control sin
+  nombre.
+- `combobox`, `number_input`, `select`, `date_picker`, `time_picker` y `color_picker` llevan el
+  `label=` que se les pasa al nodo con el rol (el campo o el disparador); antes se quedaba en el
+  contenedor, que el árbol de accesibilidad omite, y el control salía sin nombre.
+- En un `radio` enfocado, las flechas eligen la opción anterior o la siguiente, como en
+  `segmented` y `tabs` y como espera un lector de un `radiogroup`.
+- `skeleton` usa `$surface_pressed`: con `$surface_hover` casi no se distinguía del fondo del tema
+  claro.
+- Cobertura por componente: `tests/test_coverage.py` pinta cada componente público con sus valores
+  por defecto en los dos temas, comprueba su rol y nombre accesibles y que los decorativos no
+  roban foco ni clics, y fija la matriz de pruebas de `docs/coverage.md`.
+
 ## [0.7.0] — 2026-10-31
 
 ### Añadido
