@@ -185,6 +185,12 @@ class ScrollEvent:
     width: float
     height: float
 
+class ResizeEvent:
+    """Evento que reciben los manejadores `on_resize`: tamaño con el que se maquetó el nodo (px lógicos)."""
+
+    width: float
+    height: float
+
 class DragEvent:
     """Evento que reciben los manejadores `on_drag`: posición del puntero, desplazamiento
     desde donde se pulsó (px lógicos) y fase del gesto (`"start"`, `"move"` o `"end"`)."""

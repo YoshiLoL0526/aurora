@@ -6,7 +6,21 @@ from pathlib import Path
 
 import pytest
 
-from aurora import MIDNIGHT, App, Signal, _core, box, button, card, column, popover, row, spacer, text
+from aurora import (
+    MIDNIGHT,
+    App,
+    Signal,
+    _core,
+    box,
+    button,
+    card,
+    column,
+    popover,
+    row,
+    spacer,
+    splitter,
+    text,
+)
 
 
 def _png_size(path: Path) -> tuple[int, int]:
@@ -185,3 +199,17 @@ def test_popover_paints_its_panel_where_it_was_placed(tmp_path):
     pilot.png(str(path))
     # Panel con el color de superficie del tema (MIDNIGHT: #131722), cerca de su borde inferior.
     assert _png_pixel(path, int(x + w - 20), int(y + h - 6)) == (0x13, 0x17, 0x22)
+
+
+def test_splitter_paints_a_divider_line_between_the_panes(tmp_path):
+    view = lambda: column()[
+        splitter(box(grow=1, bg="#203040"), box(grow=1, bg="#402030"), size=Signal(120.0), key="s")
+    ]
+    pilot = App(view, size=(300, 160)).pilot()
+    x, y, w, h = pilot.rect("s-handle")
+    path = tmp_path / "splitter.png"
+    pilot.png(str(path))
+    # Línea de 1 px con el color del borde (MIDNIGHT: #252B3B) en el centro de la franja.
+    assert _png_pixel(path, int(x + w // 2), int(y + h / 2)) == (0x25, 0x2B, 0x3B)
+    assert _png_pixel(path, int(x - 10), int(y + h / 2)) == (0x20, 0x30, 0x40)
+    assert _png_pixel(path, int(x + w + 10), int(y + h / 2)) == (0x40, 0x20, 0x30)

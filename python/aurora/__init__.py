@@ -19,7 +19,7 @@ from typing import Any, Literal, TypeVar
 from . import _core, _motion, _windowstate, animate, dialogs, menus, reactive
 from . import inspector as _inspector
 from . import reload as _reload
-from ._core import DragEvent, KeyEvent, Pilot, ScrollEvent
+from ._core import DragEvent, KeyEvent, Pilot, ResizeEvent, ScrollEvent
 from ._deprecation import AuroraDeprecationWarning
 from .canvas import Canvas, Path, canvas
 from .charts import chart
@@ -46,6 +46,7 @@ from .components import (
     skeleton,
     slider,
     spinner,
+    splitter,
     stat,
     switch,
     tabs,
@@ -74,6 +75,7 @@ __all__ = [
     "KeyEvent",
     "Path",
     "Pilot",
+    "ResizeEvent",
     "ScrollEvent",
     "Signal",
     "Theme",
@@ -113,6 +115,7 @@ __all__ = [
     "slider",
     "spacer",
     "spinner",
+    "splitter",
     "stat",
     "switch",
     "table",

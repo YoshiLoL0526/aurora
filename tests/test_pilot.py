@@ -7,7 +7,32 @@ from datetime import date
 import pytest
 from test_render import _png_pixel
 
-from aurora import MIDNIGHT, App, Signal, _core, box, button, column, date_picker, popover, row, spacer, text
+from aurora import (
+    MIDNIGHT,
+    App,
+    Signal,
+    _core,
+    box,
+    button,
+    column,
+    date_picker,
+    popover,
+    row,
+    scroll,
+    spacer,
+    splitter,
+    text,
+)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_component_state():
+    """Cada test empieza sin el estado por key de los componentes (desplegables, splitters…)."""
+    from aurora.components import _state
+
+    for name, store in vars(_state).items():
+        if not name.startswith("__") and isinstance(store, dict):
+            store.clear()
 
 
 def test_click_runs_handler_and_rebuilds():
@@ -523,3 +548,91 @@ def test_popover_anchors_to_the_trigger_even_in_a_stretched_wrapper():
     _, by, _, bh = pilot.rect("btn")
     assert pilot.rect("pop")[3] > bh
     assert pilot.rect("pop-panel")[1] == by + bh + 6
+
+
+# --- splitter ---------------------------------------------------------------------
+
+
+def _split_app(size, **kwargs):
+    view = lambda: column()[splitter(scroll()[text("A")], scroll()[text("B")], size=size, key="s", **kwargs)]
+    return App(view, size=(500, 300)).pilot()
+
+
+def test_splitter_drag_resizes_and_respects_both_minimums():
+    size, seen = Signal(150.0), []
+    pilot = _split_app(size, min_sizes=(100, 120), on_change=seen.append)
+    assert pilot.rect("s-first")[2] == 150
+    pilot.drag("s-handle", 80)
+    assert size() == 230
+    assert pilot.rect("s-first")[2] == 230
+    assert pilot.rect("s-second")[0] == 237  # tras la franja de 7 px
+    pilot.drag("s-handle", 1000)
+    assert size() == 500 - 7 - 120
+    pilot.drag("s-handle", -1000)
+    assert size() == 100
+    assert seen[-1] == 100
+
+
+def test_splitter_keyboard_and_screen_reader_actions():
+    size = Signal(200.0)
+    pilot = _split_app(size, step=10)
+    pilot.focus("s-handle")
+    pilot.press("right")
+    assert size() == 210
+    pilot.press("left")
+    pilot.press("left")
+    assert size() == 190
+    pilot.press("end")
+    assert size() == 500 - 7 - 80
+    pilot.press("home")
+    assert size() == 80
+    pilot.a11y_action("s-handle", "increment")
+    assert size() == 90
+    pilot.a11y_action("s-handle", "set_value", 300.0)
+    assert size() == 300
+    node = next(n for n in pilot.a11y_tree() if n["key"] == "s-handle")
+    assert node["role"] == "separator"
+    assert node["orientation"] == "vertical"
+    assert node["numeric_value"] == 300
+
+
+def test_splitter_column_direction_uses_vertical_keys_and_drag():
+    size = Signal(100.0)
+    pilot = _split_app(size, direction="column")
+    assert pilot.rect("s-first")[3] == 100
+    pilot.drag("s-handle", 0, 40)
+    assert size() == 140
+    pilot.focus("s-handle")
+    pilot.press("up")
+    assert size() == 124
+    assert next(n for n in pilot.a11y_tree() if n["key"] == "s-handle")["orientation"] == "horizontal"
+
+
+def test_splitter_without_signal_keeps_its_size_by_key():
+    pilot = App(
+        lambda: column()[splitter(text("A"), text("B"), size=180, key="libre")], size=(500, 300)
+    ).pilot()
+    pilot.drag("libre-handle", 20)
+    assert pilot.rect("libre-first")[2] == 200
+    with pytest.raises(ValueError, match="key"):
+        splitter(text("A"), text("B"), size=100)
+    with pytest.raises(ValueError, match="direction"):
+        splitter(text("A"), text("B"), size=Signal(1.0), direction="diagonal")  # ty: ignore[invalid-argument-type]
+
+
+def test_splitter_first_pane_yields_when_the_window_shrinks():
+    size = Signal(400.0)
+    pilot = _split_app(size, min_sizes=(100, 150))
+    # 500 - 7 - 150: el primer panel cede para respetar el mínimo del segundo.
+    assert pilot.rect("s-first")[2] == 343
+    assert size() == 400
+
+
+def test_on_resize_reports_the_laid_out_size():
+    sizes = []
+    view = lambda: row(padding=10)[
+        box(key="b", grow=1, height=30, on_resize=lambda e: sizes.append((e.width, e.height)))
+    ]
+    pilot = App(view, size=(200, 100)).pilot()
+    pilot.frame()
+    assert sizes == [(180, 30)]

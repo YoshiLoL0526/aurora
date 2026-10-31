@@ -701,6 +701,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | Argumento | Descripción |
 |---|---|
 | `on_scroll` | En un `scroll`: callable que recibe un `ScrollEvent` cuando cambian el desplazamiento o la zona visible. Ver [`scroll`](#scroll-axisy-estilo). |
+| `on_resize` | Callable que recibe un `ResizeEvent` (`width`, `height`: tamaño de la caja del elemento) cuando el layout le da otro tamaño, también la primera vez que se maqueta. Para adaptar la vista al espacio disponible (lo usa `splitter`). Como `on_scroll`, no reconstruye la vista por sí solo: cambia un `Signal` si hace falta. |
 | `on_click` | Callable sin argumentos. Hace al elemento interactivo: cursor de mano, estados hover/pressed y clics. |
 | `on_drag` | Callable que recibe un [`DragEvent`](#dragevent). Pulsar sobre el elemento empieza un arrastre: le llegan todos los movimientos hasta soltar, aunque el puntero salga de su caja. Si el puntero llega a moverse, el gesto no cuenta como clic. Hace al elemento interactivo (hover/pressed) pero no enfocable. |
 | `on_key` | Callable que recibe un [`KeyEvent`](#keyevent). Recibe las teclas cuando el foco está en el elemento o en uno de sus descendientes (la raíz las recibe siempre). Devuelve `True` para darla por atendida. |
@@ -721,6 +722,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | `live` | `"polite"` o `"assertive"`: región viva — sus cambios se anuncian solos (lo usan `toast`). |
 | `position_in_set` / `set_size` | Posición y tamaño del conjunto: «elemento 3 de 100» (`radio`, `virtual_list` y `table` los ponen solos). |
 | `sort` | `"ascending"` o `"descending"` en una cabecera ordenada (`table`). |
+| `orientation` | `"horizontal"` o `"vertical"`: orientación de un `"separator"` (`splitter`) o de una barra. |
 | `modal` | `bool`. El diálogo bloquea el resto de la interfaz (lo pone `dialog`). |
 | `value_min` / `value_max` / `value_step` | Rango de un `slider` o una barra de progreso, y paso de las acciones de ajuste. |
 | `hidden` | `bool`. Fuera del árbol de accesibilidad: decorativo (el contenido visual no cambia). |
@@ -1107,6 +1109,58 @@ pages(
     height=90,
 )
 ```
+
+### `splitter(first, second, *, size=240, direction="row", min_sizes=(80, 80), step=16, on_change=None, key=None, **estilo)` { #splitter }
+
+Dos paneles con un separador entre ellos que se arrastra para repartir el espacio: una barra
+lateral y el contenido, una lista y su detalle, un editor y su consola. Con `direction="row"` los
+paneles van uno al lado del otro y el separador cambia anchos; con `"column"`, uno encima del otro.
+
+`size` es el tamaño del primer panel en píxeles; el segundo ocupa el resto. Con un `Signal[float]`
+queda enlazado —arrastrar lo cambia y asignarlo mueve el separador—; con un número es el tamaño
+inicial y el estado vive en la `key`, que entonces es obligatoria. `min_sizes` son los mínimos de
+cada panel: el separador no los rebasa, y si la ventana encoge el primer panel cede hasta su
+mínimo sin cambiar `size`, así que vuelve a su tamaño al crecer de nuevo. `on_change(tamaño)` se
+llama en cada cambio.
+
+El separador es enfocable: las flechas lo mueven `step` píxeles (←/→ en horizontal, ↑/↓ en
+vertical) e Inicio/Fin lo llevan a los extremos. Para los lectores de pantalla es un
+`"separator"` con su orientación y el tamaño como valor, que se ajusta con las acciones
+Incrementar/Decrementar. Cada panel es una columna que recorta lo que se sale: dale `grow=1` a su
+contenido (un `scroll`, por ejemplo) para que lo rellene. Las keys son `f"{key}-first"`,
+`f"{key}-handle"` y `f"{key}-second"`; los `estilo` van al contenedor, que crece (`grow=1`).
+
+```python live
+from aurora import App, Signal, column, scroll, splitter, text
+
+lateral = Signal(150.0)
+
+
+def view():
+    carpetas = scroll(padding=12, gap=8, bg="$surface")[
+        [text(nombre, size=13) for nombre in ("Entrada", "Enviados", "Borradores", "Archivo")]
+    ]
+    detalle = scroll(padding=12)[text("Selecciona un mensaje", color="$muted")]
+    return column(padding=12)[
+        splitter(
+            carpetas,
+            detalle,
+            size=lateral,
+            min_sizes=(110, 160),
+            radius="$md",
+            border_width=1,
+            border_color="$border",
+            overflow="hidden",
+        )
+    ]
+
+
+App(view, size=(420, 220)).run()
+```
+
+Para tres paneles o más, anida un `splitter` dentro de otro. El tamaño del contenedor lo mide el
+evento [`on_resize`](#primitivas), que sirve también para adaptar cualquier vista al espacio que
+le toca.
 
 ### `select(value, options, *, placeholder="Elegir…", key=None, **estilo)`
 

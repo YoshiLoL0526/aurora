@@ -93,6 +93,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<keys::KeyEvent>()?;
     m.add_class::<scroll::ScrollEvent>()?;
     m.add_class::<runtime::DragEvent>()?;
+    m.add_class::<runtime::ResizeEvent>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

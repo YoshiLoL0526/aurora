@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use accesskit::{Live, Role, SortDirection};
+use accesskit::{Live, Orientation, Role, SortDirection};
 use pyo3::exceptions::PyValueError;
 use pyo3::intern;
 use pyo3::prelude::*;
@@ -325,6 +325,8 @@ pub struct A11y {
     pub value_max: Option<f64>,
     /// Paso de las acciones Incrementar/Decrementar de un deslizador.
     pub value_step: Option<f64>,
+    /// Orientación de un separador o una barra (`"horizontal"`, `"vertical"`).
+    pub orientation: Option<Orientation>,
 }
 
 /// Valor de `value=`: texto (`"3 de 10"`) o número (`0.5`).
@@ -377,6 +379,9 @@ impl A11y {
             value_min: f64_of(d, "value_min")?,
             value_max: f64_of(d, "value_max")?,
             value_step: f64_of(d, "value_step")?,
+            orientation: str_of(d, "orientation")?
+                .map(|name| crate::a11y::parse_orientation(&name))
+                .transpose()?,
         })
     }
 }
@@ -547,6 +552,7 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "multiline" => hit!("multiline"),
         "offset" => hit!("offset"),
         "opacity" => hit!("opacity"),
+        "orientation" => hit!("orientation"),
         "overflow" => hit!("overflow"),
         "padding" => hit!("padding"),
         "placeholder" => hit!("placeholder"),

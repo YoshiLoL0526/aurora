@@ -149,6 +149,9 @@ pub struct Runtime {
     scroll_listeners: Vec<String>,
     /// Último evento entregado a cada uno: solo se avisa cuando cambia.
     scroll_seen: HashMap<String, ScrollEvent>,
+    /// Nodos con `on_resize` en el árbol actual y el último tamaño que se les dio.
+    resize_listeners: Vec<String>,
+    resize_seen: HashMap<String, ResizeEvent>,
     /// Zona pintada en cada uno de los últimos frames, del más reciente al más
     /// antiguo (`None`: nada). Con ella se pone al día un lienzo que se quedó
     /// unos frames atrás (ventanas con varios buffers).
@@ -190,6 +193,8 @@ impl Runtime {
             parser: spec::Parser::default(),
             scroll_listeners: Vec::new(),
             scroll_seen: HashMap::new(),
+            resize_listeners: Vec::new(),
+            resize_seen: HashMap::new(),
             history: VecDeque::new(),
             canvases: Canvases::default(),
             charts: Charts::default(),
@@ -241,12 +246,13 @@ impl Runtime {
             state.reveal_content(top, bottom, 0.0);
         }
         let mut rebuild = Duration::ZERO;
-        if self.notify_scroll()? && self.needs_sync() {
+        if (self.notify_scroll()? | self.notify_resize()?) && self.needs_sync() {
             let t = Instant::now();
             self.sync()?;
             rebuild = t.elapsed();
             self.update(width, height, scale);
             self.notify_scroll()?;
+            self.notify_resize()?;
         }
         // Con el layout hecho se conoce el tamaño de cada `canvas` y cada `chart`.
         if let Some(tree) = &self.tree {
@@ -337,7 +343,12 @@ impl Runtime {
         let mut autofocus = Vec::new();
         collect_autofocus(&tree, &mut autofocus);
         self.scroll_listeners.clear();
-        collect_scroll_listeners(&tree, &mut self.scroll_listeners);
+        self.resize_listeners.clear();
+        collect_listeners(
+            &tree,
+            &mut self.scroll_listeners,
+            &mut self.resize_listeners,
+        );
         let appeared = autofocus
             .iter()
             .rev()
@@ -507,6 +518,40 @@ impl Runtime {
         Ok(!pending.is_empty())
     }
 
+    /// Llama a los `on_resize` cuyo nodo cambió de tamaño en el último layout
+    /// (también la primera vez que se maqueta). Como `notify_scroll`, no marca
+    /// la vista como sucia. Devuelve `true` si llamó a alguno.
+    pub fn notify_resize(&mut self) -> PyResult<bool> {
+        let Some(tree) = &self.tree else {
+            return Ok(false);
+        };
+        if self.resize_listeners.is_empty() && self.resize_seen.is_empty() {
+            return Ok(false);
+        }
+        self.resize_seen
+            .retain(|k, _| self.resize_listeners.contains(k));
+        let mut pending = Vec::new();
+        for key in &self.resize_listeners {
+            let Some(rect) = self.rect(key) else {
+                continue;
+            };
+            let event = ResizeEvent {
+                width: rect.width(),
+                height: rect.height(),
+            };
+            if self.resize_seen.get(key) != Some(&event) {
+                pending.push((key.clone(), event));
+            }
+        }
+        for (key, event) in &pending {
+            self.resize_seen.insert(key.clone(), *event);
+            if let Some(cb) = tree.find(key).and_then(|n| n.handler("resize")) {
+                Python::attach(|py| cb.call1(py, (Py::new(py, *event)?,)).map(drop))?;
+            }
+        }
+        Ok(!pending.is_empty())
+    }
+
     /// Rectángulo absoluto (píxeles lógicos) con el que se pintó `key` en el último frame.
     pub fn rect(&self, key: &str) -> Option<Rect> {
         self.engine
@@ -531,12 +576,31 @@ fn join(a: Option<Rect>, b: Option<Rect>) -> Option<Rect> {
     }
 }
 
-fn collect_scroll_listeners(node: &Node, out: &mut Vec<String>) {
+fn collect_listeners(node: &Node, scroll: &mut Vec<String>, resize: &mut Vec<String>) {
     if node.style.scroll.is_some() && node.handler("scroll").is_some() {
-        out.push(node.key.clone());
+        scroll.push(node.key.clone());
+    }
+    if node.handler("resize").is_some() {
+        resize.push(node.key.clone());
     }
     for child in &node.children {
-        collect_scroll_listeners(child, out);
+        collect_listeners(child, scroll, resize);
+    }
+}
+
+/// Lo que recibe un manejador `on_resize`: el tamaño (caja de borde) con el
+/// que se maquetó el nodo, en píxeles lógicos.
+#[pyclass(frozen, get_all, module = "aurora._core", name = "ResizeEvent")]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ResizeEvent {
+    pub width: f32,
+    pub height: f32,
+}
+
+#[pymethods]
+impl ResizeEvent {
+    fn __repr__(&self) -> String {
+        format!("ResizeEvent(width={}, height={})", self.width, self.height)
     }
 }
 

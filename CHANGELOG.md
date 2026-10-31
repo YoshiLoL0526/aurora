@@ -28,6 +28,13 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   lado de `placement` (`"bottom-start"`, `"top"`, `"right-end"`…), se vuelca al opuesto si no cabe
   y no se sale de la ventana; se cierra con Esc o al hacer clic fuera (`on_close`), su estado vive
   en un `Signal[bool]` (`open`) o en la `key`, y es un `"dialog"` no modal que toma el foco.
+- **`splitter(first, second, ...)`**: dos paneles con un separador arrastrable, en fila o en
+  columna (`direction`). El tamaño del primer panel se enlaza a un `Signal[float]` (`size`) o vive
+  en la `key`; respeta un mínimo por panel (`min_sizes`), se mueve con las flechas e
+  Inicio/Fin, y es un `"separator"` accesible con su orientación, valor y acciones de ajuste.
+- Evento **`on_resize`** en cualquier elemento: recibe un `ResizeEvent` (`width`, `height`) cuando
+  el layout le da otro tamaño, también la primera vez.
+- Semántica **`orientation`** (`"horizontal"`, `"vertical"`) para los lectores de pantalla.
 - Propiedades de estilo **`placement`** y **`offset`** para las capas superiores
   (`layer="overlay"`): colocan el elemento junto a su ancla (el hermano anterior en el flujo o el
   contenedor), con la misma lógica de volcado

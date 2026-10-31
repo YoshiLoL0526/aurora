@@ -13,6 +13,7 @@ from __future__ import annotations
 from .basic import avatar, badge, button, card, divider, stat
 from .feedback import progress, skeleton, spinner, toast
 from .forms import checkbox, field, number_input, radio, slider, switch, text_input, textarea
+from .layout import splitter
 from .lists import virtual_list
 from .navigation import accordion, pages, segmented, tabs
 from .overlays import dialog, menu, popover, select, tooltip
@@ -41,6 +42,7 @@ __all__ = [
     "skeleton",
     "slider",
     "spinner",
+    "splitter",
     "stat",
     "switch",
     "tabs",

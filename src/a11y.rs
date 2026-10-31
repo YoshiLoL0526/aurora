@@ -12,8 +12,8 @@
 use std::collections::HashMap;
 
 use accesskit::{
-    Action, Live, Node as AcNode, NodeId, Role, SortDirection, Toggled, TreeId, TreeInfo,
-    TreeUpdate,
+    Action, Live, Node as AcNode, NodeId, Orientation, Role, SortDirection, Toggled, TreeId,
+    TreeInfo, TreeUpdate,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -125,6 +125,17 @@ pub fn parse_sort(name: &str) -> PyResult<SortDirection> {
         "descending" => Ok(SortDirection::Descending),
         other => Err(PyValueError::new_err(format!(
             "sort desconocido: {other:?} (válidos: ascending, descending)"
+        ))),
+    }
+}
+
+/// La orientación declarada con `orientation="…"`.
+pub fn parse_orientation(name: &str) -> PyResult<Orientation> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "horizontal" => Ok(Orientation::Horizontal),
+        "vertical" => Ok(Orientation::Vertical),
+        other => Err(PyValueError::new_err(format!(
+            "orientation desconocida: {other:?} (válidas: horizontal, vertical)"
         ))),
     }
 }
@@ -349,6 +360,9 @@ impl Builder<'_> {
         if a.modal {
             ac.set_modal();
         }
+        if let Some(o) = a.orientation {
+            ac.set_orientation(o);
+        }
 
         // Acciones que el núcleo sabe atender (ver `Runtime::a11y_action`).
         if node.handler("click").is_some() {
@@ -361,7 +375,7 @@ impl Builder<'_> {
             ac.add_action(Action::SetValue);
         }
         // Solo los controles que se ajustan (no una barra de progreso).
-        if matches!(ac.role(), Role::Slider | Role::SpinButton)
+        if matches!(ac.role(), Role::Slider | Role::SpinButton | Role::Splitter)
             && a.value_min.is_some()
             && a.value_max.is_some()
         {
@@ -492,6 +506,10 @@ pub fn to_dicts<'py>(py: Python<'py>, built: &Built, scale: f32) -> PyResult<Bou
         d.set_item("selected", node.is_selected())?;
         d.set_item("expanded", node.is_expanded())?;
         d.set_item("level", node.level())?;
+        d.set_item(
+            "orientation",
+            node.orientation().map(|o| format!("{o:?}").to_lowercase()),
+        )?;
         d.set_item("position_in_set", node.position_in_set())?;
         d.set_item("set_size", node.size_of_set())?;
         d.set_item(

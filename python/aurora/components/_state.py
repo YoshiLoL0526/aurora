@@ -23,3 +23,7 @@ _QUERIES: dict[str, Signal[str | None]] = {}
 _ACTIVE: dict[str, Signal[int]] = {}
 # Mes que muestra el calendario de cada `date_picker`: `(año, mes)`.
 _MONTHS: dict[str, Signal[tuple[int, int]]] = {}
+# Tamaño del primer panel de cada `splitter` sin `Signal` propio, y lo que mide
+# su contenedor en el eje del reparto (lo avisa `on_resize`).
+_SPLITS: dict[str, Signal[float]] = {}
+_EXTENTS: dict[str, Signal[float | None]] = {}
