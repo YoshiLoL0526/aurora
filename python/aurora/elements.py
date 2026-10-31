@@ -10,8 +10,9 @@ añaden con corchetes, lo que deja leer la jerarquía como si fuera markup:
 
 Las funciones son **regiones reactivas**: el contenido de `text(lambda: ...)`,
 una propiedad (`bg=lambda: ...`) y un hijo (`column()[lambda: [...]]`) se
-evalúan al serializar y anotan los `Signal` que leen. Si un cambio solo afecta
-a regiones, la vista no se vuelve a llamar: se reevalúan las regiones que leen
+evalúan al serializar y anotan los `Signal` que leen. Si un cambio sin evento
+(desde un hilo o `app.spawn`) solo afecta a regiones, la vista no se vuelve a
+llamar: se reevalúan las regiones que leen
 lo que cambió y el resto del árbol reutiliza su serialización (ver `reactive.py`).
 """
 

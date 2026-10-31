@@ -219,10 +219,11 @@ desde Python sea lo más directo posible. Más contexto en [VISION.md](VISION.md
 
 Aurora es joven. Esto es lo que **todavía no** hace:
 
-- **Layout completo tras un cambio de geometría**: un cambio que solo lee una región
-  (`text(lambda: ...)`, `bg=lambda: ...`) ya no vuelve a llamar a `view()`, pero si mueve la
-  geometría (un texto que cambia de ancho) el núcleo rehace el layout del árbol entero, con la
-  caché de Taffy. En vistas de decenas de miles de nodos se nota; virtualiza las listas largas.
+- **Vista completa tras cada evento**: un `Signal` que cambia desde un hilo o `app.spawn` y solo
+  lee una región (`text(lambda: ...)`, `bg=lambda: ...`) ya no vuelve a llamar a `view()`, pero
+  tras un clic o una tecla la vista se reconstruye entera (los `@component` que no cambiaron se
+  reutilizan). Y un cambio que mueve la geometría rehace el layout del árbol entero, con la caché
+  de Taffy. En vistas de decenas de miles de nodos se nota; virtualiza las listas largas.
 - **Menús nativos y bandeja en Linux**: los menús del sistema necesitan GTK, que Aurora no usa: en
   Linux la barra y los contextuales no aparecen, y ese hueco lo cubre el componente `menu` dentro
   de la app. La bandeja usa StatusNotifierItem: en GNOME necesita la extensión AppIndicator (y

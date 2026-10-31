@@ -533,12 +533,14 @@ class App:
                 root.style.setdefault("tooltip_color", "$background")
 
             view = owner.view
+            # Parcial solo si el núcleo lo permite: no corrió ningún manejador desde la última.
+            partial = _core.build_partial()
             if reloader is None:
-                spec = reactive.build_view(owner, view, view, theme, prepare)
+                spec = reactive.build_view(owner, view, view, theme, prepare, partial)
             else:
                 # La vista de error (la recarga falló) no se reutiliza.
                 key = view if reloader.error is None else None
-                spec = reactive.build_view(owner, key, lambda: self._root(view), theme, prepare)
+                spec = reactive.build_view(owner, key, lambda: self._root(view), theme, prepare, partial)
             # Con el panel del inspector abierto, se acopla a la derecha de la vista.
             info = _core.inspection()
             if info is not None and info["open"]:

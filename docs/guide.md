@@ -325,22 +325,26 @@ App(view, title="Monitor", size=(900, 600)).run()
 ```
 
 `text(lambda: ...)` recibe una función en lugar de un string: siempre refleja el estado actual.
-Además es una **región**: cuando `checks` cambia, Aurora reevalúa solo esa función, sin volver a
-llamar a `view()`. Lo mismo vale para cualquier propiedad (`bg=lambda: ...`) y para un hijo
-calculado (`column()[lambda: [...]]`). En cambio, lo que lee la propia `view()` la reconstruye
-entera:
+Además es una **región**. Tras un clic o cualquier otro evento, Aurora vuelve a llamar a `view()`
+entera (el manejador pudo cambiar cualquier cosa). Pero cuando `checks` cambia **sin un evento**
+(desde un hilo o una corrutina de `app.spawn`, como un reloj o datos que llegan de la red), solo
+reevalúa las regiones que lo leen. Lo mismo vale para cualquier propiedad (`bg=lambda: ...`) y
+para un hijo calculado (`column()[lambda: [...]]`). En cambio, lo que lee la propia `view()` la
+reconstruye entera siempre:
 
 ```python
 def view():
     return column(padding=32, gap=16)[
         text(f"Leído al construir: {checks()}"),  # cambiar `checks` vuelve a llamar a view()
-        text(lambda: f"Región: {checks()}"),  # solo se reevalúa esta lambda
+        text(lambda: f"Región: {checks()}"),  # fuera de un evento, solo se reevalúa esta lambda
         box(width=12, height=12, radius=6, bg=lambda: "$success" if checks() else "$danger"),
     ]
 ```
 
-En una vista pequeña no se nota; en una con miles de nodos, es la diferencia entre rehacerla
-entera y tocar un solo nodo ([reconstrucción parcial](reference.md#reconstrucción-parcial)).
+En una vista pequeña no se nota; en una con miles de nodos que se actualiza sola (un panel de
+monitorización), es la diferencia entre rehacerla entera y tocar un solo nodo
+([reconstrucción parcial](reference.md#reconstrucción-parcial)). Para lo que cambia por clics, el
+equivalente es `@component` ([sección 6](#6-listas-y-componentes-propios)).
 
 ## 6. Listas y componentes propios
 

@@ -65,11 +65,19 @@ fn wake() {
     runtime::wake();
 }
 
+/// Si la reconstrucción en curso puede ser parcial: ningún código de usuario
+/// corrió por un evento desde la anterior (solo cambiaron `Signal`).
+#[pyfunction]
+fn build_partial() -> bool {
+    runtime::build_partial()
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render_png, m)?)?;
     m.add_function(wrap_pyfunction!(run, m)?)?;
     m.add_function(wrap_pyfunction!(wake, m)?)?;
+    m.add_function(wrap_pyfunction!(build_partial, m)?)?;
     m.add_function(wrap_pyfunction!(window::window_open, m)?)?;
     m.add_function(wrap_pyfunction!(window::window_close, m)?)?;
     m.add_function(wrap_pyfunction!(window::window_set, m)?)?;

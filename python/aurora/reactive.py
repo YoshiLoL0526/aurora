@@ -17,8 +17,9 @@ contiene: si cambia el de dentro, se reconstruye el de fuera.
 **Regiones.** Las funciones dentro de la vista (el contenido de
 `text(lambda: ...)`, una propiedad `bg=lambda: ...`, un hijo
 `column()[lambda: [...]]`) se evalúan al serializar, y cada una anota los
-`Signal` que lee. Si lo que cambió solo lo leen regiones (y no la función de la
-vista ni un componente al construirse), la vista **no se vuelve a llamar**: se
+`Signal` que lee. Si, sin un evento de por medio (ver `_core.build_partial`), lo
+que cambió solo lo leen regiones (y no la función de la vista ni un componente
+al construirse), la vista **no se vuelve a llamar**: se
 reevalúan esas regiones, sus antepasados reciben un dict nuevo y todo lo demás
 reutiliza el que ya tenía (marcado como memorizado para que el núcleo lo
 comparta sin volver a leerlo). Ver `build_view`.
@@ -362,16 +363,19 @@ def build_view(
     view: Callable[[], Element],
     theme: Any,
     prepare: Callable[[Element], None],
+    partial: bool = False,
 ) -> dict[str, Any]:
     """Serializa la vista de `owner` (dentro de su sesión, entre `begin_build` y `end_build`).
 
-    Si desde la última vez solo cambiaron `Signal` que leen regiones, no se
-    llama a `view`: se rehacen esas regiones sobre el árbol anterior. En
-    cualquier otro caso (cambió algo que leyó la vista o un componente al
-    construirse, otra vista u otro tema, o ningún `Signal` que lea esta vista:
-    un evento que solo tocó estado normal de Python) se reconstruye entera,
-    como siempre. `key` identifica la vista (`None`: no reutilizarla);
-    `prepare` completa la raíz recién construida (el estilo por defecto).
+    Con `partial` (desde la última vez no corrió código de usuario por un
+    evento, ver `_core.build_partial`), si solo cambiaron `Signal` que leen
+    regiones, no se llama a `view`: se rehacen esas regiones sobre el árbol
+    anterior. En cualquier otro caso (un manejador pudo cambiar estado normal
+    de Python; cambió algo que leyó la vista o un componente al construirse,
+    otra vista u otro tema, o ningún `Signal` que lea esta vista) se
+    reconstruye entera, como siempre. `key` identifica la vista (`None`: no
+    reutilizarla); `prepare` completa la raíz recién construida (el estilo
+    por defecto).
     """
     # Se guarda en el propio dueño, no en un `WeakKeyDictionary`: lo guardado
     # llega hasta él (la vista, los componentes y sus claves) y nunca se soltaría.
@@ -379,7 +383,8 @@ def build_view(
     state: View | None = getattr(owner, "_view_state", None)
     owner._view_state = None
     if (
-        state is not None
+        partial
+        and state is not None
         and key is not None
         and state.key is key
         and state.theme is theme

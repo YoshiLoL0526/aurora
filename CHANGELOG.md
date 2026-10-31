@@ -61,10 +61,12 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - **Reconstrucción parcial**: las funciones dentro de la vista son regiones reactivas. Además del
   contenido de `text(lambda: ...)`, cualquier propiedad de estilo admite una función
   (`bg=lambda: ...`) y los corchetes admiten hijos calculados (`column()[lambda: [...]]`, o un
-  `Signal` de elementos). Si un cambio solo afecta a lo que leen regiones, `view()` no se vuelve
-  a llamar: se reevalúan esas regiones y el resto del árbol reutiliza su serialización, en Python
-  y en el núcleo (en una vista de 50 000 nodos, cambiar un color pasa de ~700 ms a ~4 ms).
-  `AURORA_PARTIAL=0` la desactiva.
+  `Signal` de elementos). Si un `Signal` cambia sin un evento de por medio (desde un hilo o
+  `app.spawn`) y solo lo leen regiones, `view()` no se vuelve a llamar: se reevalúan esas
+  regiones y el resto del árbol reutiliza su serialización, en Python y en el núcleo (en una
+  vista de 50 000 nodos, cambiar un color pasa de ~500 ms a ~5 ms). Tras un evento (un manejador,
+  un menú, la bandeja…) la reconstrucción sigue siendo completa, porque el manejador pudo cambiar
+  estado normal de Python: las apps actuales se comportan igual. `AURORA_PARTIAL=0` la desactiva.
 - **Arranque en los benchmarks**: `benchmarks/run.py` mide desde `import aurora` hasta el primer
   frame de una app típica (`arranque`, un proceso nuevo por muestra) frente a su objetivo
   (250 ms), y el escenario `vista_grande` mide un cambio de un solo `Signal` en una vista grande.
@@ -74,7 +76,7 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - `import aurora` es ~40 % más rápido: `asyncio` se carga al llamar a `app.spawn`, y
   `webbrowser`, `json` y `calendar` cuando se usan.
 - Un `@component` cuyo cambio solo afecta a lo que leen sus lambdas ya no se vuelve a llamar:
-  reutiliza su `Element` y se vuelve a serializar.
+  reutiliza su `Element` y se vuelve a serializar (también en una reconstrucción completa).
 - El núcleo comparte entre reconstrucciones los subárboles que llegan como el mismo dict en vez
   de copiarlos, y la fase de estilo los salta: reconstruir una lista de 10 000 filas
   `@component` cuesta un tercio que antes.

@@ -72,6 +72,10 @@ def quit() -> None:
 def wake() -> None:
     """Pide reconstruir la vista y despierta el bucle de eventos. Seguro desde cualquier hilo."""
 
+def build_partial() -> bool:
+    """Si la reconstrucción en curso puede ser parcial: desde la anterior no corrió código de
+    usuario por un evento (un manejador, un menú, la bandeja…), solo cambiaron `Signal`."""
+
 def open_file(
     title: str | None = None,
     directory: str | PathLike[str] | None = None,

@@ -7,7 +7,7 @@
 //! entrada: `pointer`, `keyboard`, `editing`, `focus`, `wheel` y `clipboard`.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use pyo3::types::{PyDict, PyString};
@@ -50,6 +50,29 @@ static WAKE_EPOCH: AtomicU64 = AtomicU64::new(0);
 pub fn wake() {
     WAKE_EPOCH.fetch_add(1, Ordering::Release);
     crate::window::notify();
+}
+
+/// Sube cada vez que el núcleo ejecuta código de usuario por un evento (un
+/// manejador, una opción de menú, la bandeja, el cierre de una ventana…). Ese
+/// código pudo cambiar estado normal de Python que lee la vista, así que la
+/// siguiente reconstrucción de **cada** ventana es completa, no parcial
+/// (`reactive.build_view`). Global por lo mismo que `WAKE_EPOCH`: un clic en
+/// una ventana puede cambiar lo que lee otra.
+static EVENT_EPOCH: AtomicU64 = AtomicU64::new(0);
+
+/// Si la reconstrucción en curso puede ser parcial (la lee `build_partial`).
+/// Solo vale `true` mientras `sync` llama a la vista; fuera (`render_png`,
+/// una llamada directa) la reconstrucción es completa.
+static BUILD_PARTIAL: AtomicBool = AtomicBool::new(false);
+
+/// Si la reconstrucción en curso puede ser parcial (ver `EVENT_EPOCH`).
+pub fn build_partial() -> bool {
+    BUILD_PARTIAL.load(Ordering::Acquire)
+}
+
+/// Anota que se va a ejecutar código de usuario por un evento (ver `EVENT_EPOCH`).
+pub fn user_event() {
+    EVENT_EPOCH.fetch_add(1, Ordering::Release);
 }
 
 /// Cuánto costó cada fase del último frame. Base de la suite de benchmarks
@@ -117,6 +140,8 @@ pub struct Runtime {
     dirty: bool,
     /// Última época de `wake()` atendida por esta ventana.
     wake_seen: u64,
+    /// La última `EVENT_EPOCH` que vio una reconstrucción.
+    event_seen: u64,
     /// Última posición conocida del puntero (píxeles lógicos).
     pointer: Option<(f32, f32)>,
     /// Arrastre en curso del pulgar de una barra de desplazamiento.
@@ -180,6 +205,7 @@ impl Runtime {
             tree: None,
             dirty: true,
             wake_seen: 0,
+            event_seen: 0,
             pointer: None,
             drag: None,
             pan: None,
@@ -322,11 +348,19 @@ impl Runtime {
         self.dirty = false;
         let selected_rect = self.inspector.selected.as_ref().and_then(|k| self.rect(k));
         self.inspector.selected_rect = selected_rect;
+        // Parcial solo si desde la última reconstrucción no corrió código de
+        // usuario por un evento: lo que cambió llegó solo por `Signal`.
+        let events = EVENT_EPOCH.load(Ordering::Acquire);
+        let partial = events == self.event_seen;
+        self.event_seen = events;
         let (build_fn, parser) = (&self.build, &mut self.parser);
         let (tree, build, parse) = inspect::lend(&mut self.inspector, || {
             Python::attach(|py| -> PyResult<_> {
                 let start = Instant::now();
-                let obj = build_fn.call0(py)?;
+                BUILD_PARTIAL.store(partial, Ordering::Release);
+                let obj = build_fn.call0(py);
+                BUILD_PARTIAL.store(false, Ordering::Release);
+                let obj = obj?;
                 let built = Instant::now();
                 let tree = parser.parse(obj.bind(py))?;
                 Ok((tree, built - start, built.elapsed()))
@@ -497,6 +531,7 @@ impl Runtime {
         let Some(cb) = cb else {
             return Ok(None);
         };
+        user_event();
         let result = inspect::lend(&mut self.inspector, || {
             Python::attach(|py| match arg {
                 Some(arg) => cb.call1(py, (arg,)),
@@ -533,6 +568,7 @@ impl Runtime {
         for (key, event) in &pending {
             self.scroll_seen.insert(key.clone(), *event);
             if let Some(cb) = tree.find(key).and_then(|n| n.handler("scroll")) {
+                user_event();
                 Python::attach(|py| cb.call1(py, (Py::new(py, *event)?,)).map(drop))?;
             }
         }
@@ -567,6 +603,7 @@ impl Runtime {
         for (key, event) in &pending {
             self.resize_seen.insert(key.clone(), *event);
             if let Some(cb) = tree.find(key).and_then(|n| n.handler("resize")) {
+                user_event();
                 Python::attach(|py| cb.call1(py, (Py::new(py, *event)?,)).map(drop))?;
             }
         }

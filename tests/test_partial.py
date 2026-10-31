@@ -5,6 +5,7 @@ el resto del árbol reutiliza su serialización."""
 import numpy as np
 import pytest
 
+import aurora
 from aurora import (
     DAYLIGHT,
     MIDNIGHT,
@@ -39,6 +40,12 @@ def value(pilot, key):
     return next(n["value"] for n in pilot.a11y_tree() if n["key"] == key)
 
 
+@pytest.fixture
+def partial(monkeypatch):
+    """`app._build()` como lo llama el núcleo cuando no corrió ningún manejador."""
+    monkeypatch.setattr(aurora._core, "build_partial", lambda: True)
+
+
 def find(spec, key):
     if spec["key"] == key:
         return spec
@@ -69,7 +76,7 @@ def test_what_the_view_reads_rebuilds_it_whole():
     assert view.calls == 2 and value(pilot, "t") == "1 directo"
 
 
-def test_only_the_regions_that_read_the_signal_run_again():
+def test_only_the_regions_that_read_the_signal_run_again(partial):
     a, b = Signal(0), Signal(0)
     runs = {"a": 0, "b": 0}
 
@@ -98,7 +105,7 @@ def test_only_the_regions_that_read_the_signal_run_again():
     assert second is not first
 
 
-def test_property_lambdas_are_regions():
+def test_property_lambdas_are_regions(partial):
     on = Signal(False)
     view = Counted(
         lambda: column()[box(key="punto", width=10, height=10, bg=lambda: "$success" if on() else "$danger")]
@@ -399,3 +406,106 @@ def test_the_inspector_docks_over_a_partial_rebuild():
     n.set(1)
     pilot.frame()
     assert value(pilot, "t") == "1"
+
+
+def test_a_handler_that_mixes_plain_state_and_a_signal_rebuilds_the_view():
+    """El caso de la vista desactualizada: un clic cambia estado normal que lee `view()`
+    y, a la vez, un `Signal` que solo lee una región. La vista tiene que reflejar ambos."""
+    todos = ["a"]
+    total = Signal(1)
+
+    def add():
+        todos.append("b")
+        total.set(total() + 1)
+
+    view = Counted(
+        lambda: column()[
+            text(lambda: f"{total()} tareas", key="total"),
+            box(key="add", width=10, height=10, on_click=add),
+            text(f"{len(todos)} en la lista", key="len"),
+            [text(t, key=f"todo-{t}") for t in todos],
+        ]
+    )
+    pilot = App(view).pilot()
+    pilot.click("add")
+    assert value(pilot, "total") == "2 tareas"
+    assert value(pilot, "len") == "2 en la lista" and pilot.rect("todo-b") is not None
+    assert view.calls == 2
+
+
+def test_typing_and_keys_rebuild_the_view_whole():
+    """`on_change` y `on_key` son manejadores de usuario: también reconstruyen entera."""
+    log = []
+    query = Signal("")
+
+    def change(v):
+        log.append(v)
+        query.set(v)
+
+    def key(event):
+        log.append("tecla")
+        query.set(query() + "!")
+
+    view = Counted(
+        lambda: column()[
+            text_input(value=query, on_change=change, key="q"),
+            box(key="k", width=10, height=10, focusable=True, on_key=key),
+            text(lambda: query(), key="echo"),
+            text(f"{len(log)} cambios", key="log"),
+        ]
+    )
+    pilot = App(view).pilot()
+    pilot.click("q")
+    pilot.type("x")
+    assert value(pilot, "log") == "1 cambios"
+    calls = view.calls
+    pilot.focus("k")
+    pilot.press("a")
+    assert view.calls > calls and value(pilot, "log") == "2 cambios"
+
+
+def test_a_click_in_one_window_rebuilds_the_others_whole():
+    """El manejador pudo cambiar estado que lee otra ventana."""
+    items = ["a"]
+    n = Signal(0)
+
+    def add():
+        items.append("b")
+        n.set(n() + 1)
+
+    app = App(lambda: column()[box(key="add", width=10, height=10, on_click=add)])
+    other = app.window(lambda: column()[text(lambda: f"{n()}", key="n"), text(f"{len(items)}", key="len")])
+    main, second = app.pilot(), other.pilot()
+    main.click("add")
+    second.frame()
+    assert value(second, "n") == "1" and value(second, "len") == "2"
+
+
+def test_signals_set_outside_an_event_stay_partial():
+    """Lo que llega solo por `Signal` (un hilo, `app.spawn`, el propio test) sigue siendo parcial."""
+    import threading
+
+    n = Signal(0)
+    view = Counted(lambda: column()[text(lambda: f"{n()}", key="t")])
+    pilot = App(view).pilot()
+    worker = threading.Thread(target=lambda: n.set(5))
+    worker.start()
+    worker.join()
+    pilot.frame()
+    assert value(pilot, "t") == "5" and view.calls == 1
+
+
+def test_a_click_rebuilds_whole_once_and_later_signals_are_partial_again():
+    n = Signal(0)
+    view = Counted(
+        lambda: column()[
+            text(lambda: f"{n()}", key="t"),
+            box(key="inc", width=10, height=10, on_click=lambda: n.set(n() + 1)),
+        ]
+    )
+    pilot = App(view).pilot()
+    pilot.click("inc")
+    assert value(pilot, "t") == "1" and view.calls == 2
+    n.set(7)
+    pilot.frame()
+    assert value(pilot, "t") == "7" and view.calls == 2

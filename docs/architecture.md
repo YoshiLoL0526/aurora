@@ -108,9 +108,10 @@ src/                 (crate aurora_core → módulo aurora._core)
 3. **Callback.** Solo al soltar el clic sobre el mismo nodo se toma el GIL, se ejecuta el callback
    y la vista se marca como sucia.
 4. **Reconstrucción.** Se llama a `view()` y el árbol resultante se serializa a dicts en un único
-   recorrido (`Element.to_spec`), resolviendo tokens de tema y lambdas. Si el cambio solo lo leen
-   regiones (lambdas de textos, propiedades o hijos), `view()` no se llama: se reevalúan esas
-   regiones y el resto del árbol reutiliza sus dicts (ver
+   recorrido (`Element.to_spec`), resolviendo tokens de tema y lambdas. Tras un callback siempre
+   es así. Solo si el cambio llegó por `Signal` sin que corriera código de usuario (un hilo,
+   `app.spawn`) y únicamente lo leen regiones (lambdas de textos, propiedades o hijos), `view()`
+   no se llama: se reevalúan esas regiones y el resto del árbol reutiliza sus dicts (ver
    [Reconstrucción parcial](#reconstrucción-parcial)).
 5. **Parseo.** `spec::parse` convierte los dicts en `Node` tipados. Es el único lugar del núcleo
    que conoce la forma de los datos de Python. Cada prop se consulta con una clave ya creada e
@@ -217,15 +218,24 @@ llamando entera. Para que el coste dependa de lo que cambia también fuera de lo
   `Tracker` abre un `Frame` para cada elemento con alguna, anota los `Signal` que leen y guarda,
   por elemento, el dict que produjo (`Element._spec`) y la cadena de sus antepasados.
 - **La vista como región.** `build_view` también anota lo que lee la propia `view()` (y los
-  componentes al construirse). Si después solo cambió algo que leen regiones, no se llama a
-  `view()`: las regiones afectadas se vuelven a evaluar, sus antepasados reciben un dict nuevo
+  componentes al construirse). Si después, sin ningún evento de por medio, solo cambió algo que
+  leen regiones, no se llama a `view()`: las regiones afectadas se vuelven a evaluar, sus antepasados reciben un dict nuevo
   (copia del anterior con la lista de hijos nueva) y todo lo demás devuelve su dict de siempre,
   marcado como `memo` para que el núcleo lo comparta. Lo que dio un hijo calculado que se rehace
   se sustituye entero, y sus regiones se vuelven a descubrir al serializarlo.
-- **Cuándo no.** La vista se llama entera, como siempre, si cambió algo que lee ella o un
+- **Solo sin eventos.** Un manejador puede cambiar a la vez un `Signal` y estado normal de
+  Python que lee `view()` (una lista, un atributo), y eso no se puede ver desde fuera. Por eso
+  cada vez que el núcleo ejecuta código de usuario por un evento (un manejador `on_*` —clic,
+  tecla, `on_change`, drop, `on_scroll`, `on_resize`…—, una opción de menú, la bandeja, un aviso
+  o el cierre de una ventana) sube `EVENT_EPOCH` (`runtime/mod.rs`), y la siguiente
+  reconstrucción de **cada** ventana es completa: es global porque un clic en una ventana puede
+  cambiar lo que lee otra. `sync` deja leer el resultado a Python con `_core.build_partial()`
+  mientras llama a la vista; fuera de ahí (`render_png`, una llamada directa) vale `False`. Lo
+  que queda parcial es lo que llega solo por `Signal`: un hilo, una corrutina de `app.spawn`, o
+  el código de un test entre frames del `Pilot`.
+- **Cuándo no.** Aun sin eventos, la vista se llama entera si cambió algo que lee ella o un
   componente al construirse, si cambió el tema o la vista (hot reload), o si **ningún** `Signal`
-  que lea esta vista cambió: un evento que solo tocó estado normal de Python (una lista que se
-  modifica en un `on_click`) o un `Signal` que se cambia para forzar la reconstrucción. Los
+  que lea esta vista cambió (un `Signal` que se cambia para forzar la reconstrucción). Los
   `chart` y los `canvas` se reenvían en cada reconstrucción parcial, porque sus datos o su
   `draw` pueden cambiar sin avisar. Un componente es una sola región: dentro de él no se siguen
   regiones sueltas.
@@ -233,7 +243,9 @@ llamando entera. Para que el coste dependa de lo que cambia también fuera de lo
   completa, así que el foco, el scroll, los campos y las transiciones siguen su nodo. El estado
   de cada vista se guarda por dueño (la `App`, cada `Window`), como la memoria de los componentes.
 - **Coste.** En `benchmarks/` (`vista_grande`, 50 000 nodos), cambiar el color de un punto de la
-  cabecera pasa de reconstruir la vista entera a unos milisegundos. Un cambio que mueve la
+  cabecera desde fuera de un evento pasa de reconstruir la vista entera a unos milisegundos; el
+  mismo cambio desde un clic (`clic`) sigue costando una reconstrucción completa, que en vistas
+  así se abarata con `@component`. Un cambio que mueve la
   geometría (un texto que cambia de ancho) sigue rehaciendo el layout del árbol en Rust: Taffy
   reutiliza su caché, pero `reconcile`, la tinta y las regiones recorren todos los nodos.
 

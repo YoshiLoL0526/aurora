@@ -753,6 +753,7 @@ impl View {
                     let Some(handler) = self.rt.context_menu() else {
                         return Ok(());
                     };
+                    crate::runtime::user_event();
                     let spec = handler.call0(py)?;
                     crate::menu::show_context(&self.window, spec.bind(py))
                 }));
@@ -968,6 +969,7 @@ impl Host {
             Err(err) => {
                 eprintln!("aurora: no se pudo abrir la ventana: {err}");
                 if let Some(cb) = on_closed {
+                    crate::runtime::user_event();
                     Python::attach(|py| {
                         if let Err(err) = cb.call1(py, (id,)) {
                             err.print(py);
@@ -990,6 +992,7 @@ impl Host {
         let allowed = match self.views.get(&window_id) {
             Some(view) => match &view.on_close {
                 Some(cb) => {
+                    crate::runtime::user_event();
                     let window = view.window.clone();
                     with_current(&window, || {
                         Python::attach(|py| match cb.call0(py) {
@@ -1018,6 +1021,7 @@ impl Host {
         };
         self.by_id.remove(&view.id);
         if let Some(cb) = &view.on_closed {
+            crate::runtime::user_event();
             Python::attach(|py| {
                 if let Err(err) = cb.call1(py, (view.id,)) {
                     err.print(py);
@@ -1071,6 +1075,7 @@ impl Host {
             _ => return,
         };
         if let Some(cb) = callback {
+            crate::runtime::user_event();
             Python::attach(|py| {
                 if let Err(err) = cb.call1(py, (button,)) {
                     err.print(py);
@@ -1087,6 +1092,7 @@ impl Host {
             .tray_actions
             .get(&id)
             .or_else(|| self.bar.as_ref().and_then(|bar| bar.actions.get(&id)));
+        crate::runtime::user_event();
         match callback {
             Some(cb) => Python::attach(|py| {
                 if let Err(err) = cb.call0(py) {

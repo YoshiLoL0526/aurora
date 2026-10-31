@@ -363,17 +363,26 @@ Las **funciones** dentro de la vista son regiones reactivas: se evalúan al seri
 | Una propiedad de estilo | `box(bg=lambda: "$success" if online() else "$danger")` |
 | Un hijo calculado | `column()[lambda: [fila(t) for t in tareas()]]` (o un `Signal` de elementos) |
 
-Si lo que cambió solo lo leen regiones, **`view()` no se vuelve a llamar**: se reevalúan esas
-regiones y el resto del árbol reutiliza su serialización, en Python y en el núcleo. En una vista
-de 50 000 nodos, cambiar el color de un punto cuesta unos milisegundos en vez de reconstruirla
-entera. Lo que lee la propia `view()` (o un componente al construirse) la reconstruye entera,
-como siempre:
+Cuándo la reconstrucción es parcial y cuándo completa:
+
+| Qué cambió | Reconstrucción |
+|---|---|
+| Cualquier cosa tras un evento: un manejador `on_*` (clic, tecla, `on_change`, drop, `on_scroll`…), una opción de menú, la bandeja, un aviso, el cierre de una ventana | **Completa**: `view()` entera, como siempre (los `@component` se siguen memorizando) |
+| Un `Signal` que solo leen regiones, sin evento: desde un hilo, una corrutina de `app.spawn` o un test entre frames del `Pilot` | **Parcial**: se reevalúan esas regiones |
+| Un `Signal` que lee la propia `view()` (o un componente al construirse), el tema o la vista (hot reload) | **Completa** |
+
+Tras un evento siempre es completa porque el manejador pudo cambiar, además de un `Signal`,
+estado normal de Python que lee `view()` (una lista, un atributo), y eso no se puede detectar: la
+vista nunca queda desactualizada. Un clic en una ventana hace completa la siguiente reconstrucción
+de todas. Cuando es parcial, el resto del árbol reutiliza su serialización, en Python y en el
+núcleo: en una vista de 50 000 nodos, cambiar el color de un punto desde un hilo cuesta unos
+milisegundos en vez de reconstruirla entera.
 
 ```python
 def view():
     return column()[
         text(f"{n()} clics"),  # lee `n` al construir: cambiarlo llama a view() entera
-        text(lambda: f"{n()} clics"),  # región: cambiar `n` solo reevalúa este texto
+        text(lambda: f"{n()} clics"),  # región: un cambio de `n` sin evento solo reevalúa este texto
     ]
 ```
 
@@ -382,11 +391,10 @@ def view():
   `@component` que use dentro se siguen memorizando.
 - Las keys, el foco, el scroll, los campos de texto y las transiciones se conservan igual que con
   una reconstrucción completa: salen del árbol que llega al núcleo.
-- La vista se reconstruye entera si cambia el tema o la vista (hot reload), y también si no cambió
-  **ningún** `Signal` que lea: un `on_click` que solo modifica estado normal de Python (una lista,
-  un atributo) sigue funcionando como antes. Lo que no se ve es un cambio de estado normal que va
-  junto a un `Signal` que solo lee una región: guarda ese estado en un `Signal` o léelo dentro de
-  la región.
+- Un hilo o una corrutina que cambia estado normal de Python que lee `view()` necesita, como
+  siempre, cambiar también un `Signal` que lea la vista (o ninguno que lea solo una región) para
+  que se vea: si solo cambia uno que lee una región, la reconstrucción es parcial. Si un `Signal`
+  no lo lee nadie, la vista se reconstruye entera.
 - Los `chart` y los `canvas` se reenvían en cada reconstrucción, parcial o no: sus datos (un array
   modificado en el sitio) o su `draw` pueden cambiar sin avisar.
 - `AURORA_PARTIAL=0` (u `off`, `false`, `no`) desactiva la reconstrucción parcial: la vista se

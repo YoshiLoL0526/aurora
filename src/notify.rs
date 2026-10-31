@@ -75,6 +75,7 @@ pub fn send(config: &Notify) -> Result<(), String> {
                 // La respuesta llega fuera del hilo de Python: se toma el GIL
                 // para llamar al callback y se despierta el bucle, por si el
                 // callback cambió algo (como con `app.spawn`).
+                crate::runtime::user_event();
                 if Python::try_attach(|py| {
                     if let Err(err) = callback.call0(py) {
                         err.print(py);

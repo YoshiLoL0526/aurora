@@ -128,8 +128,10 @@ def list_10k(scale: float = 1.0, *, memo: bool = False) -> Bench:
 def big_view(scale: float = 1.0) -> Bench:
     """10 000 filas que no cambian y una cabecera con estado: un punto cuyo color es una
     propiedad con lambda y un contador que es un texto con lambda. Cambiar uno de los dos
-    `Signal` no vuelve a llamar a la vista: solo se reevalúa la región que lo lee y el resto
-    del árbol reutiliza su serialización (en Python y en el núcleo)."""
+    `Signal` fuera de un evento (`color`, `texto`: como un hilo o `app.spawn`) no vuelve a
+    llamar a la vista: solo se reevalúa la región que lo lee y el resto del árbol reutiliza su
+    serialización (en Python y en el núcleo). El mismo cambio desde un clic (`clic`) reconstruye
+    la vista entera, porque el manejador pudo cambiar estado normal de Python."""
     n = max(10, int(10_000 * scale))
     online = Signal(True)
     unread = Signal(0)
@@ -144,6 +146,7 @@ def big_view(scale: float = 1.0) -> Bench:
                     height=10,
                     radius=5,
                     bg=lambda: "$success" if online() else "$danger",
+                    on_click=lambda: online.update(lambda on: not on),
                 ),
                 text(f"{n} registros", size=20, weight=700),
                 spacer(),
@@ -177,6 +180,7 @@ def big_view(scale: float = 1.0) -> Bench:
         {
             "color": color,
             "texto": count,
+            "clic": lambda p: p.click("estado"),
             "hover": _alternate(lambda p: p.move_to(300, 90), lambda p: p.move_to(300, 130)),
             "idle": _idle,
         },
