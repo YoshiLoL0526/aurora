@@ -42,3 +42,13 @@ def test_cli_writes_json_and_compares(tmp_path, capsys):
 def test_cli_rejects_unknown_scenario():
     with pytest.raises(SystemExit):
         run.main(["no_existe"])
+
+
+def test_startup_is_measured_against_its_target():
+    result = run.run_startup(reps=1)
+    assert result["nodes"] > 0 and result["target"] == run.STARTUP_TARGET
+    assert set(result["ops"]) == {"import", "primer_frame", "total"}
+    ops = result["ops"]
+    assert ops["total"]["samples"] == 3
+    assert 0 < ops["import"]["median"] < ops["total"]["median"]
+    assert "objetivo" in (run.startup_verdict({run.STARTUP: result}) or "")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import math
 import re
 import sys
@@ -10,11 +9,10 @@ import threading
 import traceback
 import unicodedata
 from collections.abc import Callable, Coroutine, Sequence
-from concurrent.futures import Future
 from os import PathLike
 from pathlib import Path as _Path
 from types import ModuleType
-from typing import Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from . import _core, _motion, _windowstate, animate, dialogs, menus, reactive
 from . import inspector as _inspector
@@ -66,6 +64,11 @@ from .richtext import Span, markdown, rich_text, span
 from .signal import Signal
 from .table import Column, table
 from .theme import DAYLIGHT, MIDNIGHT, Theme
+
+if TYPE_CHECKING:
+    # `asyncio` tarda en importarse más que todo Aurora: solo lo carga `spawn`.
+    import asyncio
+    from concurrent.futures import Future
 
 __all__ = [
     "DAYLIGHT",
@@ -673,9 +676,13 @@ class App:
         El bucle vive en un hilo propio y se crea la primera vez que se llama.
         La corrutina puede cambiar `Signal`: la ventana se actualiza sola.
         """
+        import asyncio
+
         return asyncio.run_coroutine_threadsafe(coro, self._background_loop())
 
     def _background_loop(self) -> asyncio.AbstractEventLoop:
+        import asyncio
+
         with self._loop_lock:
             if self._loop is None:
                 loop = asyncio.new_event_loop()

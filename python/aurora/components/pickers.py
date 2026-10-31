@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import builtins
-import calendar
 import colorsys
 import itertools
 import unicodedata
@@ -204,9 +203,15 @@ def _shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
     return index // 12, index % 12 + 1
 
 
+def _days_in_month(year: int, month: int) -> int:
+    # Sin `calendar`, que alarga el arranque de cualquier app (lo importa `locale`).
+    next_year, next_month = _shift_month(year, month, 1)
+    return (date(next_year, next_month, 1) - date(year, month, 1)).days
+
+
 def _add_months(d: date, delta: int) -> date:
     year, month = _shift_month(d.year, d.month, delta)
-    return date(year, month, min(d.day, calendar.monthrange(year, month)[1]))
+    return date(year, month, min(d.day, _days_in_month(year, month)))
 
 
 def date_picker(
@@ -293,7 +298,7 @@ def date_picker(
 
     def nav(icon: bytes, delta: int, label: str) -> Element:
         target = _shift_month(year, month, delta)
-        last = date(target[0], target[1], calendar.monthrange(*target)[1])
+        last = date(target[0], target[1], _days_in_month(*target))
         enabled = (min is None or last >= min) and (max is None or date(*target, 1) <= max)
         return box(
             key=f"{k}-{'prev' if delta < 0 else 'next'}",

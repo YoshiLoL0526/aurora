@@ -2,6 +2,7 @@
 
     uv run benchmarks/run.py                          # todos los escenarios
     uv run benchmarks/run.py lista_10k --reps 50      # uno solo, más muestras
+    uv run benchmarks/run.py arranque                 # solo el arranque
     uv run benchmarks/run.py --json base.json         # guarda los resultados
     uv run benchmarks/run.py --compare base.json      # compara con una medición anterior
     uv run benchmarks/run.py --markdown               # tabla Markdown (resumen de CI)
@@ -10,6 +11,9 @@ Cada operación avanza un frame del piloto headless (mismo runtime que la ventan
 presentar en pantalla). Se mide el tiempo total del frame y, con `Pilot.stats`, cada fase:
 `view` (tu función de vista), `to_spec` (serializar el árbol), `parse` (dicts → Rust), `layout`
 y `paint`. Se publica la mediana y el p95 tras unos frames de calentamiento.
+
+`arranque` mide otra cosa: desde `import aurora` hasta el primer frame de una app típica, con
+cada muestra en un proceso nuevo (`startup.py`), y lo compara con su objetivo (`STARTUP_TARGET`).
 """
 
 from __future__ import annotations
@@ -32,6 +36,12 @@ import aurora
 
 PHASES = ("view", "to_spec", "parse", "style", "layout", "paint")
 WARMUP = 3
+
+STARTUP = "arranque"
+# Objetivo del arranque (ms, mediana de `total`): de `import aurora` al primer frame de
+# `startup.py` (~550 nodos) en la máquina de referencia. Ver benchmarks/README.md.
+STARTUP_TARGET = 250.0
+STARTUP_SCRIPT = Path(__file__).parent / "startup.py"
 
 
 def _percentile(values: list[float], q: float) -> float:
@@ -70,7 +80,9 @@ class _TimedView:
 
 def _sample(pilot: aurora.Pilot, timed: _TimedView, total: float) -> dict[str, float]:
     stats = pilot.stats
+    # Una reconstrucción parcial no llama a la vista: todo su `build` es serializar.
     view = timed.last if stats["rebuilt"] else 0.0
+    timed.last = 0.0
     return {
         "total": total,
         "view": view,
@@ -111,6 +123,36 @@ def run_scenario(scenario: Scenario, *, scale: float, reps: int, budget: float) 
     return {"description": scenario.description, "nodes": nodes, **bench.info, "ops": ops}
 
 
+def run_startup(*, reps: int) -> dict:
+    """Mide el arranque: cada muestra lanza `startup.py` en un proceso nuevo."""
+    samples: dict[str, list[dict[str, float]]] = {"import": [], "primer_frame": [], "total": []}
+    nodes = 0
+    for _ in range(max(3, min(reps, 10))):
+        out = subprocess.run(
+            [sys.executable, str(STARTUP_SCRIPT)], capture_output=True, text=True, check=True
+        )
+        data = json.loads(out.stdout.strip().splitlines()[-1])
+        nodes = data["nodes"]
+        for op, field_ in (("import", "import"), ("primer_frame", "frame"), ("total", "total")):
+            samples[op].append({"total": data[field_], **dict.fromkeys(PHASES, 0.0)})
+    return {
+        "description": "Desde import aurora hasta el primer frame de una app típica",
+        "nodes": nodes,
+        "target": STARTUP_TARGET,
+        "ops": {op: _summary(s) for op, s in samples.items()},
+    }
+
+
+def startup_verdict(results: dict) -> str | None:
+    """Línea con el arranque frente a su objetivo (si se midió)."""
+    res = results.get(STARTUP)
+    if res is None:
+        return None
+    median = res["ops"]["total"]["median"]
+    mark = "✅" if median <= res["target"] else "⚠️"
+    return f"{mark} arranque: {median:.0f} ms de mediana (objetivo ≤ {res['target']:.0f} ms)"
+
+
 def _git_commit() -> str | None:
     try:
         out = subprocess.run(
@@ -149,11 +191,11 @@ def _rows(results: dict, baseline: dict | None) -> list[list[str]]:
     rows = []
     for name, res in results.items():
         base_ops = (baseline or {}).get(name, {}).get("ops", {})
-        for op, s in res["ops"].items():
+        for i, (op, s) in enumerate(res["ops"].items()):
             before = base_ops.get(op, {}).get("median")
             rows.append(
                 [
-                    f"{name} ({res['nodes']} nodos)" if op == "cold" else "",
+                    f"{name} ({res['nodes']} nodos)" if i == 0 else "",
                     op,
                     f"{s['median']:.2f}",
                     f"{s['p95']:.2f}",
@@ -198,7 +240,7 @@ def format_markdown(results: dict, meta: dict, baseline: dict | None = None) -> 
 
 
 def main(argv: list[str] | None = None) -> int:
-    names = [s.name for s in SCENARIOS]
+    names = [STARTUP, *(s.name for s in SCENARIOS)]
     parser = argparse.ArgumentParser(description="Suite de benchmarks de Aurora (ms por frame).")
     parser.add_argument("scenarios", nargs="*", help=f"por defecto, todos: {', '.join(names)}")
     parser.add_argument("--reps", type=int, default=30, help="muestras por operación (máximo)")
@@ -214,6 +256,9 @@ def main(argv: list[str] | None = None) -> int:
     baseline = json.loads(args.compare.read_text(encoding="utf-8"))["results"] if args.compare else None
     chosen = [s for s in SCENARIOS if not args.scenarios or s.name in args.scenarios]
     results = {}
+    if not args.scenarios or STARTUP in args.scenarios:
+        print(f"· {STARTUP}: de import aurora al primer frame…", file=sys.stderr, flush=True)
+        results[STARTUP] = run_startup(reps=args.reps)
     for scenario in chosen:
         print(f"· {scenario.name}: {scenario.description}…", file=sys.stderr, flush=True)
         results[scenario.name] = run_scenario(scenario, scale=args.scale, reps=args.reps, budget=args.budget)
@@ -225,6 +270,9 @@ def main(argv: list[str] | None = None) -> int:
         print(format_markdown(results, meta, baseline))
     else:
         print(format_table(results, baseline))
+    if verdict := startup_verdict(results):
+        print()
+        print(verdict)
     return 0
 
 

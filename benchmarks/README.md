@@ -50,6 +50,22 @@ de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
 - `hover` / `scroll`: el puntero se mueve o la rueda desplaza; no se toca Python.
 - `idle`: un frame sin cambios. Mide lo que se paga por frame aunque no pase nada.
 
+## Arranque
+
+`arranque` mide lo que tarda una app típica (una barra lateral, un formulario, una lista de 100
+filas con badges y unas pestañas: ~550 nodos) desde `import aurora` hasta su primer frame, con el
+piloto headless. Cada muestra es un proceso nuevo ([`startup.py`](startup.py)), porque un `import`
+repetido en el mismo proceso no cuesta nada; el arranque del intérprete no cuenta. Publica tres
+operaciones: `import`, `primer_frame` y `total`.
+
+**Objetivo: `total` por debajo de 250 ms** en un equipo de escritorio con la compilación release.
+Es el margen para que una ventana aparezca sin un parpadeo de espera perceptible (a lo que se
+suma lo que tarda el sistema en crear la ventana). Tras la tabla, `run.py` dice si se cumple. Se
+ejecuta con la suite completa o con `run.py arranque`; para verlo una vez,
+`uv run benchmarks/startup.py`. Para no pagar en el `import` lo que la app quizá no use, los
+módulos de la biblioteca estándar que pesan (`asyncio`, `json`, `webbrowser`…) se importan donde
+se usan.
+
 Los datos son deterministas, sin azar ni reloj. Los escenarios están en
 [`scenarios.py`](scenarios.py): para añadir uno, define una función que devuelva un `Bench` y
 regístrala en `SCENARIOS`. `tests/test_benchmarks.py` ejecuta todos a escala mínima para que no

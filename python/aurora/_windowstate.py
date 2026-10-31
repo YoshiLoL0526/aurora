@@ -12,7 +12,6 @@ escribir se avisa por stderr.
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import re
@@ -63,6 +62,8 @@ def path(name: str) -> Path:
 def load(name: str) -> dict[str, Any]:
     """Todo lo recordado de `name` (vacío si no hay nada o no se puede leer)."""
     try:
+        import json  # solo con `remember`: importarlo alarga el arranque
+
         data = json.loads(path(name).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
@@ -71,6 +72,8 @@ def load(name: str) -> dict[str, Any]:
 
 def save(name: str, key: str, state: dict[str, Any]) -> None:
     """Recuerda el estado de la ventana `key` (sin tocar el de las demás)."""
+    import json
+
     target = path(name)
     data = load(name)
     data[key] = state

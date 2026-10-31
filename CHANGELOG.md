@@ -58,9 +58,14 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - **`markdown(source, ...)`**: render de Markdown básico sobre `rich_text` (títulos, párrafos,
   listas anidadas, citas, código en línea y en bloque, separadores, énfasis y enlaces con
   `on_link`), sin dependencias nuevas.
+- **Arranque en los benchmarks**: `benchmarks/run.py` mide desde `import aurora` hasta el primer
+  frame de una app típica (`arranque`, un proceso nuevo por muestra) frente a su objetivo
+  (250 ms).
 
 ### Cambiado
 
+- `import aurora` es ~40 % más rápido: `asyncio` se carga al llamar a `app.spawn`, y
+  `webbrowser`, `json` y `calendar` cuando se usan.
 - El núcleo comparte entre reconstrucciones los subárboles que llegan como el mismo dict en vez
   de copiarlos, y la fase de estilo los salta: reconstruir una lista de 10 000 filas
   `@component` cuesta un tercio que antes.

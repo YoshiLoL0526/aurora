@@ -9,7 +9,6 @@ el ajuste de línea ni el kerning entre tramos. Python solo describe los tramos.
 from __future__ import annotations
 
 import re
-import webbrowser
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from typing import Any
@@ -175,6 +174,8 @@ def _inline(source: str, on_link: Callable[[str], Any], base: Span = _PLAIN) -> 
 def _open_url(url: str) -> None:
     """Destino por defecto de los enlaces de `markdown`: el navegador del sistema."""
     if url.startswith(("http://", "https://", "mailto:")):
+        import webbrowser  # se carga al usarse: importarlo alarga el arranque
+
         webbrowser.open(url)
 
 
