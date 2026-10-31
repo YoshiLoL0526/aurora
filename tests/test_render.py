@@ -273,12 +273,24 @@ def test_rich_text_paints_each_span_with_its_own_background(tmp_path):
         row()[rich_text(span("MMMMMM", bg="#ff0000"), span("MMMMMM", bg="#0000ff"), size=20, key="r")]
     ]
     pilot = App(view, size=(300, 80)).pilot()
-    x, y, w, _ = pilot.rect("r")
+    x, y, w, h = pilot.rect("r")
     path = tmp_path / "rich.png"
     pilot.png(str(path))
-    # Mitad izquierda roja, derecha azul (en el borde superior de la línea, por encima de las letras).
-    assert _png_pixel(path, int(x + 2), int(y + 2)) == (0xFF, 0x00, 0x00)
-    assert _png_pixel(path, int(x + w - 3), int(y + 2)) == (0x00, 0x00, 0xFF)
+    # Mitad izquierda roja, derecha azul. Se cuentan píxeles en vez de mirar uno
+    # suelto: según la fuente del sistema, las letras tapan puntos distintos.
+    channels, rows = _png_rows(path, int(y + h) + 1)
+    red, blue = (0xFF, 0x00, 0x00), (0x00, 0x00, 0xFF)
+
+    def count(color, x0, x1):
+        return sum(
+            tuple(rows[py][px * channels : px * channels + 3]) == color
+            for py in range(int(y), int(y + h))
+            for px in range(x0, x1)
+        )
+
+    mid = int(x + w / 2)
+    assert count(red, int(x), mid) > 0 and count(blue, int(x), mid) == 0
+    assert count(blue, mid, int(x + w)) > 0 and count(red, mid, int(x + w)) == 0
 
 
 def test_rich_text_link_regions_follow_the_span(tmp_path):
