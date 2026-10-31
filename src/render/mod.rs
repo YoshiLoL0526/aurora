@@ -43,6 +43,7 @@ mod layout;
 mod paint;
 mod place;
 mod png;
+mod raster;
 mod style;
 mod text;
 
@@ -79,6 +80,8 @@ pub struct Engine {
     pictures: HashMap<String, Picture>,
     /// Gráfico grabado de cada `chart`, por key (lo graba `chart::Charts`).
     charts: HashMap<String, Picture>,
+    /// Imagen rasterizada de los dibujos que se repintan sin cambiar (ver `raster.rs`).
+    rasters: RefCell<HashMap<String, raster::Raster>>,
     pub hovered: Option<String>,
     pub pressed: Option<String>,
     pub focused: Option<String>,
@@ -223,6 +226,7 @@ impl Engine {
             image_cache: ImageCache::default(),
             pictures: HashMap::new(),
             charts: HashMap::new(),
+            rasters: RefCell::default(),
             hovered: None,
             pressed: None,
             focused: None,
@@ -321,6 +325,7 @@ impl Engine {
     /// Olvida los dibujos de los `canvas` que ya no están en la vista.
     pub fn retain_canvases(&mut self, keep: impl Fn(&str) -> bool) {
         self.pictures.retain(|k, _| keep(k));
+        self.retain_rasters();
     }
 
     /// Graba el dibujo de un `chart` (lo calcula `chart::Charts`) y marca su
@@ -336,6 +341,7 @@ impl Engine {
     /// Olvida los gráficos que ya no están en la vista.
     pub fn retain_charts(&mut self, keep: impl Fn(&str) -> bool) {
         self.charts.retain(|k, _| keep(k));
+        self.retain_rasters();
     }
 
     /// Rectángulo (caja de borde) de cada nodo del layout actual, por key.

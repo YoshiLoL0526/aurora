@@ -56,41 +56,11 @@ fn paint(
     let (size, family) = (chart.label_size, chart.family.as_str());
 
     // --- dominio de los datos (y orden de las x de cada serie) --------------
-    let mut max_len = 0usize;
-    let (mut y_lo, mut y_hi) = (f64::INFINITY, f64::NEG_INFINITY);
-    let (mut x_lo, mut x_hi) = (f64::INFINITY, f64::NEG_INFINITY);
-    let mut orders: Vec<Order> = Vec::with_capacity(chart.series.len());
-    for s in &chart.series {
-        max_len = max_len.max(s.len());
-        let explicit = s.x.is_some();
-        let (mut asc, mut desc, mut prev) = (true, true, None::<f64>);
-        for i in 0..s.len() {
-            let (x, v) = (s.x_at(i), s.y_at(i));
-            if x.is_finite() && v.is_finite() {
-                y_lo = y_lo.min(v);
-                y_hi = y_hi.max(v);
-                x_lo = x_lo.min(x);
-                x_hi = x_hi.max(x);
-            }
-            if explicit && !x.is_finite() {
-                // Un hueco en x rompe la búsqueda binaria (un `NaN` no se
-                // compara con nada): la serie se recorre filtrando por x.
-                (asc, desc) = (false, false);
-            } else if explicit {
-                match prev {
-                    Some(p) if x < p => asc = false,
-                    Some(p) if x > p => desc = false,
-                    _ => {}
-                }
-                prev = Some(x);
-            }
-        }
-        orders.push(match (explicit, asc, desc) {
-            (false, ..) | (true, true, _) => Order::Asc,
-            (true, false, true) => Order::Desc,
-            _ => Order::Mixed,
-        });
-    }
+    // Recorre todos los puntos: se calcula una vez por gráfico y el zoom y el
+    // pan, que vuelven a grabar con los mismos datos, lo reutilizan.
+    let domain = chart.domain.get_or_init(|| scan_domain(chart));
+    let (max_len, orders) = (domain.max_len, &domain.orders);
+    let ((mut y_lo, mut y_hi), (mut x_lo, mut x_hi)) = (domain.y, domain.x);
     let implicit_x = chart.series.iter().all(|s| s.x.is_none());
     if implicit_x {
         // Posiciones 0, 1, 2…: las barras de los extremos quedan enteras.
@@ -114,7 +84,7 @@ fn paint(
     let spans: Vec<Span> = chart
         .series
         .iter()
-        .zip(&orders)
+        .zip(orders)
         .map(|(s, o)| span_of(s, window, *o))
         .collect();
 
@@ -220,7 +190,7 @@ fn paint(
         .unwrap_or(0);
     let slot = bar_slot(chart, plot, x_lo, x_hi, points, implicit_x);
     let total = chart.series.len();
-    for (index, ((s, span), order)) in chart.series.iter().zip(&spans).zip(&orders).enumerate() {
+    for (index, ((s, span), order)) in chart.series.iter().zip(&spans).zip(orders).enumerate() {
         draw_series(
             canvas,
             chart,
@@ -306,6 +276,52 @@ fn draw_x_labels(
     }
 }
 
+/// Pasada por todos los puntos: cuántos tiene la serie más larga, el rango de x
+/// y de y de los puntos finitos y el orden de las x de cada serie.
+fn scan_domain(chart: &Chart) -> Domain {
+    let mut max_len = 0usize;
+    let (mut y_lo, mut y_hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    let (mut x_lo, mut x_hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    let mut orders: Vec<Order> = Vec::with_capacity(chart.series.len());
+    for s in &chart.series {
+        max_len = max_len.max(s.len());
+        let explicit = s.x.is_some();
+        let (mut asc, mut desc, mut prev) = (true, true, None::<f64>);
+        for i in 0..s.len() {
+            let (x, v) = (s.x_at(i), s.y_at(i));
+            if x.is_finite() && v.is_finite() {
+                y_lo = y_lo.min(v);
+                y_hi = y_hi.max(v);
+                x_lo = x_lo.min(x);
+                x_hi = x_hi.max(x);
+            }
+            if explicit && !x.is_finite() {
+                // Un hueco en x rompe la búsqueda binaria (un `NaN` no se
+                // compara con nada): la serie se recorre filtrando por x.
+                (asc, desc) = (false, false);
+            } else if explicit {
+                match prev {
+                    Some(p) if x < p => asc = false,
+                    Some(p) if x > p => desc = false,
+                    _ => {}
+                }
+                prev = Some(x);
+            }
+        }
+        orders.push(match (explicit, asc, desc) {
+            (false, ..) | (true, true, _) => Order::Asc,
+            (true, false, true) => Order::Desc,
+            _ => Order::Mixed,
+        });
+    }
+    Domain {
+        max_len,
+        y: (y_lo, y_hi),
+        x: (x_lo, x_hi),
+        orders,
+    }
+}
+
 /// Dibuja una serie: la línea (o el área), las barras o los puntos. Las series
 /// largas se reducen con LTTB a lo que cabe en el ancho del dibujo.
 /// `slot`: ancho del hueco de cada punto en las barras; `index`/`total`: qué
@@ -335,7 +351,7 @@ fn draw_series(
 
     match chart.kind {
         ChartKind::Scatter => {
-            let mut path = PathBuilder::new();
+            let mut points = Vec::new();
             for i in each(span, len, true) {
                 if !visible(i) {
                     continue;
@@ -349,11 +365,26 @@ fn draw_series(
                 {
                     continue;
                 }
-                path.add_circle((x, y), chart.point_size, None);
+                points.push(Point::new(x, y));
             }
             let mut p = Paint::default();
             p.set_anti_alias(true).set_color(series.color);
-            canvas.draw_path(&path.detach(), &p);
+            if series.color.a() == 255 {
+                // Opaco, cada punto se rasteriza por su cuenta (un círculo es
+                // un trazo de longitud cero con extremo redondo): mucho más
+                // barato que un solo path con miles de contornos solapados.
+                p.set_style(PaintStyle::Stroke)
+                    .set_stroke_width(chart.point_size * 2.0)
+                    .set_stroke_cap(skia_safe::paint::Cap::Round);
+                canvas.draw_points(skia_safe::canvas::PointMode::Points, &points, &p);
+            } else {
+                // Translúcido, un solo path: los solapes no se oscurecen.
+                let mut path = PathBuilder::new();
+                for &pt in &points {
+                    path.add_circle(pt, chart.point_size, None);
+                }
+                canvas.draw_path(&path.detach(), &p);
+            }
         }
         ChartKind::Bar => {
             let base = ypix(0.0).clamp(plot.top, plot.bottom);
@@ -450,12 +481,21 @@ fn draw_series(
                 canvas.draw_path(&fill.detach(), &p);
             }
             if !stroke.is_empty() {
+                // Con más de un vértice por píxel, una unión redonda no se
+                // distingue de una en bisel y multiplica las aristas que Skia
+                // tiene que rasterizar (una serie larga y ruidosa es una banda).
+                let dense = reduced.pts.len() as f32 > plot.width();
+                let join = if dense {
+                    skia_safe::paint::Join::Bevel
+                } else {
+                    skia_safe::paint::Join::Round
+                };
                 let mut p = Paint::default();
                 p.set_anti_alias(true)
                     .set_style(PaintStyle::Stroke)
                     .set_stroke_width(chart.stroke_width)
                     .set_stroke_cap(skia_safe::paint::Cap::Round)
-                    .set_stroke_join(skia_safe::paint::Join::Round)
+                    .set_stroke_join(join)
                     .set_color(series.color);
                 canvas.draw_path(&stroke.detach(), &p);
             }

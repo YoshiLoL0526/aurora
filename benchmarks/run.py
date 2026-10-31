@@ -6,11 +6,17 @@
     uv run benchmarks/run.py --json base.json         # guarda los resultados
     uv run benchmarks/run.py --compare base.json      # compara con una medición anterior
     uv run benchmarks/run.py --markdown               # tabla Markdown (resumen de CI)
+    uv run benchmarks/run.py --check                  # falla si una operación pasa de su presupuesto
 
 Cada operación avanza un frame del piloto headless (mismo runtime que la ventana, sin
 presentar en pantalla). Se mide el tiempo total del frame y, con `Pilot.stats`, cada fase:
-`view` (tu función de vista), `to_spec` (serializar el árbol), `parse` (dicts → Rust), `layout`
-y `paint`. Se publica la mediana y el p95 tras unos frames de calentamiento.
+`view` (tu función de vista), `to_spec` (serializar el árbol), `parse` (dicts → Rust), `layout`,
+`draw` (grabar los `canvas` y `chart`) y `paint`. Se publica la mediana y el p95 tras unos frames
+de calentamiento.
+
+Las operaciones interactivas tienen un presupuesto por frame (`Bench.budgets` en `scenarios.py`,
+16,7 ms para 60 fps): tras la tabla se dice cuáles caben, y con `--check` el proceso termina con
+error si alguna se pasa (es lo que hace la CI).
 
 `arranque` mide otra cosa: desde `import aurora` hasta el primer frame de una app típica, con
 cada muestra en un proceso nuevo (`startup.py`), y lo compara con su objetivo (`STARTUP_TARGET`).
@@ -35,7 +41,7 @@ from scenarios import SCENARIOS, Bench, Scenario
 
 import aurora
 
-PHASES = ("view", "to_spec", "parse", "style", "layout", "paint")
+PHASES = ("view", "to_spec", "parse", "style", "layout", "draw", "paint")
 WARMUP = 3
 
 STARTUP = "arranque"
@@ -91,6 +97,7 @@ def _sample(pilot: aurora.Pilot, timed: _TimedView, total: float) -> dict[str, f
         "parse": stats["parse"],
         "style": stats["style"],
         "layout": stats["layout"],
+        "draw": stats["draw"],
         "paint": stats["paint"],
     }
 
@@ -112,6 +119,9 @@ def run_scenario(scenario: Scenario, *, scale: float, reps: int, budget: float) 
         bench.setup(pilot)
     ops = {"cold": _summary(cold)}
     for name, op in bench.ops.items():
+        # Cada operación parte del reposo: sin esto, `idle` mediría las transiciones de hover
+        # que dejó en curso la operación anterior.
+        pilot.settle()
         for _ in range(WARMUP):
             op(pilot)
         samples: list[dict[str, float]] = []
@@ -121,6 +131,8 @@ def run_scenario(scenario: Scenario, *, scale: float, reps: int, budget: float) 
             op(pilot)
             samples.append(_sample(pilot, timed, (time.perf_counter() - start) * 1000))
         ops[name] = _summary(samples)
+        if name in bench.budgets:
+            ops[name]["budget"] = bench.budgets[name]
     return {"description": scenario.description, "nodes": nodes, **bench.info, "ops": ops}
 
 
@@ -152,6 +164,30 @@ def startup_verdict(results: dict) -> str | None:
     median = res["ops"]["total"]["median"]
     mark = "✅" if median <= res["target"] else "⚠️"
     return f"{mark} arranque: {median:.0f} ms de mediana (objetivo ≤ {res['target']:.0f} ms)"
+
+
+def frame_verdict(results: dict, scale: float = 1.0) -> tuple[list[str], int]:
+    """Una línea por operación con presupuesto (mediana frente a él) y cuántas se pasan.
+
+    Los presupuestos son para los escenarios a tamaño nominal: con otra `scale` se avisa."""
+    lines, over = [], 0
+    for name, res in results.items():
+        for op, s in res["ops"].items():
+            if "budget" not in s:
+                continue
+            ok = s["median"] <= s["budget"]
+            over += not ok
+            lines.append(
+                f"{'✅' if ok else '❌'} {name} {op}: {s['median']:.1f} ms de mediana, "
+                f"p95 {s['p95']:.1f} ms (presupuesto ≤ {s['budget']:.1f} ms)"
+            )
+    if lines:
+        total = len(lines)
+        head = f"60 fps: {total - over} de {total} operaciones caben en su presupuesto por frame"
+        if scale != 1.0:
+            head += f" (con --scale {scale:g}: los presupuestos son para la escala 1)"
+        lines.insert(0, head)
+    return lines, over
 
 
 def _git_commit() -> str | None:
@@ -258,6 +294,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, help="guarda los resultados en este archivo")
     parser.add_argument("--compare", type=Path, help="JSON de una ejecución anterior con la que comparar")
     parser.add_argument("--markdown", action="store_true", help="imprime una tabla Markdown")
+    parser.add_argument(
+        "--check", action="store_true", help="termina con error si una operación pasa de su presupuesto"
+    )
     args = parser.parse_args(argv)
     if unknown := set(args.scenarios) - set(names):
         parser.error(f"escenario desconocido: {', '.join(sorted(unknown))} (hay: {', '.join(names)})")
@@ -282,7 +321,12 @@ def main(argv: list[str] | None = None) -> int:
     if verdict := startup_verdict(results):
         print()
         print(verdict)
-    return 0
+    lines, over = frame_verdict(results, args.scale)
+    if lines:
+        print()
+        # En Markdown, una lista: el resumen de CI no junta las líneas.
+        print("\n".join(f"- {line}" for line in lines) if args.markdown else "\n".join(lines))
+    return 1 if args.check and over else 0
 
 
 if __name__ == "__main__":

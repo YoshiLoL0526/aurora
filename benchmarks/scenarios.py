@@ -7,6 +7,11 @@ para que dos ejecuciones midan exactamente lo mismo.
 
 `scale` reduce el tamaño de los escenarios (los tests usan escalas pequeñas para que no se
 pudran sin pagar su coste).
+
+Las operaciones interactivas declaran su **presupuesto** en `Bench.budgets` (ms de mediana por
+frame; `FRAME` para 60 fps): es el control de 60 fps de `run.py --check`. Las que no lo
+declaran (los frames en frío y las vistas deliberadamente gigantes) solo se miden. Ver
+`benchmarks/README.md`.
 """
 
 from __future__ import annotations
@@ -37,6 +42,12 @@ from aurora import (
 
 Op = Callable[[Pilot], None]
 
+# Un frame a 60 fps, en ms: el presupuesto de las operaciones interactivas.
+FRAME = 1000 / 60
+# Presupuesto provisional de las reconstrucciones completas de vistas medianas (~2000 nodos) que
+# aún no caben en un frame: impide que empeoren mientras se baja a `FRAME` (pendiente para la 1.0).
+PROVISIONAL = 25.0
+
 
 @dataclass
 class Bench:
@@ -45,6 +56,8 @@ class Bench:
     # Se ejecuta una vez, sin medir, tras crear el piloto (p. ej. enfocar un campo).
     setup: Op | None = None
     info: dict[str, int] = field(default_factory=dict)
+    # Presupuesto (ms, mediana) de las operaciones que deben caber en un frame. Ver `budget`.
+    budgets: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -64,6 +77,11 @@ def _alternate(*steps: Op) -> Op:
         i += 1
 
     return op
+
+
+def budget(*ops: str, ms: float = FRAME) -> dict[str, float]:
+    """Presupuesto de `ops`: por defecto, un frame a 60 fps."""
+    return dict.fromkeys(ops, ms)
 
 
 def _idle(pilot: Pilot) -> None:
@@ -119,6 +137,8 @@ def list_10k(scale: float = 1.0, *, memo: bool = False) -> Bench:
             "idle": _idle,
         },
         info={"items": n},
+        # Reconstruir 10 000 filas (~50 000 nodos) no cabe en un frame: queda fuera.
+        budgets=budget("hover", "scroll", "idle"),
     )
 
 
@@ -185,6 +205,8 @@ def big_view(scale: float = 1.0) -> Bench:
             "idle": _idle,
         },
         info={"items": n},
+        # `texto` y `clic` rehacen el layout o la vista de ~50 000 nodos: quedan fuera.
+        budgets=budget("color", "hover", "idle"),
     )
 
 
@@ -236,6 +258,7 @@ def virtual_100k(scale: float = 1.0) -> Bench:
             "idle": _idle,
         },
         info={"items": n},
+        budgets=budget("rebuild", "hover", "scroll", "idle"),
     )
 
 
@@ -286,6 +309,7 @@ def dashboard_50(scale: float = 1.0) -> Bench:
             "idle": _idle,
         },
         info={"panels": n, "bars": n * bars},
+        budgets={**budget("hover", "idle"), **budget("rebuild", ms=PROVISIONAL)},
     )
 
 
@@ -324,6 +348,7 @@ def typing(scale: float = 1.0) -> Bench:
         {"type": type_char, "idle": _idle},
         setup=lambda p: p.focus("campo"),
         info={"rows": n},
+        budgets={**budget("idle"), **budget("type", ms=PROVISIONAL)},
     )
 
 
@@ -371,6 +396,8 @@ def chart_millon(scale: float = 1.0) -> Bench:
         },
         setup=place,
         info={"points": n},
+        # Releer un millón de puntos nuevos (`rebuild`) queda fuera; acercar y desplazar, no.
+        budgets=budget("zoom", "pan", "idle"),
     )
 
 
@@ -434,6 +461,9 @@ def charts_points(scale: float = 1.0) -> Bench:
             "idle": _idle,
         },
         info={"points": n * 4},
+        # Volver a grabar 80 000 puntos nuevos (`rebuild`) queda fuera: los datos llegan a
+        # ráfagas, no en cada frame. Repintar sin datos nuevos sí cabe.
+        budgets=budget("hover", "idle"),
     )
 
 

@@ -257,6 +257,7 @@ pub fn parse(d: &Bound<'_, PyDict>) -> PyResult<Chart> {
             .map(|v| v.is_truthy())
             .transpose()?
             .unwrap_or(false),
+        domain: OnceLock::new(),
     })
 }
 

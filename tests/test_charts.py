@@ -730,3 +730,37 @@ def test_non_numeric_data_raises():
         App(lambda: chart(np.array([1 + 2j, 3 + 0j])), size=(100, 100)).pilot()
     with pytest.raises(TypeError):
         chart("no son números")
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.5])
+def test_repaints_from_the_raster_cache_look_the_same(tmp_path, scale):
+    """Un gráfico que se repinta sin cambiar se copia de una imagen rasterizada: tiene que
+    verse exactamente como al pintarlo directamente (también con escala fraccionaria)."""
+    x = np.arange(400, dtype=np.float64)
+    y = np.sin(x / 9) + np.sin(x / 31) * 0.4
+
+    def view():
+        return column(padding=13)[
+            box(key="tarjeta", padding=7, bg="#20263A", bg_hover="#2A3150", on_click=lambda: None)[
+                chart(y, x=x, key="c", height=120, color="#FF0000"),
+                chart(y, kind="scatter", key="d", height=80, point_size=2, color="#22D3B6"),
+            ],
+            box(key="fuera", height=20),
+        ]
+
+    pilot = App(view, size=(300, 300)).pilot(scale=scale)
+    direct = tmp_path / "directo.png"
+    pilot.png(str(direct))
+    # Entrar y salir de la tarjeta la repinta varias veces: la primera, el dibujo de cada
+    # gráfico se reproduce; desde la segunda, se copia su imagen.
+    for target in ("tarjeta", "fuera", "tarjeta", "fuera"):
+        rect = pilot.rect(target)
+        assert rect is not None
+        pilot.move_to(rect[0] + 5, rect[1] + 5)
+        pilot.settle()
+    cached = tmp_path / "cache.png"
+    pilot.png(str(cached))
+    _, a = _png_rows(direct)
+    _, b = _png_rows(cached)
+    worst = max(abs(p - q) for ra, rb in zip(a, b, strict=True) for p, q in zip(ra, rb, strict=True))
+    assert worst <= 2

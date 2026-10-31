@@ -46,6 +46,24 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   redimensionarla, maximizarla), y `app.pilot()` de una ventana sin marco redimensiona por los
   bordes como la ventana.
 
+### Cambiado
+
+- **Control de 60 fps en los benchmarks**: las operaciones interactivas de `benchmarks/run.py`
+  declaran un presupuesto de 16,7 ms por frame (`Bench.budgets` en `benchmarks/scenarios.py`),
+  la tabla va seguida del veredicto y `--check` termina con error si alguna se pasa; el job
+  `bench` de la CI lo usa. La tabla muestra también la fase `draw` (grabar `canvas` y `chart`), y
+  cada operación se mide desde el reposo.
+- Un `chart` o un `canvas` que se repinta sin cambiar (el hover de la tarjeta que lo contiene, una
+  transición vecina) se copia de una imagen rasterizada en vez de reproducir su dibujo: en
+  `charts_points`, un frame de `hover` pasa de ~12 ms a menos de 1.
+- El zoom y el pan de un `chart` ya no recorren todos los datos para calcular su dominio en cada
+  paso, y una línea con más de un vértice por píxel se traza con uniones en bisel (no se
+  distinguen de las redondas a ese tamaño): en `chart_millon`, de ~19 a ~11 ms por paso.
+- Los puntos opacos de un `chart(kind="scatter")` se rasterizan uno a uno en lugar de en un único
+  trazado con miles de contornos.
+- El parseo del árbol en el núcleo solo busca en cada dict las claves que tiene: la fase `parse`
+  cuesta entre la mitad y un tercio (en `typing`, de ~8 a ~3 ms).
+
 ## [0.7.0] — 2026-10-31
 
 ### Añadido

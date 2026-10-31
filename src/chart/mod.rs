@@ -18,7 +18,7 @@
 //! `paint` dibuja el gráfico y `cache` decide cuándo volver a grabarlo.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use pyo3::buffer::{ElementType, PyUntypedBuffer};
 use pyo3::exceptions::PyValueError;
@@ -106,4 +106,16 @@ pub struct Chart {
     /// Zoom (rueda) y pan (arrastre) sobre el eje x; el doble clic vuelve a la
     /// vista completa. Ver `Charts`.
     pub zoom: bool,
+    /// Dominio de los datos, calculado la primera vez que se graba.
+    domain: OnceLock<Domain>,
+}
+
+/// Lo que se sabe de los datos sin mirar la ventana: el tamaño de la serie más
+/// larga, el rango de x y de y de los puntos finitos y el orden de cada serie.
+#[derive(Debug)]
+struct Domain {
+    max_len: usize,
+    y: (f64, f64),
+    x: (f64, f64),
+    orders: Vec<Order>,
 }

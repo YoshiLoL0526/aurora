@@ -114,7 +114,7 @@ dependa de lo que cambia, no del tamaño de la vista.*
 - ⏳ **Cada componente completo**: test de render, de interacción con `Pilot` y de su nodo en el
   árbol de accesibilidad, y manejo con teclado si es interactivo, con una matriz de cobertura
   que comprueba un test
-- ⏳ **Control de 60 fps en CI**: presupuesto de 16,7 ms por frame para las operaciones
+- ✅ **Control de 60 fps en CI**: presupuesto de 16,7 ms por frame para las operaciones
   interactivas de los benchmarks, y la CI falla si se pasa
 - ✅ Pequeños arreglos: `target-version` de ruff alineado con `requires-python`
 

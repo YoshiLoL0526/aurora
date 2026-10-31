@@ -9,6 +9,7 @@ uv run benchmarks/run.py lista_10k --reps 50    # uno solo, más muestras
 uv run benchmarks/run.py --json antes.json      # guarda los resultados
 uv run benchmarks/run.py --compare antes.json   # compara con una medición anterior
 uv run benchmarks/run.py --scale 0.1            # escenarios reducidos, para iterar rápido
+uv run benchmarks/run.py --check                # falla si una operación pasa de su presupuesto
 ```
 
 ## Qué se mide
@@ -26,10 +27,11 @@ completo, más la mediana de cada fase:
 | `parse` | Dicts → `Node` tipados en Rust (`spec::parse`). |
 | `style` | Comparar el árbol nuevo con el anterior: decide si hay que rehacer el layout o solo repintar. |
 | `layout` | Árbol de Taffy, shaping de los párrafos, cálculo del layout y regiones de hit-testing. |
+| `draw` | Grabar el dibujo de los `canvas` y los `chart` que lo necesitan (datos nuevos, otra caja, zoom o pan). |
 | `paint` | Composición (colocar las capas de los `scroll`) y pintura con Skia de la zona dañada. |
 
-`view`, `to_spec`, `parse` y `style` valen 0 en los frames que no reconstruyen la vista, y `layout`
-en los que no cambian nada que lo afecte ([invalidación por
+`view`, `to_spec`, `parse` y `style` valen 0 en los frames que no reconstruyen la vista, `draw` en
+los que no hay que volver a grabar ningún dibujo, y `layout` en los que no cambian nada que lo afecte ([invalidación por
 fases](../docs/architecture.md#invalidación-por-fases)). Las fases salen
 de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
 
@@ -52,6 +54,36 @@ de [`Pilot.stats`](../docs/reference.md#pilot-tests-de-interacción).
   `app.spawn`); se reevalúan esas regiones y no `view()`.
 - `hover` / `scroll`: el puntero se mueve o la rueda desplaza; no se toca Python.
 - `idle`: un frame sin cambios. Mide lo que se paga por frame aunque no pase nada.
+
+Cada operación se mide desde el reposo (`pilot.settle()` antes de calentar): así `idle` no paga las
+transiciones de hover que dejó en curso la operación anterior.
+
+## Presupuesto por frame: el control de 60 fps
+
+Las operaciones interactivas tienen que caber en **un frame a 60 fps: 16,7 ms de mediana**. Cada
+escenario declara cuáles en `Bench.budgets` (`budgets=budget("hover", "scroll", "idle")`, con
+`FRAME` por defecto o `ms=` para un presupuesto propio). Tras la tabla, `run.py` dice cuántas caben
+y marca cada una con ✅ o ❌; con `--check` termina con error si alguna se pasa. Se compara la
+mediana, no el p95: el p95 de unas decenas de muestras en un runner compartido es casi todo ruido
+(se muestra igualmente). Los presupuestos son para la escala nominal: con `--scale` se avisa.
+
+| Escenario | Con presupuesto (16,7 ms) | Sin presupuesto, y por qué |
+|---|---|---|
+| `lista_10k`, `lista_10k_memo` | `hover`, `scroll`, `idle` | `rebuild`: reconstruir 10 000 filas (~50 000 nodos) es una vista deliberadamente gigante. |
+| `vista_grande` | `color`, `hover`, `idle` | `texto` y `clic`: rehacen el layout o la vista entera de ~50 000 nodos. |
+| `lista_virtual_100k` | `rebuild`, `hover`, `scroll`, `idle` | — |
+| `dashboard_50` | `hover`, `idle`; `rebuild` con 25 ms provisionales | — |
+| `typing` | `idle`; `type` con 25 ms provisionales | — |
+| `charts_points` | `hover`, `idle` | `rebuild`: volver a grabar 80 000 puntos nuevos; los datos llegan a ráfagas, no en cada frame. |
+| `chart_millon` | `zoom`, `pan`, `idle` | `rebuild`: releer un millón de puntos nuevos. |
+
+`dashboard_50 rebuild` y `typing type` reconstruyen por completo una vista de ~1600 y ~2000 nodos
+en cada frame (sin `@component`) y hoy rondan los 15–19 ms en un equipo de escritorio: tienen un
+presupuesto **provisional** de 25 ms (`PROVISIONAL`) que impide que empeoren, y bajarlo a 16,7 ms
+es trabajo pendiente para la 1.0.
+
+Los frames en frío (`cold`) no tienen presupuesto: son el primer frame de cada app, con su coste
+de crear el árbol y maquetar todo el texto; el arranque tiene su propio objetivo (abajo).
 
 ## Arranque
 
@@ -83,6 +115,7 @@ se rompan sin que nadie lo note.
 - [`baseline-0.2.0.json`](baseline-0.2.0.json) es el punto de partida de la v0.3, medido con la
   0.2.0 en la máquina que indica su `meta` (Windows). Sirve de referencia de orden de magnitud;
   para comparar en tu máquina, mide primero la rama principal con `--json`.
-- En CI el job **Benchmarks** ejecuta la suite en cada push, publica la tabla en el resumen del
-  build y sube `bench.json` como artefacto. No falla por tiempos: los runners compartidos tienen
-  demasiado ruido para usarlos como umbral.
+- En CI el job **Benchmarks** ejecuta la suite en cada push con `--check`, publica la tabla y el
+  veredicto de 60 fps en el resumen del build y sube `bench.json` como artefacto. **Falla si una
+  operación con presupuesto se pasa de 16,7 ms de mediana**; el resto de cifras (y el objetivo de
+  arranque) solo se publican, porque los runners compartidos tienen ruido.

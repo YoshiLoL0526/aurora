@@ -616,7 +616,12 @@ impl<'a> Painter<'a> {
             canvas.clip_rrect(RRect::new_rect_xy(inner, r, r), ClipOp::Intersect, true);
             canvas.clip_rect(content, ClipOp::Intersect, true);
             canvas.translate((content.left, content.top));
-            canvas.draw_picture(recorded, None, None);
+            self.engine.draw_recorded(
+                canvas,
+                &node.key,
+                recorded,
+                (content.width(), content.height()),
+            );
             canvas.restore();
         }
 

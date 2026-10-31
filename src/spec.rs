@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use accesskit::{Live, Orientation, Role, SortDirection};
 use pyo3::exceptions::PyValueError;
-use pyo3::intern;
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pyo3::types::{PyBytes, PyDict, PyList, PyString};
 use skia_safe::Color;
 
@@ -552,7 +552,7 @@ pub enum Value {
 }
 
 impl A11y {
-    fn parse(d: &Bound<'_, PyDict>) -> PyResult<Self> {
+    fn parse(d: &Props<'_, '_>) -> PyResult<Self> {
         let value = match get(d, "value")? {
             None => None,
             Some(v) => Some(match v.extract::<String>() {
@@ -706,129 +706,284 @@ impl Node {
 // Helpers de extracción: claves ausentes o `None` → valor por defecto.
 // ---------------------------------------------------------------------------
 
-/// Consulta una clave del spec. La clave sale del `match` ya creada e internada
-/// (`intern!`): en el parse de un nodo se consultan ~80 claves y crear y hashear
-/// un `PyString` por consulta se lleva buena parte de la fase. Una clave fuera
-/// de la tabla se crea al momento, como antes.
-fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
-    let py = d.py();
-    macro_rules! hit {
-        ($name:literal) => {
-            d.get_item(intern!(py, $name))
-        };
+/// Claves que puede tener un spec, en el orden de su bit en `Props::mask`.
+const KEYS: [&str; 97] = [
+    "align",
+    "alt",
+    "animate_layout",
+    "autofocus",
+    "bg",
+    "bg_hover",
+    "bg_pressed",
+    "border_color",
+    "border_width",
+    "bottom",
+    "capture",
+    "chart",
+    "checked",
+    "children",
+    "color",
+    "cursor",
+    "description",
+    "direction",
+    "draw",
+    "drop_target",
+    "enter",
+    "exit",
+    "expanded",
+    "fit",
+    "focus_color",
+    "focusable",
+    "font_family",
+    "font_size",
+    "font_weight",
+    "gap",
+    "gradient",
+    "grow",
+    "handlers",
+    "height",
+    "hidden",
+    "justify",
+    "key",
+    "kind",
+    "label",
+    "layer",
+    "left",
+    "letter_spacing",
+    "level",
+    "line_height",
+    "live",
+    "max_height",
+    "max_lines",
+    "max_width",
+    "memo",
+    "min_height",
+    "min_width",
+    "modal",
+    "multiline",
+    "offset",
+    "opacity",
+    "orientation",
+    "overflow",
+    "padding",
+    "placeholder",
+    "placeholder_color",
+    "placement",
+    "position",
+    "position_in_set",
+    "press_scale",
+    "pulse",
+    "radius",
+    "reveal",
+    "right",
+    "role",
+    "rows",
+    "scroll",
+    "scroll_anchor",
+    "scrollbar_color",
+    "selected",
+    "selection_color",
+    "set_size",
+    "shadow",
+    "shrink",
+    "sort",
+    "spans",
+    "src",
+    "stick_to_end",
+    "style",
+    "text",
+    "text_align",
+    "tooltip",
+    "tooltip_bg",
+    "tooltip_color",
+    "top",
+    "transition",
+    "value",
+    "value_max",
+    "value_min",
+    "value_step",
+    "width",
+    "window_drag",
+    "wrap",
+];
+
+const _: () = assert!(KEYS.len() <= 128, "la máscara de `Props` es un u128");
+
+/// Posición de `key` en `KEYS`. Siempre en línea: con una clave literal, el
+/// `match` se resuelve al compilar.
+#[inline(always)]
+fn slot(key: &str) -> Option<usize> {
+    match key {
+        "align" => Some(0),
+        "alt" => Some(1),
+        "animate_layout" => Some(2),
+        "autofocus" => Some(3),
+        "bg" => Some(4),
+        "bg_hover" => Some(5),
+        "bg_pressed" => Some(6),
+        "border_color" => Some(7),
+        "border_width" => Some(8),
+        "bottom" => Some(9),
+        "capture" => Some(10),
+        "chart" => Some(11),
+        "checked" => Some(12),
+        "children" => Some(13),
+        "color" => Some(14),
+        "cursor" => Some(15),
+        "description" => Some(16),
+        "direction" => Some(17),
+        "draw" => Some(18),
+        "drop_target" => Some(19),
+        "enter" => Some(20),
+        "exit" => Some(21),
+        "expanded" => Some(22),
+        "fit" => Some(23),
+        "focus_color" => Some(24),
+        "focusable" => Some(25),
+        "font_family" => Some(26),
+        "font_size" => Some(27),
+        "font_weight" => Some(28),
+        "gap" => Some(29),
+        "gradient" => Some(30),
+        "grow" => Some(31),
+        "handlers" => Some(32),
+        "height" => Some(33),
+        "hidden" => Some(34),
+        "justify" => Some(35),
+        "key" => Some(36),
+        "kind" => Some(37),
+        "label" => Some(38),
+        "layer" => Some(39),
+        "left" => Some(40),
+        "letter_spacing" => Some(41),
+        "level" => Some(42),
+        "line_height" => Some(43),
+        "live" => Some(44),
+        "max_height" => Some(45),
+        "max_lines" => Some(46),
+        "max_width" => Some(47),
+        "memo" => Some(48),
+        "min_height" => Some(49),
+        "min_width" => Some(50),
+        "modal" => Some(51),
+        "multiline" => Some(52),
+        "offset" => Some(53),
+        "opacity" => Some(54),
+        "orientation" => Some(55),
+        "overflow" => Some(56),
+        "padding" => Some(57),
+        "placeholder" => Some(58),
+        "placeholder_color" => Some(59),
+        "placement" => Some(60),
+        "position" => Some(61),
+        "position_in_set" => Some(62),
+        "press_scale" => Some(63),
+        "pulse" => Some(64),
+        "radius" => Some(65),
+        "reveal" => Some(66),
+        "right" => Some(67),
+        "role" => Some(68),
+        "rows" => Some(69),
+        "scroll" => Some(70),
+        "scroll_anchor" => Some(71),
+        "scrollbar_color" => Some(72),
+        "selected" => Some(73),
+        "selection_color" => Some(74),
+        "set_size" => Some(75),
+        "shadow" => Some(76),
+        "shrink" => Some(77),
+        "sort" => Some(78),
+        "spans" => Some(79),
+        "src" => Some(80),
+        "stick_to_end" => Some(81),
+        "style" => Some(82),
+        "text" => Some(83),
+        "text_align" => Some(84),
+        "tooltip" => Some(85),
+        "tooltip_bg" => Some(86),
+        "tooltip_color" => Some(87),
+        "top" => Some(88),
+        "transition" => Some(89),
+        "value" => Some(90),
+        "value_max" => Some(91),
+        "value_min" => Some(92),
+        "value_step" => Some(93),
+        "width" => Some(94),
+        "window_drag" => Some(95),
+        "wrap" => Some(96),
+        _ => None,
     }
-    let item = match key {
-        "align" => hit!("align"),
-        "alt" => hit!("alt"),
-        "animate_layout" => hit!("animate_layout"),
-        "autofocus" => hit!("autofocus"),
-        "bg" => hit!("bg"),
-        "bg_hover" => hit!("bg_hover"),
-        "bg_pressed" => hit!("bg_pressed"),
-        "border_color" => hit!("border_color"),
-        "border_width" => hit!("border_width"),
-        "bottom" => hit!("bottom"),
-        "capture" => hit!("capture"),
-        "chart" => hit!("chart"),
-        "checked" => hit!("checked"),
-        "children" => hit!("children"),
-        "color" => hit!("color"),
-        "cursor" => hit!("cursor"),
-        "description" => hit!("description"),
-        "direction" => hit!("direction"),
-        "draw" => hit!("draw"),
-        "drop_target" => hit!("drop_target"),
-        "enter" => hit!("enter"),
-        "exit" => hit!("exit"),
-        "expanded" => hit!("expanded"),
-        "fit" => hit!("fit"),
-        "focus_color" => hit!("focus_color"),
-        "focusable" => hit!("focusable"),
-        "font_family" => hit!("font_family"),
-        "font_size" => hit!("font_size"),
-        "font_weight" => hit!("font_weight"),
-        "gap" => hit!("gap"),
-        "gradient" => hit!("gradient"),
-        "grow" => hit!("grow"),
-        "handlers" => hit!("handlers"),
-        "height" => hit!("height"),
-        "hidden" => hit!("hidden"),
-        "justify" => hit!("justify"),
-        "key" => hit!("key"),
-        "kind" => hit!("kind"),
-        "label" => hit!("label"),
-        "layer" => hit!("layer"),
-        "left" => hit!("left"),
-        "letter_spacing" => hit!("letter_spacing"),
-        "level" => hit!("level"),
-        "line_height" => hit!("line_height"),
-        "live" => hit!("live"),
-        "max_height" => hit!("max_height"),
-        "max_lines" => hit!("max_lines"),
-        "max_width" => hit!("max_width"),
-        "memo" => hit!("memo"),
-        "min_height" => hit!("min_height"),
-        "min_width" => hit!("min_width"),
-        "modal" => hit!("modal"),
-        "multiline" => hit!("multiline"),
-        "offset" => hit!("offset"),
-        "opacity" => hit!("opacity"),
-        "orientation" => hit!("orientation"),
-        "overflow" => hit!("overflow"),
-        "padding" => hit!("padding"),
-        "placeholder" => hit!("placeholder"),
-        "placeholder_color" => hit!("placeholder_color"),
-        "placement" => hit!("placement"),
-        "position" => hit!("position"),
-        "position_in_set" => hit!("position_in_set"),
-        "press_scale" => hit!("press_scale"),
-        "pulse" => hit!("pulse"),
-        "radius" => hit!("radius"),
-        "reveal" => hit!("reveal"),
-        "right" => hit!("right"),
-        "role" => hit!("role"),
-        "rows" => hit!("rows"),
-        "scroll" => hit!("scroll"),
-        "scroll_anchor" => hit!("scroll_anchor"),
-        "scrollbar_color" => hit!("scrollbar_color"),
-        "selected" => hit!("selected"),
-        "selection_color" => hit!("selection_color"),
-        "set_size" => hit!("set_size"),
-        "shadow" => hit!("shadow"),
-        "shrink" => hit!("shrink"),
-        "sort" => hit!("sort"),
-        "spans" => hit!("spans"),
-        "src" => hit!("src"),
-        "stick_to_end" => hit!("stick_to_end"),
-        "style" => hit!("style"),
-        "text" => hit!("text"),
-        "text_align" => hit!("text_align"),
-        "tooltip" => hit!("tooltip"),
-        "tooltip_bg" => hit!("tooltip_bg"),
-        "tooltip_color" => hit!("tooltip_color"),
-        "top" => hit!("top"),
-        "transition" => hit!("transition"),
-        "value" => hit!("value"),
-        "value_max" => hit!("value_max"),
-        "value_min" => hit!("value_min"),
-        "value_step" => hit!("value_step"),
-        "width" => hit!("width"),
-        "window_drag" => hit!("window_drag"),
-        "wrap" => hit!("wrap"),
-        other => d.get_item(PyString::new(py, other)),
+}
+
+/// `KEYS` como cadenas internadas de Python, creadas una vez.
+fn interned(py: Python<'_>) -> &[Py<PyString>] {
+    static INTERNED: PyOnceLock<Vec<Py<PyString>>> = PyOnceLock::new();
+    INTERNED.get_or_init(py, || {
+        KEYS.iter()
+            .map(|k| PyString::intern(py, k).unbind())
+            .collect()
+    })
+}
+
+/// Un dict del spec y qué claves de `KEYS` contiene. En el parse de un nodo se
+/// consultan ~100 claves y casi todas faltan: con la máscara, una clave que
+/// falta no llega a buscarse en el dict, y la máscara cuesta lo que las claves
+/// que sí tiene (pocas).
+struct Props<'a, 'py> {
+    dict: &'a Bound<'py, PyDict>,
+    mask: u128,
+}
+
+impl<'a, 'py> Props<'a, 'py> {
+    /// Lee las claves de `dict` para saber cuáles faltan.
+    fn new(dict: &'a Bound<'py, PyDict>) -> Self {
+        let mut mask = 0u128;
+        for k in dict.keys() {
+            if let Ok(name) = k.cast::<PyString>()
+                && let Ok(name) = name.to_str()
+                && let Some(i) = slot(name)
+            {
+                mask |= 1 << i;
+            }
+        }
+        Self { dict, mask }
+    }
+
+    /// Sin máscara: todas las claves se buscan (dicts en los que casi todas están).
+    fn all(dict: &'a Bound<'py, PyDict>) -> Self {
+        Self {
+            dict,
+            mask: u128::MAX,
+        }
+    }
+}
+
+/// Consulta una clave del spec. Las de `KEYS` se buscan con su cadena
+/// internada, y solo si la máscara dice que están; una clave fuera de la tabla
+/// se crea al momento.
+#[inline(always)]
+fn get<'py>(d: &Props<'_, 'py>, key: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
+    let py = d.dict.py();
+    let item = match slot(key) {
+        Some(i) if d.mask & (1 << i) == 0 => return Ok(None),
+        Some(i) => d.dict.get_item(interned(py)[i].bind(py)),
+        None => d.dict.get_item(PyString::new(py, key)),
     }?;
     Ok(item.filter(|v| !v.is_none()))
 }
 
-fn f32_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f32>> {
+#[inline(always)]
+fn f32_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<f32>> {
     get(d, key)?.map(|v| v.extract::<f32>()).transpose()
 }
 
-fn str_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<String>> {
+#[inline(always)]
+fn str_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<String>> {
     get(d, key)?.map(|v| v.extract::<String>()).transpose()
 }
 
-fn len_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Len>> {
+#[inline(always)]
+fn len_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<Len>> {
     let Some(v) = get(d, key)? else {
         return Ok(None);
     };
@@ -842,26 +997,31 @@ fn len_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Len>> {
         .ok_or_else(|| PyValueError::new_err(format!("longitud inválida: {s:?}")))
 }
 
-fn bool_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<bool> {
+#[inline(always)]
+fn bool_of(d: &Props<'_, '_>, key: &str) -> PyResult<bool> {
     Ok(get(d, key)?
         .map(|v| v.is_truthy())
         .transpose()?
         .unwrap_or(false))
 }
 
-fn opt_bool_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bool>> {
+#[inline(always)]
+fn opt_bool_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<bool>> {
     get(d, key)?.map(|v| v.is_truthy()).transpose()
 }
 
-fn f64_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<f64>> {
+#[inline(always)]
+fn f64_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<f64>> {
     get(d, key)?.map(|v| v.extract::<f64>()).transpose()
 }
 
-fn color_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<Color>> {
+#[inline(always)]
+fn color_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<Color>> {
     str_of(d, key)?.map(|s| parse_color(&s)).transpose()
 }
 
-fn edges_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Edges> {
+#[inline(always)]
+fn edges_of(d: &Props<'_, '_>, key: &str) -> PyResult<Edges> {
     let Some(v) = get(d, key)? else {
         return Ok(Edges::default());
     };
@@ -895,7 +1055,7 @@ fn edges_of(d: &Bound<'_, PyDict>, key: &str) -> PyResult<Edges> {
     })
 }
 
-fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
+fn parse_style(d: &Props<'_, '_>) -> PyResult<Style> {
     let shadow = match get(d, "shadow")? {
         Some(v) => {
             let (dx, dy, blur, color): (f32, f32, f32, String) = v.extract()?;
@@ -1072,7 +1232,7 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
     })
 }
 
-fn inherit_text(d: &Bound<'_, PyDict>, parent: &TextProps) -> PyResult<TextProps> {
+fn inherit_text(d: &Props<'_, '_>, parent: &TextProps) -> PyResult<TextProps> {
     Ok(TextProps {
         size: f32_of(d, "font_size")?.unwrap_or(parent.size),
         weight: f32_of(d, "font_weight")?
@@ -1233,7 +1393,7 @@ fn parse_node(
     inherited: &TextProps,
     memo: &mut HashMap<usize, Memo>,
 ) -> PyResult<Arc<Node>> {
-    let d = obj.cast::<PyDict>()?;
+    let d = &Props::all(obj.cast::<PyDict>()?);
     if !bool_of(d, "memo")? {
         return Ok(Arc::new(parse_fresh(d, path, inherited, memo)?));
     }
@@ -1259,7 +1419,7 @@ fn parse_node(
 }
 
 fn parse_fresh(
-    d: &Bound<'_, PyDict>,
+    d: &Props<'_, '_>,
     path: &str,
     inherited: &TextProps,
     memo: &mut HashMap<usize, Memo>,
@@ -1274,11 +1434,12 @@ fn parse_fresh(
     };
     let style_dict = match get(d, "style")? {
         Some(s) => s.cast_into::<PyDict>()?,
-        None => PyDict::new(d.py()),
+        None => PyDict::new(d.dict.py()),
     };
-    let style = parse_style(&style_dict)?;
-    let a11y = A11y::parse(&style_dict)?;
-    let text_props = inherit_text(&style_dict, inherited)?;
+    let props = Props::new(&style_dict);
+    let style = parse_style(&props)?;
+    let a11y = A11y::parse(&props)?;
+    let text_props = inherit_text(&props, inherited)?;
     let key = str_of(d, "key")?.unwrap_or_else(|| path.to_owned());
 
     let children = match get(d, "children")? {
@@ -1327,7 +1488,7 @@ fn parse_fresh(
     })
 }
 
-fn parse_handlers(d: &Bound<'_, PyDict>) -> PyResult<HashMap<String, Py<PyAny>>> {
+fn parse_handlers(d: &Props<'_, '_>) -> PyResult<HashMap<String, Py<PyAny>>> {
     let Some(obj) = get(d, "handlers")? else {
         return Ok(HashMap::new());
     };

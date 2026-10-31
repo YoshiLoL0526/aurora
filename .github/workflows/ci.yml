@@ -54,11 +54,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype-dev
       - name: Compilar e instalar
         run: uv sync
-      # Los runners compartidos tienen ruido: no se falla por tiempos, se publican para comparar.
-      # Para comparar dos ejecuciones, descarga los JSON y usa `--compare`.
+      # Control de 60 fps: falla si la mediana de una operación interactiva pasa de su
+      # presupuesto por frame (`Bench.budgets` en benchmarks/scenarios.py). El resto de cifras
+      # se publican para comparar: descarga los JSON y usa `--compare`.
       - name: Ejecutar la suite
-        run: uv run benchmarks/run.py --json bench.json --markdown >> "$GITHUB_STEP_SUMMARY"
+        run: uv run benchmarks/run.py --json bench.json --markdown --check >> "$GITHUB_STEP_SUMMARY"
       - name: Subir resultados
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: benchmarks-${{ github.sha }}
