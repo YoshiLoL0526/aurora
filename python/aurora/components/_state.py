@@ -32,3 +32,5 @@ _EXTENTS: dict[str, Signal[float | None]] = {}
 # Identidades desplegadas y nodo elegido de cada `tree` sin `Signal` propios.
 _TREE_OPEN: dict[str, Signal[set[Any]]] = {}
 _TREE_SELECTED: dict[str, Signal[Any]] = {}
+# Tono, saturación y brillo de cada `color_picker` (el tono no sobrevive a un gris).
+_HSV: dict[str, Signal[tuple[float, float, float]]] = {}

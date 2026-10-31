@@ -1,18 +1,20 @@
-"""Componentes de entrada con panel o pasos: number_input, combobox y date_picker."""
+"""Componentes de entrada con panel o pasos: number_input, combobox, date_picker,
+time_picker y color_picker."""
 
-from datetime import date
+from datetime import date, time
 
 import pytest
 from test_render import _png_pixel
 
-from aurora import App, Signal, column, combobox, date_picker, number_input, text
+from aurora import App, Signal, color_picker, column, combobox, date_picker, number_input, text, time_picker
 from aurora.components import _state
 
 
 @pytest.fixture(autouse=True)
 def _fresh_state():
     """Cada test empieza con los desplegables cerrados y sin texto a medias."""
-    for store in (_state._OPEN, _state._DRAFTS, _state._QUERIES, _state._ACTIVE, _state._MONTHS):
+    stores = (_state._OPEN, _state._DRAFTS, _state._QUERIES, _state._ACTIVE, _state._MONTHS, _state._HSV)
+    for store in stores:
         store.clear()
 
 
@@ -248,6 +250,132 @@ def test_date_picker_rejects_bad_arguments():
         date_picker(Signal(None), first_weekday=7)
     with pytest.raises(ValueError, match="max"):
         date_picker(Signal(None), min=date(2026, 2, 1), max=date(2026, 1, 1))
+
+
+# --- time_picker ----------------------------------------------------------------
+
+
+def _times(value, **kwargs):
+    view = lambda: column(padding=10)[time_picker(value, key="t", **kwargs)]
+    return App(view, size=(300, 400)).pilot()
+
+
+def test_time_picker_lists_steps_and_chooses():
+    value, seen = Signal(None), []
+    pilot = _times(value, step=30, on_change=seen.append)
+    assert _shown(pilot, "t") is None
+    pilot.click("t")
+    assert pilot.rect("t-00:00") is not None
+    assert pilot.rect("t-00:15") is None  # paso de 30 minutos
+    pilot.click("t-01:30")
+    assert value() == time(1, 30) and seen == [time(1, 30)]
+    assert _shown(pilot, "t") == "01:30"
+    assert pilot.rect("t-01:30") is None  # se cerró
+
+
+def test_time_picker_keyboard_limits_and_12_hour_format():
+    value = Signal(time(9, 0))
+    pilot = _times(value, min=time(8, 0), max=time(18, 0), hour12=True)
+    assert _shown(pilot, "t") == "9:00 a. m."
+    pilot.focus("t")
+    pilot.press("enter")  # abre
+    pilot.press("down")
+    assert value() == time(9, 15)
+    pilot.press("end")
+    assert value() == time(18, 0)
+    assert _shown(pilot, "t") == "6:00 p. m."
+    pilot.press("home")
+    assert value() == time(8, 0)
+    pilot.press("escape")
+    assert pilot.rect("t-08:00") is None
+
+
+def test_time_picker_off_step_value_moves_to_the_next_step():
+    value = Signal(time(10, 7))
+    pilot = _times(value)
+    assert _shown(pilot, "t") == "10:07"
+    pilot.focus("t")
+    pilot.press("enter")
+    pilot.press("down")
+    assert value() == time(10, 30)  # 10:15 es la opción de 10:07; la siguiente, 10:30
+
+
+def test_time_picker_opens_with_the_value_in_view_and_announces_options():
+    pilot = _times(Signal(time(21, 45)))
+    pilot.click("t")
+    pilot.settle()
+    _, y, _, _ = pilot.rect("t-21:45")
+    assert 0 < y < 400
+    nodes = {n["key"]: n for n in pilot.a11y_tree()}
+    assert nodes["t-21:45"]["role"] == "option" and nodes["t-21:45"]["selected"] is True
+    assert nodes["t"]["role"] == "combobox" and nodes["t"]["expanded"] is True
+
+
+def test_time_picker_rejects_bad_arguments():
+    with pytest.raises(ValueError, match="step"):
+        time_picker(Signal(None), step=0)
+    with pytest.raises(ValueError, match="max"):
+        time_picker(Signal(None), min=time(12, 0), max=time(8, 0))
+
+
+# --- color_picker ---------------------------------------------------------------
+
+
+def _colors(value, **kwargs):
+    view = lambda: column(padding=10)[color_picker(value, key="c", **kwargs)]
+    return App(view, size=(320, 420)).pilot()
+
+
+def test_color_picker_palette_and_hex_field():
+    value, seen = Signal("#7C5CFF"), []
+    pilot = _colors(value, palette=["#ff0000", "#00FF00"], on_change=seen.append)
+    assert _shown(pilot, "c") == "#7C5CFF"
+    pilot.click("c")
+    pilot.click("c-swatch-0")
+    assert value() == "#FF0000"
+    _retype(pilot, "c-field", "#12a")
+    assert value() == "#1122AA"
+    _retype(pilot, "c-field", "no es un color")
+    assert value() == "#1122AA"  # un texto inválido espera
+    assert seen == ["#FF0000", "#1122AA"]
+
+
+def test_color_picker_square_and_hue_by_drag_and_keyboard():
+    value = Signal("#FF0000")  # tono 0, saturación y brillo al máximo
+    pilot = _colors(value)
+    pilot.click("c")
+    pilot.drag("c-sv", -110, 0)  # media anchura del cuadro: saturación 0.5
+    assert value() == "#FF8080"
+    pilot.focus("c-sv")
+    pilot.press("down")  # brillo 0.95
+    assert value() == "#F27979"
+    pilot.focus("c-hue")
+    for _ in range(24):  # 24 pasos de 5°: 120°, verde
+        pilot.press("right")
+    assert value() == "#79F279"
+
+
+def test_color_picker_keeps_the_hue_through_greys():
+    value = Signal("#3366CC")
+    pilot = _colors(value, custom=True)
+    pilot.click("c")
+    pilot.focus("c-sv")
+    for _ in range(25):
+        pilot.press("left")  # saturación 0: un gris
+    assert value() == "#CCCCCC"
+    pilot.press("right")
+    r, g, b = (int(value()[i : i + 2], 16) for i in (1, 3, 5))
+    assert b > g > r  # vuelve a ser azulado: el tono no se perdió
+
+
+def test_color_picker_announces_its_parts():
+    pilot = _colors(Signal("#7C5CFF"))
+    pilot.click("c")
+    nodes = {n["key"]: n for n in pilot.a11y_tree()}
+    assert nodes["c"]["role"] == "combobox"
+    assert nodes["c-hue"]["role"] == "slider" and nodes["c-hue"]["numeric_value"] == 252
+    assert nodes["c-sv"]["label"] == "Saturación y brillo"
+    assert nodes["c-swatch-12"]["checked"] is True  # la muestra del color elegido
 
 
 # --- render ----------------------------------------------------------------------

@@ -17,7 +17,7 @@ from .layout import splitter
 from .lists import tree, virtual_list
 from .navigation import accordion, pages, segmented, tabs
 from .overlays import dialog, menu, popover, select, tooltip
-from .pickers import combobox, date_picker
+from .pickers import color_picker, combobox, date_picker, time_picker
 
 __all__ = [
     "accordion",
@@ -26,6 +26,7 @@ __all__ = [
     "button",
     "card",
     "checkbox",
+    "color_picker",
     "combobox",
     "date_picker",
     "dialog",
@@ -48,6 +49,7 @@ __all__ = [
     "tabs",
     "text_input",
     "textarea",
+    "time_picker",
     "toast",
     "tooltip",
     "tree",

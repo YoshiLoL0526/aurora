@@ -1235,6 +1235,66 @@ def view():
 App(view, size=(340, 440)).run()
 ```
 
+### `time_picker(value, *, step=15, min=None, max=None, hour12=False, placeholder="Elegir hora", format=None, on_change=None, key=None, **estilo)` { #time_picker }
+
+Selector de hora, hermano de `date_picker`: un desplegable con las horas del día cada `step`
+minutos. `value` es un `Signal` con un `datetime.time` (o `None` sin elegir). La lista va de `min`
+a `max` (por defecto, el día entero) y se abre con la hora elegida a la vista; una hora que no cae
+en un paso (`10:07`) se muestra tal cual en el campo. Con `hour12=True` se escribe `2:30 p. m.` en
+vez de `14:30`, y `format` (una función de `time` a texto) lo decide a medida.
+
+Con la lista abierta, ↑/↓ pasan a la hora anterior o siguiente, Inicio/Fin a la primera y la
+última, y Enter o Esc la cierran. Es un `"combobox"` con un `"listbox"` de `"option"`s; las
+opciones tienen la key `f"{key}-{HH:MM}"`.
+
+```python live
+from datetime import time
+
+from aurora import App, Signal, column, time_picker
+from aurora.components import _state  # oculto
+
+_state._OPEN["cita"] = Signal(True)  # oculto
+cita = Signal(time(10, 30))
+
+
+def view():
+    return column(padding=20)[
+        time_picker(cita, step=30, min=time(8, 0), max=time(20, 0), key="cita", width=200)
+    ]
+
+
+App(view, size=(300, 330)).run()
+```
+
+### `color_picker(value, *, palette=..., custom=True, on_change=None, key=None, **estilo)` { #color_picker }
+
+Selector de color: el campo muestra una muestra y el código, y abre un panel con un **cuadro de
+saturación y brillo**, una **franja de tono**, la **paleta** de muestras rápidas y un campo
+**hexadecimal**. `value` es un `Signal[str]` con el color en la forma `#RRGGBB`; al escribir se
+aceptan `#RGB`, sin `#` y en minúsculas, y el color se asigna en cuanto el texto es válido.
+
+`palette` cambia las muestras (por defecto, una gama que se ve bien en claro y en oscuro) y
+`custom=False` quita el cuadro y la franja para elegir solo entre ellas. El cuadro y la franja se
+arrastran o, enfocados, se manejan con las flechas (en el cuadro, ←/→ cambian la saturación y ↑/↓
+el brillo); el tono se conserva aunque el color pase por un gris. Esc cierra el panel y
+`on_change(color)` se llama con cada color nuevo. Para los lectores de pantalla, el cuadro y la
+franja son `"slider"`s y la paleta un grupo de `"radio"`s (keys `f"{key}-swatch-{índice}"`).
+
+```python live
+from aurora import App, Signal, color_picker, column
+from aurora.components import _state  # oculto
+
+_state._OPEN["acento"] = Signal(True)  # oculto
+acento = Signal("#7C5CFF")
+
+
+def view():
+    return column(padding=20)[color_picker(acento, key="acento", width=200)]
+
+
+App(view, size=(300, 420)).run()
+```
+
 ### `number_input(value, *, min=None, max=None, step=1, decimals=None, on_change=None, key=None, **estilo)`
 
 Campo numérico: se escribe el número o se ajusta con ↑/↓ y con las flechas de la derecha (que se

@@ -2,6 +2,7 @@
 
 import struct
 import zlib
+from datetime import time
 from pathlib import Path
 
 import pytest
@@ -14,14 +15,17 @@ from aurora import (
     box,
     button,
     card,
+    color_picker,
     column,
     popover,
     row,
     spacer,
     splitter,
     text,
+    time_picker,
     tree,
 )
+from aurora.components import _state
 
 
 def _png_size(path: Path) -> tuple[int, int]:
@@ -239,3 +243,24 @@ def test_tree_highlights_the_selected_row_and_indents_children(tmp_path):
     assert _png_pixel(path, int(sx + sw - 6), int(sy + sh / 2)) == (0x0B, 0x0D, 0x14)
     # El hijo empieza su contenido una sangría más a la derecha que su padre.
     assert pilot.rect("t-docs/guía.md/0")[0] - pilot.rect("t-docs/0")[0] == 18
+
+
+def test_color_and_time_pickers_paint_their_value(tmp_path):
+    _state._OPEN["hora"] = Signal(True)
+    _state._OPEN["tinta"] = Signal(True)
+    view = lambda: row(padding=10, gap=10, align="start")[
+        time_picker(Signal(time(9, 0)), key="hora", width=150),
+        color_picker(Signal("#22D3B6"), key="tinta", width=150),
+    ]
+    pilot = App(view, size=(460, 420)).pilot()
+    pilot.settle()
+    path = tmp_path / "pickers.png"
+    pilot.png(str(path))
+    # La muestra del disparador y la de la vista previa llevan el color elegido.
+    x, y, _, h = pilot.rect("tinta")
+    assert _png_pixel(path, int(x + 16), int(y + h / 2)) == (0x22, 0xD3, 0xB6)
+    # La hora elegida va resaltada ($surface_hover: #1A1F2E) en la lista abierta.
+    ox, oy, ow, oh = pilot.rect("hora-09:00")
+    shade = _png_pixel(path, int(ox + ow - 8), int(oy + oh / 2))
+    assert all(abs(a - b) <= 3 for a, b in zip(shade, (0x1A, 0x1F, 0x2E), strict=True))
+    _state._OPEN.clear()

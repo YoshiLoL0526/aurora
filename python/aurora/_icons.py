@@ -35,3 +35,9 @@ _ARROW_DOWN = (
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#8A91A8" '
     b'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>'
 )
+# El icono de `time_picker`.
+_CLOCK = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="#8A91A8" '
+    b'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.75"/>'
+    b'<path d="M8 4.75V8l2.25 1.5"/></svg>'
+)

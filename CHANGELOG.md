@@ -28,6 +28,11 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   lado de `placement` (`"bottom-start"`, `"top"`, `"right-end"`…), se vuelca al opuesto si no cabe
   y no se sale de la ventana; se cierra con Esc o al hacer clic fuera (`on_close`), su estado vive
   en un `Signal[bool]` (`open`) o en la `key`, y es un `"dialog"` no modal que toma el foco.
+- **`time_picker(value, ...)`**: selector de hora (`datetime.time`) con la lista del día cada
+  `step` minutos, límites `min`/`max`, formato de 24 h o de 12 h (`hour12`) y teclado como el de
+  `date_picker`.
+- **`color_picker(value, ...)`**: selector de color `#RRGGBB` con cuadro de saturación y brillo,
+  franja de tono (arrastrables y con flechas), paleta de muestras y campo hexadecimal.
 - **`tree(roots, children, ...)`**: árbol expandible y virtualizado (sobre `virtual_list`). Los
   hijos se piden bajo demanda; el conjunto desplegado (`expanded`) y el nodo elegido
   (`selected`) se enlazan a un `Signal` o viven en la `key`; teclado de treeview (flechas, ←/→
