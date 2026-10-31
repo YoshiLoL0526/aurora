@@ -11,6 +11,7 @@ El paquete se organiza por familias (`basic`, `forms`, `navigation`, `overlays`,
 from __future__ import annotations
 
 from .basic import avatar, badge, button, card, divider, stat
+from .chrome import title_bar
 from .feedback import progress, skeleton, spinner, toast
 from .forms import checkbox, field, number_input, radio, slider, switch, text_input, textarea
 from .layout import splitter
@@ -50,6 +51,7 @@ __all__ = [
     "text_input",
     "textarea",
     "time_picker",
+    "title_bar",
     "toast",
     "tooltip",
     "tree",

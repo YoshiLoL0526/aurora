@@ -9,6 +9,23 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Ventanas sin marco**: opción `decorations=False` en `App(...)` y en `app.window(...)`, que
+  `Window.decorations` lee y cambia en marcha. La propiedad de estilo **`window_drag`** marca
+  zonas que mueven la ventana (`"move"`; doble clic: maximizar o restaurar) o la redimensionan
+  desde un borde (`"n"`, `"se"`…) sin quitarles los clics a los controles que contengan; sin
+  marco, los bordes de una ventana redimensionable la siguen redimensionando. `Window.minimize()`
+  y `Window.request_close()` (cerrar pasando por `on_close`, como el botón del sistema)
+  completan los botones, y **`current_window()`** da la ventana cuya vista se construye.
+- **`title_bar(title, ...)`**: barra de título lista para ventanas sin marco, con icono,
+  acciones y los botones de minimizar, maximizar o restaurar, y cerrar, al estilo de Windows y
+  Linux o de macOS (`controls`).
+- Cursores `"ns-resize"`, `"ew-resize"`, `"nesw-resize"` y `"nwse-resize"`.
+- `Pilot.window_requests` apunta lo que las pulsaciones piden a la ventana (moverla,
+  redimensionarla, maximizarla), y `app.pilot()` de una ventana sin marco redimensiona por los
+  bordes como la ventana.
+
 ## [0.7.0] — 2026-10-31
 
 ### Añadido

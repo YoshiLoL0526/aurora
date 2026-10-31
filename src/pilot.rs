@@ -27,6 +27,8 @@ pub struct Pilot {
     surface: Surface,
     /// La superficie es nueva (aún no tiene ningún frame): se pinta entera.
     fresh: bool,
+    /// Lo que las pulsaciones pidieron a la ventana (moverla, redimensionarla…).
+    window_requests: Vec<String>,
 }
 
 impl Pilot {
@@ -74,21 +76,28 @@ fn new_surface(width: f32, height: f32, scale: f32) -> PyResult<Surface> {
 #[pymethods]
 impl Pilot {
     #[new]
-    #[pyo3(signature = (build, width = 960.0, height = 640.0, scale = 1.0, inspector = false))]
+    #[pyo3(signature = (
+        build, width = 960.0, height = 640.0, scale = 1.0, inspector = false, frameless = false,
+    ))]
     fn new(
         build: Py<PyAny>,
         width: f32,
         height: f32,
         scale: f32,
         inspector: bool,
+        frameless: bool,
     ) -> PyResult<Self> {
+        let mut rt = Runtime::new(build, Clipboard::Memory(String::new()), inspector);
+        // Una ventana sin marco y redimensionable: sus bordes la redimensionan.
+        rt.window_edges = frameless;
         let mut pilot = Self {
-            rt: Runtime::new(build, Clipboard::Memory(String::new()), inspector),
+            rt,
             width,
             height,
             scale,
             surface: new_surface(width, height, scale)?,
             fresh: true,
+            window_requests: Vec::new(),
         };
         pilot.step(FRAME)?;
         Ok(pilot)
@@ -148,6 +157,10 @@ impl Pilot {
             C::ColResize => "col-resize",
             C::RowResize => "row-resize",
             C::Crosshair => "crosshair",
+            C::NsResize => "ns-resize",
+            C::EwResize => "ew-resize",
+            C::NeswResize => "nesw-resize",
+            C::NwseResize => "nwse-resize",
         }
     }
 
@@ -189,8 +202,19 @@ impl Pilot {
 
     fn mouse_down(&mut self) -> PyResult<()> {
         let result = self.rt.pointer_down();
+        if let Some(request) = self.rt.take_window_request() {
+            self.window_requests.push(request.name());
+        }
         self.step(FRAME)?;
         result
+    }
+
+    /// Lo que las pulsaciones han pedido a la ventana, en orden: `"move"`,
+    /// `"resize-<borde>"` (`n`, `se`…) o `"toggle-maximize"` (doble clic en una
+    /// zona que la mueve).
+    #[getter]
+    fn window_requests(&self) -> Vec<String> {
+        self.window_requests.clone()
     }
 
     /// Pulsa y suelta una tecla o combinación: `"tab"`, `"shift+tab"`,

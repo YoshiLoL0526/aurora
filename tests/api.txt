@@ -1,5 +1,5 @@
 [aurora]
-class App(view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, remember: 'str | None' = None, theme: 'Theme | Callable[[], Theme]' = Theme(...), menu: 'Sequence[dict[str, Any]] | None' = None, app_id: 'str | None' = None, inspector: 'bool | None' = None, reload: 'bool | None' = None, motion: 'bool | None' = None) -> 'None'
+class App(view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, decorations: 'bool' = True, remember: 'str | None' = None, theme: 'Theme | Callable[[], Theme]' = Theme(...), menu: 'Sequence[dict[str, Any]] | None' = None, app_id: 'str | None' = None, inspector: 'bool | None' = None, reload: 'bool | None' = None, motion: 'bool | None' = None) -> 'None'
     .main (propiedad)
     .notify(self, title: 'str', body: 'str' = '', *, icon: 'str | PathLike[str] | None' = None, on_click: 'Callable[[], Any] | None' = None) -> 'None'
     .pilot(self, *, size: 'tuple[float, float] | None' = None, scale: 'float' = 1.0, inspector: 'bool' = False) -> 'Pilot'
@@ -11,7 +11,7 @@ class App(view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tupl
     .tray(self, icon: 'str | PathLike[str] | bytes', *, tooltip: 'str | None' = None, menu: 'Sequence[dict[str, Any]] | None' = None, on_click: 'Callable[[str], Any] | None' = None, on_double_click: 'Callable[[str], Any] | None' = None, template: 'bool' = False) -> 'None'
     .tray_hide(self) -> 'None'
     .watch(self, main: 'ModuleType | None' = None) -> '_reload.Reloader'
-    .window(self, view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float] | None' = None, resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, remember: 'str | None' = None, on_close: 'Callable[[], Any] | None' = None) -> 'Window'
+    .window(self, view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float] | None' = None, resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, decorations: 'bool' = True, remember: 'str | None' = None, on_close: 'Callable[[], Any] | None' = None) -> 'Window'
     .windows(self) -> 'list[Window]'
 class AuroraDeprecationWarning(...)
 class Canvas(width: 'float', height: 'float', theme: 'Theme') -> 'None'
@@ -77,7 +77,7 @@ class Path() -> 'None'
     .line_to(self, x: 'float', y: 'float') -> 'Path'
     .move_to(self, x: 'float', y: 'float') -> 'Path'
     .quad_to(self, cx: 'float', cy: 'float', x: 'float', y: 'float') -> 'Path'
-class Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False)
+class Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False, frameless=False)
     .a11y_action(self, /, key, action, value=None)
     .a11y_tree(self, /)
     .chart_view(self, /, key)
@@ -113,6 +113,7 @@ class Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False)
     .tooltip
     .type(self, /, text)
     .wheel(self, /, dy=0.0, dx=0.0, lines=False)
+    .window_requests
 class ResizeEvent()
     .height
     .width
@@ -141,18 +142,21 @@ class Span(content: 'str', weight: 'int | None' = None, color: 'str | None' = No
 class Theme(colors: 'dict[str, str]' = <factory>, radius: 'dict[str, float]' = <factory>, font_family: 'str' = 'Inter') -> None
     .font_family
     .resolve(self, value: 'Any') -> 'Any'
-class Window(app: 'App', view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, remember: 'str | None' = None, on_close: 'Callable[[], Any] | None' = None, _id: 'int | None' = None) -> 'None'
+class Window(app: 'App', view: 'Callable[[], Element]', *, title: 'str' = 'Aurora', size: 'tuple[float, float]' = (960, 640), resizable: 'bool' = True, min_size: 'tuple[float, float] | None' = None, max_size: 'tuple[float, float] | None' = None, position: 'tuple[float, float] | None' = None, maximized: 'bool' = False, fullscreen: 'bool' = False, always_on_top: 'bool' = False, decorations: 'bool' = True, remember: 'str | None' = None, on_close: 'Callable[[], Any] | None' = None, _id: 'int | None' = None) -> 'None'
     .always_on_top (propiedad)
     .close(self) -> 'None'
+    .decorations (propiedad)
     .fullscreen (propiedad)
     .is_open (propiedad)
     .max_size (propiedad)
     .maximized (propiedad)
     .min_size (propiedad)
+    .minimize(self) -> 'None'
     .open(self) -> 'None'
     .pilot(self, *, size: 'tuple[float, float] | None' = None, scale: 'float' = 1.0, inspector: 'bool' = False) -> 'Pilot'
     .position (propiedad)
     .render_png(self, path: 'str', *, size: 'tuple[float, float] | None' = None, scale: 'float' = 2.0) -> 'None'
+    .request_close(self) -> 'None'
     .resizable (propiedad)
     .size (propiedad)
     .title (propiedad)
@@ -170,6 +174,7 @@ color_picker(value: 'Signal[str]', *, palette: 'Sequence[str]' = ('#EF4444', '#F
 column(**style: 'Any') -> 'Element'
 combobox(value: 'Signal[Any]', options: 'Options', *, placeholder: 'str' = 'Buscar…', empty: 'str' = 'Sin resultados', on_change: 'Callable[[Any], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 component(fn: 'Callable[P, Element]') -> 'Component[P]'
+current_window() -> 'Window'
 date_picker(value: 'Signal[date | None] | Signal[date]', *, min: 'date | None' = None, max: 'date | None' = None, placeholder: 'str' = 'Elegir fecha', format: 'Callable[[date], str]' = <function _short>, first_weekday: 'int' = 0, on_change: 'Callable[[date], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 dialog(open: 'Signal[bool] | bool', content: 'Element', *, title: 'TextLike | None' = None, on_close: 'Callable[[], Any] | None' = None, width: 'float' = 420, key: 'str | None' = None, **style: 'Any') -> 'Element | None'
 dialogs (módulo)
@@ -204,6 +209,7 @@ text(content: 'TextLike', **style: 'Any') -> 'Element'
 text_input(value: 'Signal[str] | TextLike', *, placeholder: 'str' = '', on_change: 'Callable[[str], Any] | None' = None, on_submit: 'Callable[[str], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 textarea(value: 'Signal[str] | TextLike', *, placeholder: 'str' = '', rows: 'int' = 3, on_change: 'Callable[[str], Any] | None' = None, on_submit: 'Callable[[str], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
 time_picker(value: 'Signal[time | None] | Signal[time]', *, step: 'int' = 15, min: 'time | None' = None, max: 'time | None' = None, hour12: 'bool' = False, placeholder: 'str' = 'Elegir hora', format: 'Callable[[time], str] | None' = None, on_change: 'Callable[[time], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+title_bar(title: 'TextLike | None' = None, *, icon: 'Element | None' = None, actions: 'Child' = None, window: 'Window | None' = None, controls: "bool | Literal['windows', 'macos']" = True, height: 'float' = 36, key: 'str' = 'title-bar', **style: 'Any') -> 'Element'
 toast(message: 'Signal[str | None] | TextLike | None', *, on_close: 'Callable[[], Any] | None' = None, tone: 'str' = '$accent', key: 'str | None' = None, **style: 'Any') -> 'Element | None'
 tooltip(child: 'Element', tip: 'str') -> 'Element'
 tree(roots: 'Sequence[N]', children: 'Callable[[N], Sequence[N]]', *, key: 'str', label: 'Callable[[N], TextLike]' = <class 'str'>, ident: 'Callable[[N], Hashable] | None' = None, expanded: 'Signal[set[Any]] | None' = None, selected: 'Signal[Any] | None' = None, icon: 'Callable[[N], Element | None] | None' = None, on_select: 'Callable[[N], Any] | None' = None, on_activate: 'Callable[[N], Any] | None' = None, item_height: 'float' = 30, indent: 'float' = 18, overscan: 'int' = 4, **style: 'Any') -> 'Element'

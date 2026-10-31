@@ -109,7 +109,11 @@ impl Runtime {
         let grab = self.zoom_at().is_some();
         let grab_changed = self.zoom_hover != grab;
         self.zoom_hover = grab;
-        Ok(hover_changed || bar_changed || grab_changed)
+        // Igual con los bordes que redimensionan la ventana.
+        let edge = self.resize_hover();
+        let edge_changed = self.edge_hover != edge;
+        self.edge_hover = edge;
+        Ok(hover_changed || bar_changed || grab_changed || edge_changed)
     }
 
     /// Nodo que elegiría el modo selección en `(x, y)`: el pintado más arriba,
@@ -188,6 +192,7 @@ impl Runtime {
     pub fn pointer_leave(&mut self) {
         self.pointer = None;
         self.zoom_hover = false;
+        self.edge_hover = None;
         self.engine.hovered = None;
         self.engine.tip.set_key(None);
         self.hover_scrollbar();
@@ -211,6 +216,10 @@ impl Runtime {
         }
         if self.start_drag() {
             self.engine.pressed = None;
+            return Ok(());
+        }
+        // Bordes y zonas `window_drag`: la pulsación es para la ventana.
+        if self.press_window_zone() {
             return Ok(());
         }
         self.engine.pressed = self.engine.hovered.clone();
@@ -259,7 +268,7 @@ impl Runtime {
 
     /// Cuántos clics seguidos lleva el puntero (1, 2 o 3), para el doble y el
     /// triple clic.
-    fn click_count(&mut self, at: Point) -> u8 {
+    pub(super) fn click_count(&mut self, at: Point) -> u8 {
         let now = Instant::now();
         let count = match self.last_click {
             Some((t, p, n))
@@ -308,6 +317,9 @@ impl Runtime {
         }
         if self.pan.as_ref().is_some_and(|p| p.moved) {
             return CursorKind::Grabbing;
+        }
+        if let Some(edge) = self.edge_hover {
+            return edge.cursor();
         }
         if self.zoom_at().is_some() {
             return CursorKind::Grab;

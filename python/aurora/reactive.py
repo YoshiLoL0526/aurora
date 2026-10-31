@@ -191,6 +191,12 @@ def component(fn: Callable[P, Element]) -> Component[P]:
     return Component(fn)
 
 
+def current_owner() -> Any:
+    """El dueño de la construcción en curso (una `App` o una `Window`), o `None` fuera de ella."""
+    owner, _ = _current_session()
+    return owner
+
+
 def begin_build(owner: Any) -> None:
     """Abre una sesión de construcción para `owner` (una `App`, una `Window`, un `Pilot`)."""
     global _next_session

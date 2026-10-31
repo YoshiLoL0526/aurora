@@ -311,3 +311,11 @@ def test_accion_desconocida_y_nodo_inexistente():
         pilot.a11y_action("a", "summon")
     with pytest.raises(LookupError, match="no hay ningún nodo"):
         pilot.a11y_action("nope", "click")
+
+
+def test_title_bar_buttons_are_named_buttons():
+    from aurora import title_bar
+
+    pilot = _pilot(lambda: column(grow=1)[title_bar("Notas", controls="windows")], size=(400, 120))
+    labels = [n["label"] for n in _role_of(pilot, "button")]
+    assert labels == ["Minimizar", "Maximizar", "Cerrar"]

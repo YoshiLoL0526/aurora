@@ -15,6 +15,7 @@ from aurora import (
     box,
     button,
     column,
+    current_window,
     date_picker,
     popover,
     row,
@@ -22,6 +23,7 @@ from aurora import (
     spacer,
     splitter,
     text,
+    title_bar,
     tree,
 )
 
@@ -746,3 +748,92 @@ def test_scroll_reveal_scrolls_only_when_the_band_changes():
     pilot.settle()
     _, y, _, _ = pilot.rect("b20")
     assert 0 <= y <= 80
+
+
+# --- Ventanas sin marco -------------------------------------------------------
+
+
+def test_window_drag_zone_moves_the_window_without_eating_its_buttons():
+    clicks = []
+    view = lambda: column(grow=1)[
+        row(key="bar", window_drag="move", height=40, align="center")[
+            text("Título"), spacer(), button("Ok", lambda: clicks.append(1), key="ok")
+        ],
+        box(key="body", grow=1),
+    ]
+    pilot = App(view, size=(300, 200)).pilot()
+    pilot.click_at(20, 20)
+    pilot.click("ok")
+    pilot.click("body")
+    # La barra pide mover la ventana; el botón de dentro recibe su clic y el resto no pide nada.
+    assert pilot.window_requests == ["move"]
+    assert clicks == [1]
+
+
+def test_double_click_on_a_drag_zone_toggles_maximize():
+    view = lambda: column(grow=1)[box(window_drag="move", height=40), box(grow=1)]
+    pilot = App(view, size=(300, 200)).pilot()
+    pilot.click_at(50, 20)
+    pilot.click_at(50, 20)
+    assert pilot.window_requests == ["move", "toggle-maximize"]
+
+
+def test_frameless_edges_resize_and_show_their_cursor():
+    view = lambda: column(grow=1)[button("Esquina", key="corner", position="absolute", right=0, bottom=0)]
+    pilot = App(view, size=(300, 200), decorations=False).pilot()
+    pilot.move_to(150, 1)
+    assert pilot.cursor == "ns-resize"
+    pilot.mouse_down()
+    pilot.mouse_up()
+    pilot.move_to(299, 199)  # el borde gana al botón de la esquina, como un marco de verdad
+    assert pilot.cursor == "nwse-resize"
+    pilot.mouse_down()
+    pilot.mouse_up()
+    pilot.move_to(150, 100)
+    assert pilot.cursor == "default"
+    assert pilot.window_requests == ["resize-n", "resize-se"]
+
+
+def test_edges_do_nothing_with_frame_or_without_resizing():
+    view = lambda: column(grow=1)
+    for app in (App(view, size=(300, 200)), App(view, size=(300, 200), decorations=False, resizable=False)):
+        pilot = app.pilot()
+        pilot.click_at(1, 100)
+        assert pilot.window_requests == []
+
+
+def test_explicit_resize_zone():
+    view = lambda: column(grow=1)[box(key="grip", window_drag="se", width=16, height=16)]
+    pilot = App(view, size=(300, 200)).pilot()
+    pilot.move_to(8, 8)
+    assert pilot.cursor == "nwse-resize"
+    pilot.click("grip")
+    assert pilot.window_requests == ["resize-se"]
+
+
+def test_invalid_window_drag_is_a_clear_error():
+    with pytest.raises(ValueError, match="window_drag inválido"):
+        App(lambda: box(window_drag="up")).pilot()
+
+
+def test_title_bar_buttons_act_on_their_window():
+    closing = []
+    app = App(lambda: column(grow=1)[title_bar("Notas", controls="windows")], size=(400, 120))
+    app.main.on_close = lambda: closing.append(1) or False
+    pilot = app.pilot()
+    pilot.click("title-bar-maximize")
+    assert app.main.maximized is True
+    pilot.click("title-bar-restore")
+    assert app.main.maximized is False
+    pilot.click("title-bar-close")  # `on_close` cancela
+    assert closing == [1] and app.main.is_open
+    app.main.on_close = None
+    pilot.click("title-bar-close")
+    assert not app.main.is_open
+    # Los botones son controles: la barra no se mueve al pulsarlos.
+    assert pilot.window_requests == []
+
+
+def test_current_window_outside_a_build_is_an_error():
+    with pytest.raises(RuntimeError, match="mientras se construye"):
+        current_window()

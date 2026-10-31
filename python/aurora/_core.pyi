@@ -21,7 +21,8 @@ def run(
     `windows`: una lista de dicts con `id`, `build`, `title`, `size`
     (`(ancho, alto)`), `resizable`, `on_close` y `on_closed`, y opcionalmente
     `position`, `check_position` (usarla solo si cae en algún monitor),
-    `min_size`, `max_size`, `maximized`, `fullscreen` y `always_on_top`; la
+    `min_size`, `max_size`, `maximized`, `fullscreen`, `always_on_top` y
+    `decorations` (`False`: sin marco); la
     primera es la principal: si no se puede crear, `run` falla (`RuntimeError`).
     `backend`: `"auto"`, `"gpu"` o `"cpu"` (`ValueError` con otro valor).
     `inspector`: F12 abre el inspector del árbol y el profiler de frames.
@@ -36,8 +37,9 @@ def window_open(config: dict[str, Any]) -> None:
     `config` es un dict como los de `run`.
     """
 
-def window_close(id: int) -> None:
-    """Cierra la ventana con esa id (segura desde cualquier hilo)."""
+def window_close(id: int, ask: bool = False) -> None:
+    """Cierra la ventana con esa id (segura desde cualquier hilo). Con `ask=True`, como el
+    botón del sistema: su `on_close` puede cancelarlo."""
 
 def window_set(
     id: int,
@@ -50,6 +52,8 @@ def window_set(
     fullscreen: bool | None = None,
     always_on_top: bool | None = None,
     resizable: bool | None = None,
+    decorations: bool | None = None,
+    minimized: bool | None = None,
 ) -> None:
     """Cambia en marcha lo indicado de una ventana abierta (píxeles lógicos).
 
@@ -219,6 +223,7 @@ class Pilot:
         height: float = 640.0,
         scale: float = 1.0,
         inspector: bool = False,
+        frameless: bool = False,
     ) -> None: ...
     def frame(self, dt: float = 1 / 60) -> bool:
         """Avanza un frame. Devuelve `True` si quedan transiciones en curso."""
@@ -244,7 +249,12 @@ class Pilot:
     @property
     def cursor(self) -> str:
         """Cursor del ratón (`"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`,
-        `"col-resize"`, `"row-resize"` o `"crosshair"`)."""
+        `"col-resize"`, `"row-resize"`, `"ns-resize"`, `"ew-resize"`, `"nesw-resize"`,
+        `"nwse-resize"` o `"crosshair"`)."""
+    @property
+    def window_requests(self) -> list[str]:
+        """Lo que las pulsaciones han pedido a la ventana, en orden: `"move"`,
+        `"resize-<borde>"` (`n`, `se`…) o `"toggle-maximize"`."""
     def click(self, key: str) -> None:
         """Clic en el centro del nodo `key`. `LookupError` si no se pintó."""
     def rect(self, key: str) -> tuple[float, float, float, float] | None:

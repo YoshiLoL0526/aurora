@@ -102,6 +102,31 @@ def cerrar():
   abrirse con el tamaño, la posición y el estado maximizado con que se cerró (ver
   [Opciones de ventana](reference.md#opciones-de-ventana)).
 
+### Sin marco, con barra propia
+
+Para que la barra de título sea parte del diseño (un reproductor, un editor con pestañas), quita
+el marco del sistema con `decorations=False` y pon `title_bar` arriba:
+
+```python
+from aurora import App, column, title_bar
+
+
+def view():
+    return column(grow=1)[
+        title_bar("Reproductor"),
+        contenido(),
+    ]
+
+
+App(view, decorations=False).run()
+```
+
+La barra mueve la ventana (doble clic: maximizar), sus botones minimizan, maximizan y cierran, y
+los bordes siguen redimensionándola. Para una barra a medida basta con `window_drag="move"` en el
+elemento que debe arrastrar la ventana: los botones que tenga dentro siguen funcionando. Las
+diferencias entre sistemas (macOS y sus «semáforos», Wayland) están en
+[Ventanas sin marco](reference.md#ventanas-sin-marco).
+
 ### Abrir y guardar archivos
 
 Para el botón «Abrir…» de verdad, los diálogos nativos del sistema (síncronos, con la app en

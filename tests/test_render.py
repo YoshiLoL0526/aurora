@@ -25,6 +25,7 @@ from aurora import (
     splitter,
     text,
     time_picker,
+    title_bar,
     tree,
 )
 from aurora.components import _state
@@ -301,3 +302,20 @@ def test_rich_text_link_regions_follow_the_span(tmp_path):
     x, _, w, _ = pilot.rect("r")
     lx, _, lw, _ = pilot.rect("r#link-0-0")
     assert x < lx and lx + lw < x + w
+
+
+def test_title_bar_paints_the_window_buttons(tmp_path):
+    view = lambda: column(grow=1)[title_bar("Notas", controls="windows"), box(grow=1)]
+    pilot = App(view, size=(400, 120), decorations=False).pilot()
+    path = tmp_path / "title-bar.png"
+    pilot.png(str(path))
+    x, y, w, h = pilot.rect("title-bar")
+    assert (x, y, w, h) == (0, 0, 400, 36)
+    # La barra es del color de superficie (MIDNIGHT: #131722); el fondo sigue debajo.
+    assert _png_pixel(path, 200, 18) == (0x13, 0x17, 0x22)
+    assert _png_pixel(path, 200, 80) == (0x0B, 0x0D, 0x14)
+    # Minimizar es una raya de 1 px con el color del texto en el centro de su botón (#E6E8F0).
+    mx, my, mw, mh = pilot.rect("title-bar-minimize")
+    assert _png_pixel(path, int(mx + mw / 2), int(my + mh / 2)) == (0xE6, 0xE8, 0xF0)
+    # Los tres botones van a la derecha, del mismo ancho.
+    assert pilot.rect("title-bar-close")[0] + 46 == 400

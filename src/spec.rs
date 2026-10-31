@@ -330,6 +330,9 @@ pub struct Style {
     pub tooltip: Option<String>,
     /// Cursor del ratón sobre el nodo (y sus hijos, salvo que fijen otro).
     pub cursor: Option<Cursor>,
+    /// Zona de la ventana: pulsar en ella (fuera de un control) la mueve o la
+    /// redimensiona desde ese borde (barras de título propias).
+    pub window_drag: Option<WindowDrag>,
     // Imágenes
     pub src: Option<Source>,
     pub fit: Fit,
@@ -363,6 +366,12 @@ pub enum Cursor {
     RowResize,
     /// Cruz de precisión (el modo selección del inspector).
     Crosshair,
+    /// Redimensionar en vertical, en horizontal y en las dos diagonales
+    /// (bordes y esquinas de una ventana sin marco).
+    NsResize,
+    EwResize,
+    NeswResize,
+    NwseResize,
 }
 
 impl Cursor {
@@ -376,8 +385,84 @@ impl Cursor {
             "col-resize" => Cursor::ColResize,
             "row-resize" => Cursor::RowResize,
             "crosshair" => Cursor::Crosshair,
+            "ns-resize" => Cursor::NsResize,
+            "ew-resize" => Cursor::EwResize,
+            "nesw-resize" => Cursor::NeswResize,
+            "nwse-resize" => Cursor::NwseResize,
             _ => return None,
         })
+    }
+}
+
+/// Borde (o esquina) desde el que se redimensiona una ventana.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    North,
+    South,
+    East,
+    West,
+    NorthEast,
+    NorthWest,
+    SouthEast,
+    SouthWest,
+}
+
+impl Edge {
+    /// Como lo escribe Python: `"n"`, `"se"`…
+    pub fn name(self) -> &'static str {
+        match self {
+            Edge::North => "n",
+            Edge::South => "s",
+            Edge::East => "e",
+            Edge::West => "w",
+            Edge::NorthEast => "ne",
+            Edge::NorthWest => "nw",
+            Edge::SouthEast => "se",
+            Edge::SouthWest => "sw",
+        }
+    }
+
+    fn parse(name: &str) -> Option<Self> {
+        [
+            Edge::North,
+            Edge::South,
+            Edge::East,
+            Edge::West,
+            Edge::NorthEast,
+            Edge::NorthWest,
+            Edge::SouthEast,
+            Edge::SouthWest,
+        ]
+        .into_iter()
+        .find(|e| e.name() == name)
+    }
+
+    /// El cursor que anuncia que se puede redimensionar por ahí.
+    pub fn cursor(self) -> Cursor {
+        match self {
+            Edge::North | Edge::South => Cursor::NsResize,
+            Edge::East | Edge::West => Cursor::EwResize,
+            Edge::NorthEast | Edge::SouthWest => Cursor::NeswResize,
+            Edge::NorthWest | Edge::SouthEast => Cursor::NwseResize,
+        }
+    }
+}
+
+/// Qué hace con la ventana pulsar en una zona con `window_drag`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowDrag {
+    /// Moverla (una barra de título).
+    Move,
+    /// Redimensionarla desde ese borde.
+    Resize(Edge),
+}
+
+impl WindowDrag {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "move" => Some(WindowDrag::Move),
+            other => Edge::parse(other).map(WindowDrag::Resize),
+        }
     }
 }
 
@@ -716,6 +801,7 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "value_min" => hit!("value_min"),
         "value_step" => hit!("value_step"),
         "width" => hit!("width"),
+        "window_drag" => hit!("window_drag"),
         "wrap" => hit!("wrap"),
         other => d.get_item(PyString::new(py, other)),
     }?;
@@ -920,7 +1006,15 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
             None => None,
             Some(c) => Some(Cursor::parse(&c).ok_or_else(|| {
                 PyValueError::new_err(format!(
-                    "cursor inválido: {c:?} (usa \"default\", \"pointer\", \"text\", \"grab\", \"grabbing\", \"col-resize\" o \"row-resize\")"
+                    "cursor inválido: {c:?} (usa \"default\", \"pointer\", \"text\", \"grab\", \"grabbing\", \"col-resize\", \"row-resize\", \"ns-resize\", \"ew-resize\", \"nesw-resize\" o \"nwse-resize\")"
+                ))
+            })?),
+        },
+        window_drag: match str_of(d, "window_drag")? {
+            None => None,
+            Some(name) => Some(WindowDrag::parse(&name).ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "window_drag inválido: {name:?} (usa \"move\" o un borde: \"n\", \"s\", \"e\", \"w\", \"ne\", \"nw\", \"se\" o \"sw\")"
                 ))
             })?),
         },

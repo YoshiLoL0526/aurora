@@ -42,6 +42,8 @@ pub struct HitRegion {
     /// Propiedad `cursor` del nodo.
     pub cursor: Option<Cursor>,
     pub scroll: Option<Axis>,
+    /// Zona que mueve o redimensiona la ventana (`window_drag`).
+    pub window_drag: Option<WindowDrag>,
     /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
     pub parent: Option<usize>,
 }
@@ -122,6 +124,7 @@ pub(super) fn same_geometry(a: &Node, b: &Node) -> bool {
         && sa.focusable == sb.focusable
         && sa.tooltip.is_some() == sb.tooltip.is_some()
         && sa.scroll == sb.scroll
+        && sa.window_drag == sb.window_drag
         && sa.clip == sb.clip
         && sa.shadow == sb.shadow
         && sa.press_scale == sb.press_scale
@@ -356,6 +359,7 @@ impl<'a> Geometry<'a> {
             tooltip: node.style.tooltip.is_some(),
             cursor: node.style.cursor,
             scroll: node.style.scroll,
+            window_drag: node.style.window_drag,
             parent,
         });
         if let Some(spans) = node.style.spans.as_ref().filter(|s| s.has_links()) {
@@ -448,6 +452,7 @@ impl Geometry<'_> {
                     tooltip: false,
                     cursor: Some(Cursor::Pointer),
                     scroll: None,
+                    window_drag: None,
                     parent: Some(parent),
                 });
             }

@@ -53,6 +53,7 @@ from .components import (
     text_input,
     textarea,
     time_picker,
+    title_bar,
     toast,
     tooltip,
     tree,
@@ -103,6 +104,7 @@ __all__ = [
     "column",
     "combobox",
     "component",
+    "current_window",
     "date_picker",
     "dialog",
     "dialogs",
@@ -137,6 +139,7 @@ __all__ = [
     "text_input",
     "textarea",
     "time_picker",
+    "title_bar",
     "toast",
     "tooltip",
     "tree",
@@ -208,6 +211,7 @@ def _window_options(
     maximized: bool,
     fullscreen: bool,
     always_on_top: bool,
+    decorations: bool,
 ) -> dict[str, Any]:
     """Las opciones de una ventana, validadas (las comparten `App` y `Window`)."""
     min_size, max_size = _limits(min_size, max_size)
@@ -219,7 +223,30 @@ def _window_options(
         "maximized": bool(maximized),
         "fullscreen": bool(fullscreen),
         "always_on_top": bool(always_on_top),
+        "decorations": bool(decorations),
     }
+
+
+def _frameless(options: dict[str, Any]) -> bool:
+    """Si los bordes de la ventana la redimensionan: sin marco y redimensionable."""
+    return not options["decorations"] and options["resizable"]
+
+
+def current_window() -> Window:
+    """La ventana cuya vista se está construyendo (`app.main` para la principal).
+
+    Sirve para que un componente actúe sobre su propia ventana —minimizarla,
+    maximizarla, cerrarla— sin recibirla como argumento (es lo que hace
+    `title_bar`). Solo se puede llamar mientras se construye una vista:
+    guárdala en una variable si la necesitas en un manejador. Fuera de una
+    construcción, `RuntimeError`.
+    """
+    owner = reactive.current_owner()
+    if isinstance(owner, Window):
+        return owner
+    if isinstance(owner, App):
+        return owner.main
+    raise RuntimeError("current_window() solo se puede llamar mientras se construye una vista")
 
 
 class App:
@@ -254,7 +281,7 @@ class App:
 
     La ventana principal admite las mismas opciones que `window(...)`:
     `resizable`, `min_size`, `max_size`, `position`, `maximized`,
-    `fullscreen` y `always_on_top` (ver `Window`). `remember="mi-app"`
+    `fullscreen`, `always_on_top` y `decorations` (ver `Window`). `remember="mi-app"`
     recuerda entre sesiones su tamaño, su posición y si estaba maximizada, en
     el directorio de configuración del usuario (`<config>/mi-app/`); lo
     recordado manda sobre `size`, `position` y `maximized`.
@@ -273,6 +300,7 @@ class App:
         maximized: bool = False,
         fullscreen: bool = False,
         always_on_top: bool = False,
+        decorations: bool = True,
         remember: str | None = None,
         theme: Theme | Callable[[], Theme] = MIDNIGHT,
         menu: Sequence[dict[str, Any]] | None = None,
@@ -293,6 +321,7 @@ class App:
             maximized=maximized,
             fullscreen=fullscreen,
             always_on_top=always_on_top,
+            decorations=decorations,
         )
         self.remember = None if remember is None else _windowstate.check_name(remember)
         self.theme = theme
@@ -335,6 +364,7 @@ class App:
         maximized: bool = False,
         fullscreen: bool = False,
         always_on_top: bool = False,
+        decorations: bool = True,
         remember: str | None = None,
         on_close: Callable[[], Any] | None = None,
     ) -> Window:
@@ -369,6 +399,7 @@ class App:
             maximized=maximized,
             fullscreen=fullscreen,
             always_on_top=always_on_top,
+            decorations=decorations,
             remember=remember,
             on_close=on_close,
         )
@@ -602,6 +633,7 @@ class App:
                 maximized=fresh._maximized,
                 fullscreen=fresh._fullscreen,
                 always_on_top=fresh._always_on_top,
+                decorations=fresh._decorations,
                 remember=fresh._remember,
                 on_close=fresh.on_close,
             )
@@ -689,7 +721,8 @@ class App:
         Con `inspector=True` el inspector se abre con `pilot.press("f12")`, como en la ventana.
         """
         w, h = size or self.size
-        return Pilot(self._build, w, h, scale, inspector)
+        options = self._main_options
+        return Pilot(self._build, w, h, scale, inspector, _frameless(options))
 
     def spawn(self, coro: Coroutine[Any, Any, T]) -> Future[T]:
         """Ejecuta una corrutina en un bucle `asyncio` en segundo plano.
@@ -718,8 +751,8 @@ class Window:
     Las creadas antes de `run()` se abren al arrancar la app; `close()` la
     cierra sin olvidar su vista, y `open()` la vuelve a abrir. `title`,
     `size`, `position`, `maximized`, `fullscreen`, `always_on_top`,
-    `resizable`, `min_size` y `max_size` se pueden leer y cambiar en marcha,
-    desde cualquier hilo.
+    `resizable`, `min_size`, `max_size` y `decorations` se pueden leer y
+    cambiar en marcha, desde cualquier hilo.
 
     Tamaños y posiciones van en píxeles lógicos. `size` es el del contenido
     (sin el marco); `position`, la esquina superior izquierda del marco en el
@@ -728,6 +761,12 @@ class Window:
     completa sin bordes en el monitor de la ventana. Con la ventana abierta,
     `size`, `position`, `maximized` y `fullscreen` dan lo que hay de verdad,
     también si el usuario la movió o la maximizó.
+
+    `decorations=False` quita el marco y la barra de título del sistema, para
+    pintar una propia (`title_bar`): una zona con `window_drag="move"` la mueve
+    (doble clic: maximizar o restaurar) y, si es redimensionable, sus bordes la
+    redimensionan. `minimize()`, `maximized` y `request_close()` hacen lo que
+    los botones del sistema.
     """
 
     def __init__(
@@ -744,6 +783,7 @@ class Window:
         maximized: bool = False,
         fullscreen: bool = False,
         always_on_top: bool = False,
+        decorations: bool = True,
         remember: str | None = None,
         on_close: Callable[[], Any] | None = None,
         _id: int | None = None,
@@ -756,6 +796,7 @@ class Window:
             maximized=maximized,
             fullscreen=fullscreen,
             always_on_top=always_on_top,
+            decorations=decorations,
         )
         self._remember = None if remember is None else _windowstate.check_key(remember)
         self._app = app
@@ -772,6 +813,7 @@ class Window:
         self._maximized: bool = options["maximized"]
         self._fullscreen: bool = options["fullscreen"]
         self._always_on_top: bool = options["always_on_top"]
+        self._decorations: bool = options["decorations"]
         # Una posición recordada solo se usa si sigue cayendo en algún monitor.
         self._check_position = False
         self._restore()
@@ -932,6 +974,31 @@ class Window:
         self._set(max_size=self._max_size or (0.0, 0.0))
 
     @property
+    def decorations(self) -> bool:
+        """Si la ventana lleva el marco y la barra de título del sistema (se puede cambiar en marcha)."""
+        return self._decorations
+
+    @decorations.setter
+    def decorations(self, value: bool) -> None:
+        self._decorations = bool(value)
+        self._set(decorations=self._decorations)
+
+    def minimize(self) -> None:
+        """Minimiza la ventana (a la barra de tareas o al Dock), como su botón del sistema."""
+        self._set(minimized=True)
+
+    def request_close(self) -> None:
+        """Pide cerrar la ventana como su botón del sistema: `on_close` puede cancelarlo.
+
+        A diferencia de `close()`, que cierra sin preguntar. Es lo que hace el
+        botón de cerrar de `title_bar`.
+        """
+        if self._app.running and self._created:
+            _core.window_close(self._id, ask=True)
+        elif self.on_close is None or self.on_close():
+            self.close()
+
+    @property
     def is_open(self) -> bool:
         """Si la ventana está abierta (o pendiente de abrir al arrancar la app)."""
         return self._open
@@ -991,6 +1058,7 @@ class Window:
             "maximized": self._maximized,
             "fullscreen": self._fullscreen,
             "always_on_top": self._always_on_top,
+            "decorations": self._decorations,
             "on_close": self.on_close,
             "on_closed": self._app._notify_closed,
         }
@@ -1009,7 +1077,8 @@ class Window:
     ) -> Pilot:
         """Ejecuta la vista de esta ventana sin ventana, para tests de interacción."""
         w, h = size or self._size
-        return Pilot(self._build, w, h, scale, inspector)
+        frameless = not self._decorations and self._resizable
+        return Pilot(self._build, w, h, scale, inspector, frameless)
 
 
 class _MainWindow(Window):

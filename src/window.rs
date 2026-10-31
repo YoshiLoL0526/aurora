@@ -26,11 +26,12 @@ use winit::event::{
 };
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::Key;
-use winit::window::{CursorIcon, Fullscreen, Window, WindowId, WindowLevel};
+use winit::window::{CursorIcon, Fullscreen, ResizeDirection, Window, WindowId, WindowLevel};
 
 use crate::keys::{KeyInput, Mods};
-use crate::runtime::{Clipboard, CursorKind, Runtime};
+use crate::runtime::{Clipboard, CursorKind, Runtime, WindowRequest};
 use crate::scroll::LINE;
+use crate::spec::{Edge, WindowDrag};
 use crate::surface::{self, Backend, Surface};
 
 /// Evento propio del bucle: `wake()` desde otro hilo, un comando de Python, o
@@ -62,6 +63,8 @@ pub enum Command {
     Open(u64),
     /// Cierra la ventana con esa id.
     Close(u64),
+    /// Pide cerrarla como el botón del sistema: su `on_close` decide.
+    RequestClose(u64),
     /// Cambia algo de una ventana abierta.
     Set(u64, Change),
     /// Pone (o reemplaza) la bandeja con su configuración pendiente.
@@ -88,6 +91,9 @@ pub enum Change {
     Fullscreen(bool),
     AlwaysOnTop(bool),
     Resizable(bool),
+    /// Con o sin el marco y la barra de título del sistema.
+    Decorations(bool),
+    Minimized(bool),
 }
 
 impl Change {
@@ -115,6 +121,8 @@ impl Change {
             Change::Fullscreen(on) => window.set_fullscreen(fullscreen(on)),
             Change::AlwaysOnTop(on) => window.set_window_level(level(on)),
             Change::Resizable(on) => window.set_resizable(on),
+            Change::Decorations(on) => window.set_decorations(on),
+            Change::Minimized(on) => window.set_minimized(on),
         }
     }
 }
@@ -130,6 +138,19 @@ fn fit(window: &Window, f: impl FnOnce(f64, f64) -> (f64, f64)) {
     let (width, height) = f(size.width, size.height);
     if (width - size.width).abs() > 0.5 || (height - size.height).abs() > 0.5 {
         let _ = window.request_inner_size(LogicalSize::new(width, height));
+    }
+}
+
+fn resize_direction(edge: Edge) -> ResizeDirection {
+    match edge {
+        Edge::North => ResizeDirection::North,
+        Edge::South => ResizeDirection::South,
+        Edge::East => ResizeDirection::East,
+        Edge::West => ResizeDirection::West,
+        Edge::NorthEast => ResizeDirection::NorthEast,
+        Edge::NorthWest => ResizeDirection::NorthWest,
+        Edge::SouthEast => ResizeDirection::SouthEast,
+        Edge::SouthWest => ResizeDirection::SouthWest,
     }
 }
 
@@ -228,6 +249,8 @@ pub struct WindowConfig {
     maximized: bool,
     fullscreen: bool,
     always_on_top: bool,
+    /// Con el marco y la barra de título del sistema (`False`: sin marco).
+    decorations: bool,
     /// `on_close` del usuario: con un valor falso, la ventana no se cierra.
     on_close: Option<Py<PyAny>>,
     /// Aviso a Python (por id) cuando la ventana se cerró de verdad.
@@ -328,10 +351,16 @@ pub fn window_open(config: &Bound<'_, PyAny>) -> PyResult<()> {
     Ok(())
 }
 
-/// Cierra la ventana con esa id. Seguro desde cualquier hilo.
+/// Cierra la ventana con esa id. Seguro desde cualquier hilo. Con `ask`, como
+/// el botón del sistema: su `on_close` puede cancelarlo.
 #[pyfunction]
-pub fn window_close(id: u64) {
-    send(Command::Close(id));
+#[pyo3(signature = (id, ask = false))]
+pub fn window_close(id: u64, ask: bool) {
+    send(if ask {
+        Command::RequestClose(id)
+    } else {
+        Command::Close(id)
+    });
 }
 
 /// Cambia en marcha lo indicado de una ventana abierta (tamaños y posición en
@@ -340,6 +369,7 @@ pub fn window_close(id: u64) {
 #[pyo3(signature = (
     id, title = None, size = None, position = None, min_size = None, max_size = None,
     maximized = None, fullscreen = None, always_on_top = None, resizable = None,
+    decorations = None, minimized = None,
 ))]
 #[allow(clippy::too_many_arguments)]
 pub fn window_set(
@@ -353,6 +383,8 @@ pub fn window_set(
     fullscreen: Option<bool>,
     always_on_top: Option<bool>,
     resizable: Option<bool>,
+    decorations: Option<bool>,
+    minimized: Option<bool>,
 ) -> PyResult<()> {
     let size = check_size("size", size, false)?;
     let min_size = check_size("min_size", min_size, true)?;
@@ -384,12 +416,14 @@ pub fn window_set(
         min_size.map(|s| Change::MinSize(limit(s))),
         max_size.map(|s| Change::MaxSize(limit(s))),
         resizable.map(Change::Resizable),
+        decorations.map(Change::Decorations),
         always_on_top.map(Change::AlwaysOnTop),
         // Tamaño y posición antes de maximizar: así quedan como los restaurables.
         size.map(|(w, h)| Change::Size(w, h)),
         position.map(|(x, y)| Change::Position(x, y)),
         maximized.map(Change::Maximized),
         fullscreen.map(Change::Fullscreen),
+        minimized.map(Change::Minimized),
     ];
     for change in changes.into_iter().flatten() {
         send(Command::Set(id, change));
@@ -674,6 +708,39 @@ impl View {
         }
     }
 
+    /// Los bordes redimensionan la ventana si no tiene marco, se puede
+    /// redimensionar y no está maximizada ni en pantalla completa. En macOS el
+    /// sistema ya redimensiona por los bordes de una ventana sin marco.
+    fn sync_edges(&mut self) {
+        let window = &self.window;
+        self.rt.window_edges = cfg!(not(target_os = "macos"))
+            && !window.is_decorated()
+            && window.is_resizable()
+            && !window.is_maximized()
+            && window.fullscreen().is_none();
+    }
+
+    /// Hace con la ventana del sistema lo que pidió la última pulsación (moverla,
+    /// redimensionarla o maximizarla con doble clic en la barra de título).
+    fn window_request(&mut self) {
+        let Some(request) = self.rt.take_window_request() else {
+            return;
+        };
+        let window = &self.window;
+        // Donde el sistema no sabe hacerlo (p. ej. redimensionar en macOS) no pasa nada.
+        let _ = match request {
+            WindowRequest::Drag(WindowDrag::Move) => window.drag_window(),
+            WindowRequest::Drag(WindowDrag::Resize(edge)) => {
+                window.drag_resize_window(resize_direction(edge))
+            }
+            WindowRequest::ToggleMaximize => {
+                window.set_maximized(!window.is_maximized());
+                Ok(())
+            }
+        };
+        track(self.id, window);
+    }
+
     fn update_cursor(&self) {
         self.window.set_cursor(match self.rt.cursor() {
             CursorKind::Pointer => CursorIcon::Pointer,
@@ -683,6 +750,10 @@ impl View {
             CursorKind::ColResize => CursorIcon::ColResize,
             CursorKind::RowResize => CursorIcon::RowResize,
             CursorKind::Crosshair => CursorIcon::Crosshair,
+            CursorKind::NsResize => CursorIcon::NsResize,
+            CursorKind::EwResize => CursorIcon::EwResize,
+            CursorKind::NeswResize => CursorIcon::NeswResize,
+            CursorKind::NwseResize => CursorIcon::NwseResize,
             CursorKind::Default => CursorIcon::Default,
         });
     }
@@ -703,6 +774,7 @@ impl View {
             }
             WindowEvent::Moved(_) => track(self.id, &window),
             WindowEvent::CursorMoved { position, .. } => {
+                self.sync_edges();
                 let p = position.to_logical::<f32>(window.scale_factor());
                 let changed = self.rt.pointer_move(p.x, p.y).unwrap_or_else(|err| {
                     report(Err(err));
@@ -737,7 +809,11 @@ impl View {
                 ..
             } => {
                 match state {
-                    ElementState::Pressed => report(self.rt.pointer_down()),
+                    ElementState::Pressed => {
+                        self.sync_edges();
+                        report(self.rt.pointer_down());
+                        self.window_request();
+                    }
                     ElementState::Released => report(self.rt.pointer_up()),
                 }
                 window.request_redraw();
@@ -873,7 +949,15 @@ impl Host {
             .with_maximized(config.maximized)
             .with_fullscreen(fullscreen(config.fullscreen))
             .with_window_level(level(config.always_on_top))
+            .with_decorations(config.decorations)
             .with_visible(false);
+        // Sin marco, Windows quita también la sombra: se conserva, como en las
+        // ventanas normales.
+        #[cfg(target_os = "windows")]
+        {
+            use winit::platform::windows::WindowAttributesExtWindows;
+            attrs = attrs.with_undecorated_shadow(true);
+        }
         if let Some(size) = logical(config.min_size) {
             attrs = attrs.with_min_inner_size(size);
         }
@@ -1151,6 +1235,11 @@ impl Host {
         match command {
             Command::Open(id) => self.open_window(event_loop, id),
             Command::Close(id) => self.close_window(event_loop, id),
+            Command::RequestClose(id) => {
+                if let Some(window_id) = self.by_id.get(&id).copied() {
+                    self.close_requested(event_loop, window_id);
+                }
+            }
             Command::Set(id, change) => {
                 if let Some(view) = self.by_id.get(&id).and_then(|k| self.views.get(k)) {
                     change.apply(&view.window);
@@ -1190,7 +1279,7 @@ fn parse_windows(windows: &Bound<'_, PyAny>) -> PyResult<Vec<(u64, WindowConfig)
 /// Una ventana descrita por Python: un dict con `id`, `build`, `title`,
 /// `size`, `resizable`, `on_close` y `on_closed`, y opcionalmente
 /// `position`, `check_position`, `min_size`, `max_size`, `maximized`,
-/// `fullscreen` y `always_on_top`.
+/// `fullscreen`, `always_on_top` y `decorations`.
 fn parse_window(item: &Bound<'_, PyAny>) -> PyResult<(u64, WindowConfig)> {
     let dict = item.cast::<PyDict>()?;
     let optional = |key: &str| -> PyResult<Option<Bound<'_, PyAny>>> {
@@ -1217,6 +1306,7 @@ fn parse_window(item: &Bound<'_, PyAny>) -> PyResult<(u64, WindowConfig)> {
         maximized: flag("maximized")?,
         fullscreen: flag("fullscreen")?,
         always_on_top: flag("always_on_top")?,
+        decorations: optional("decorations")?.map_or(Ok(true), |value| value.extract())?,
         on_close: item.get_item("on_close")?.extract()?,
         on_closed: item.get_item("on_closed")?.extract()?,
     };

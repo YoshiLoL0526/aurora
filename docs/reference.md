@@ -33,8 +33,8 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 
 ```python
 App(view, *, title="Aurora", size=(960, 640), resizable=True, min_size=None, max_size=None,
-    position=None, maximized=False, fullscreen=False, always_on_top=False, remember=None,
-    theme=MIDNIGHT, menu=None, app_id=None, inspector=None, reload=None, motion=None)
+    position=None, maximized=False, fullscreen=False, always_on_top=False, decorations=True,
+    remember=None, theme=MIDNIGHT, menu=None, app_id=None, inspector=None, reload=None, motion=None)
 ```
 
 | Parámetro | Tipo | Descripción |
@@ -42,7 +42,7 @@ App(view, *, title="Aurora", size=(960, 640), resizable=True, min_size=None, max
 | `view` | `Callable[[], Element]` | Función sin argumentos que devuelve el árbol de la interfaz. Se llama de nuevo tras cada evento. |
 | `title` | `str` | Título de la ventana. |
 | `size` | `tuple[float, float]` | Tamaño inicial en píxeles lógicos (independientes del DPI). |
-| `resizable`, `min_size`, `max_size`, `position`, `maximized`, `fullscreen`, `always_on_top` | | Opciones de la ventana principal; las mismas que las de [`Window`](#opciones-de-ventana). |
+| `resizable`, `min_size`, `max_size`, `position`, `maximized`, `fullscreen`, `always_on_top`, `decorations` | | Opciones de la ventana principal; las mismas que las de [`Window`](#opciones-de-ventana). `decorations=False` la deja [sin marco](#ventanas-sin-marco). |
 | `remember` | `str \| None` | Recuerda entre sesiones el tamaño, la posición y si estaba maximizada la ventana principal, en una carpeta con ese nombre del directorio de configuración del usuario (ver [Recordar ventanas](#recordar-ventanas)). |
 | `theme` | `Theme \| Callable[[], Theme]` | Tema fijo, o un `Signal[Theme]` para cambiarlo en caliente. |
 | `menu` | `Sequence[dict] \| None` | La barra de menús nativa (Windows y macOS), descrita con [`menus`](#menús-nativos): `App(view, menu=menus.bar(...))`. En Linux no hay barra nativa. |
@@ -54,7 +54,7 @@ App(view, *, title="Aurora", size=(960, 640), resizable=True, min_size=None, max
 | Método | Descripción |
 |---|---|
 | `run(*, backend="auto", keep_alive=None)` | Abre las ventanas y bloquea hasta que se cierren todas. `backend` elige dónde se pinta: `"gpu"` (Vulkan en Windows y Linux, Metal en macOS), `"cpu"` o `"auto"` (GPU si se puede iniciar; si no, CPU). Con `"auto"`, la variable de entorno `AURORA_BACKEND` (`gpu`/`cpu`) lo fuerza. `"gpu"` sin GPU disponible lanza `RuntimeError`; un valor desconocido, `ValueError`. `keep_alive=True` mantiene la app en marcha aunque no queden ventanas (para la bandeja del sistema) hasta que se llame a `quit()`. |
-| `window(view, *, title="Aurora", size=None, resizable=True, min_size=None, max_size=None, position=None, maximized=False, fullscreen=False, always_on_top=False, remember=None, on_close=None)` | Crea una ventana adicional con su propia vista (ver [Window](#window)). `size` por defecto es el de la ventana principal. `remember="clave"` la [recuerda](#recordar-ventanas) junto a la principal (necesita `App(remember=...)`). |
+| `window(view, *, title="Aurora", size=None, resizable=True, min_size=None, max_size=None, position=None, maximized=False, fullscreen=False, always_on_top=False, decorations=True, remember=None, on_close=None)` | Crea una ventana adicional con su propia vista (ver [Window](#window)). `size` por defecto es el de la ventana principal. `remember="clave"` la [recuerda](#recordar-ventanas) junto a la principal (necesita `App(remember=...)`). |
 | `windows()` | Las ventanas creadas con `window(...)`, en orden de creación (sin la principal). |
 | `main` | La ventana principal, como un [`Window`](#window) (ver abajo). |
 | `notify(title, body="", *, icon=None, on_click=None)` | Muestra una [notificación del sistema](#notificaciones). |
@@ -95,9 +95,12 @@ cerrar. Su vista es la de la `App` (el hot reload la mantiene).
 | `always_on_top` | Si se queda encima de las demás ventanas. |
 | `resizable` | Si el usuario puede redimensionarla. |
 | `min_size` / `max_size` | Límites del tamaño del contenido al redimensionar, o `None` (sin límite). |
-| `on_close` | Se llama al intentar cerrarla (el botón del sistema o `close()`); si devuelve un valor falso, el cierre se cancela —por ejemplo, para pedir confirmación con un `dialog`. |
+| `decorations` | Si lleva el marco y la barra de título del sistema. Con `False`, [sin marco](#ventanas-sin-marco). |
+| `on_close` | Se llama al intentar cerrarla con el botón del sistema o `request_close()`; si devuelve un valor falso, el cierre se cancela —por ejemplo, para pedir confirmación con un `dialog`. |
 | `is_open` | Si la ventana está abierta (o pendiente de abrir al arrancar la app). |
-| `open()` / `close()` | La abre o la cierra sin olvidar su vista; seguras desde cualquier hilo. |
+| `open()` / `close()` | La abre o la cierra (sin preguntar a `on_close`) sin olvidar su vista; seguras desde cualquier hilo. |
+| `minimize()` | La minimiza, como su botón del sistema. |
+| `request_close()` | Pide cerrarla como el botón del sistema: pasa antes por `on_close`. |
 | `render_png(path, *, size=None, scale=2.0)` | Su vista a PNG, como `App.render_png`. |
 | `pilot(*, size=None, scale=1.0, inspector=False)` | Su vista con un [`Pilot`](#pilot-tests-de-interacción) para tests de interacción. |
 
@@ -149,6 +152,71 @@ usuario: `%APPDATA%` en Windows, `~/Library/Application Support` en macOS y `$XD
 - Se recuerda el tamaño de antes de maximizar: al restaurarla vuelve a él.
 - La pantalla completa no se recuerda, ni nada si el proceso muere sin cerrar las ventanas. Un
   archivo ilegible se ignora y un error al escribirlo se avisa por stderr, sin romper la app.
+
+### Ventanas sin marco
+
+`decorations=False` (en `App(...)`, en `app.window(...)` o en marcha con `window.decorations`)
+quita el marco y la barra de título del sistema para que la app pinte la suya. Hace falta decir
+qué zona mueve la ventana y poner los botones; `title_bar(...)` lo trae hecho:
+
+```python live size=520x200
+from aurora import App, button, column, text, title_bar
+
+
+def view():
+    return column(grow=1)[
+        title_bar("Notas", actions=button("Compartir", variant="ghost", padding=(4, 10))),
+        column(grow=1, padding=24, gap=8)[
+            text("Sin marco del sistema", size=18, weight=700),
+            text("Arrastra la barra para moverla; doble clic para maximizar.", color="$muted"),
+        ],
+    ]
+
+
+App(view, size=(520, 200), decorations=False).run()
+```
+
+- **Zonas de arrastre**: un elemento con `window_drag="move"` mueve la ventana al pulsarlo y la
+  maximiza o la restaura con doble clic. Los controles de dentro (lo que tiene `on_click`,
+  `on_drag`, es enfocable o editable) se quedan sus clics: un botón en la barra funciona igual.
+  `window_drag="se"` (o `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"sw"`) redimensiona desde ese
+  borde, con su cursor: sirve para un agarre en una esquina.
+- **Bordes**: una ventana sin marco y redimensionable se redimensiona desde una franja de 5 px en
+  cada borde (12 px en las esquinas), por encima del contenido, como un marco de verdad. Maximizada,
+  en pantalla completa o con `resizable=False`, no.
+- **Botones**: `window.minimize()`, `window.maximized = not window.maximized` y
+  `window.request_close()` (que pasa por `on_close`, como el botón del sistema) hacen lo que los
+  del sistema. Dentro de una vista, [`current_window()`](#current_window) da su ventana.
+- **En tests**, el piloto apunta lo que se pediría a la ventana en `pilot.window_requests`
+  (`["move", "resize-se", "toggle-maximize"]`); con `App(..., decorations=False).pilot()` los
+  bordes redimensionan como en la ventana.
+
+Cada sistema tiene sus diferencias:
+
+- **Windows**: la ventana conserva la sombra del sistema. Sin barra del sistema no hay menú de
+  ventana con Alt+Espacio ni las disposiciones de Windows 11 al pasar sobre maximizar; arrastrarla
+  al borde de la pantalla sí la ajusta.
+- **macOS**: sin marco desaparecen también los «semáforos»: la ventana queda sin bordes y
+  `title_bar` dibuja los suyos a la izquierda (`controls="windows"` o `"macos"` fija un estilo en
+  todos los sistemas). Los bordes los redimensiona el propio sistema, así que las zonas
+  `window_drag` de redimensionar no hacen nada.
+- **Linux (Wayland)**: mover y redimensionar los hace el compositor y solo empiezan si el puntero
+  está dentro de la ventana al pulsar (siempre lo está desde una zona). Con marco, Wayland pinta
+  la barra del lado de la app (decoraciones de cliente) y algunos compositores (GNOME) la pintan
+  sencilla.
+- **Linux (X11)**: depende del gestor de ventanas; la mayoría permite mover y redimensionar, y el
+  doble clic lo resuelve Aurora en todos.
+
+La doble pulsación para maximizar la detecta Aurora (400 ms, como el doble clic de un campo), así
+que se comporta igual en todos los sistemas, aunque el usuario haya configurado otra acción para
+la barra de título del sistema.
+
+#### `current_window()` { #current_window }
+
+La [`Window`](#window) cuya vista se está construyendo (`app.main` para la principal). Sirve para
+que un componente actúe sobre su propia ventana sin recibirla como argumento; solo se puede
+llamar mientras se construye una vista (guárdala en una variable para usarla en un manejador).
+Fuera, `RuntimeError`.
 
 ## Diálogos nativos
 
@@ -418,9 +486,10 @@ def test_counter():
 | `click(key)` | Clic en el centro del nodo `key`, como una persona: si otro nodo lo tapa, el clic llega a ese otro. `LookupError` si el nodo no se pintó. |
 | `click_at(x, y)` | Mueve el puntero, pulsa y suelta. |
 | `drag(key, dx=0, dy=0, steps=4)` | Pulsa en el centro de `key`, mueve el puntero `(dx, dy)` en `steps` pasos y suelta. |
+| `window_requests` | Lo que las pulsaciones han pedido a la ventana, en orden: `"move"` (una zona `window_drag="move"`), `"resize-<borde>"` (`"resize-se"`…: un borde de una ventana [sin marco](#ventanas-sin-marco) o una zona de redimensionar) y `"toggle-maximize"` (doble clic en una zona que la mueve). |
 | `hover_files(files)` | Archivos del sistema que entran arrastrándose en la ventana (`None`: salen sin soltar). Llama a los `on_drop_hover`. |
 | `drop_files(files, key=None, at=None)` | Suelta archivos sobre el centro de `key`, en `at=(x, y)` o, sin ninguno, sin posición (como en macOS y Linux). Devuelve `True` si un `on_drop` los recibió. Ver [Soltar archivos](#soltar-archivos). |
-| `cursor` | Cursor del ratón en el último frame: `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"` o `"crosshair"` (modo selección del inspector). |
+| `cursor` | Cursor del ratón en el último frame: `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"`, `"ns-resize"`, `"ew-resize"`, `"nesw-resize"`, `"nwse-resize"` (bordes de una ventana sin marco) o `"crosshair"` (modo selección del inspector). |
 | `move_to(x, y)` / `leave()` | Mueve el puntero / lo saca de la ventana. |
 | `mouse_down()` / `mouse_up()` | Pulsa / suelta el botón izquierdo por separado. |
 | `wheel(dy=0, dx=0, *, lines=False)` | Rueda bajo el puntero; positivo = hacia el final del contenido. En píxeles (trackpad, inmediato) o, con `lines=True`, en pasos de rueda (animado). |
@@ -1613,6 +1682,33 @@ table(
 | `cell` | `cell(fila)`: elemento que sustituye al texto (badges, avatares, botones). La ordenación sigue usando el valor. |
 | `sortable` / `resizable` | Si la cabecera ordena al pulsarla / si su borde se puede arrastrar. |
 
+### `title_bar(title=None, *, icon=None, actions=None, window=None, controls=True, height=36, key="title-bar", **estilo)` { #title_bar }
+
+Barra de título para una ventana [sin marco](#ventanas-sin-marco): toda ella mueve la ventana
+(`window_drag="move"`, doble clic para maximizar) y lleva los botones de minimizar, maximizar o
+restaurar, y cerrar (este pasa por `on_close`). `icon` va delante del título y `actions` (un
+elemento o una lista) antes de los botones; sus clics no mueven la ventana. Actúa sobre la ventana
+cuya vista se construye ([`current_window()`](#current_window)) o sobre `window`.
+
+Los botones siguen al sistema: en Windows y Linux, a la derecha (cerrar se vuelve rojo al pasar
+por encima); en macOS, los tres círculos a la izquierda. `controls="windows"` o
+`controls="macos"` fija un estilo; `controls=False` los quita. Por defecto, fondo `$surface` y
+36 px de alto; las keys de los botones son `f"{key}-minimize"`, `-maximize` (o `-restore` si
+está maximizada) y `-close`, y para los lectores de pantalla son botones con su nombre.
+
+```python live size=480x120
+from aurora import App, column, text, title_bar
+
+
+def view():
+    return column(grow=1)[
+        title_bar("Informe.md — Editor", icon=text("◆", color="$primary"), controls="windows"),
+    ]
+
+
+App(view, size=(480, 120), decorations=False).run()
+```
+
 ### `tooltip(child, tip)`
 
 Muestra `tip` en una burbuja al dejar el puntero **medio segundo** sobre `child`. Aparece debajo
@@ -1960,7 +2056,8 @@ contenedores (como en CSS).
 | `placeholder_color` | color | Color del placeholder de un campo de texto. Por defecto, el color del texto al 45 %. |
 | `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |
 | `tooltip` | texto | Texto de ayuda que aparece al dejar el puntero encima. Ver [`tooltip`](#tooltipchild-tip). |
-| `cursor` | `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"`, `"crosshair"` | Cursor del ratón sobre el elemento y sus hijos (salvo que un hijo fije otro). Durante un `on_drag` se mantiene el del elemento arrastrado. |
+| `cursor` | `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"`, `"ns-resize"`, `"ew-resize"`, `"nesw-resize"`, `"nwse-resize"`, `"crosshair"` | Cursor del ratón sobre el elemento y sus hijos (salvo que un hijo fije otro). Durante un `on_drag` se mantiene el del elemento arrastrado. |
+| `window_drag` | `"move"` · `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"`, `"sw"` | Pulsar en el elemento (fuera de sus controles) mueve la ventana —doble clic: maximizar o restaurar— o la redimensiona desde ese borde. Para barras de título propias: ver [Ventanas sin marco](#ventanas-sin-marco). |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
 | `placement`, `offset` | `"bottom"`, `"top-start"`, `"right-end"`… · número | Solo con `layer="overlay"`: coloca el elemento junto a su ancla —el hermano anterior que ocupa sitio en el flujo o, si no lo hay, el contenedor—, en ese lado y con esa alineación (`start`, `center` —la de por defecto— o `end`), a `offset` píxeles. Si no cabe se vuelca al lado opuesto, y nunca se sale de la ventana. Ver [`popover`](#popover). |
 | `layer` | `"base"`, `"overlay"` | Con `"overlay"`, el elemento se maqueta en su sitio pero se pinta y recibe eventos **por encima de todo el árbol**, aunque se declare antes que otros. Ideal para desplegables, tooltips y modales. Se pinta en coordenadas absolutas: no hereda la `opacity` ni el `press_scale` de sus ancestros. Los clics siguen burbujeando por sus ancestros del árbol. |

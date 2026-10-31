@@ -8,7 +8,7 @@ dobles. Lo que se pinta se prueba con `Window.pilot()`, que es el mismo
 
 import pytest
 
-from aurora import App, Signal, _core, _windowstate, box, column, text
+from aurora import App, Signal, _core, _windowstate, box, column, current_window, text
 
 
 class Loop:
@@ -426,3 +426,35 @@ def test_size_is_kept_within_the_limits(monkeypatch):
     assert app.main._size == (1000.0, 800.0)
     calls = [c[2] for c in loop.of("window_set")]
     assert calls == [{"size": (900.0, 700.0)}, {"max_size": (0.0, 0.0)}, {"min_size": (1000.0, 800.0)}]
+
+
+def test_frameless_windows_and_their_buttons(monkeypatch):
+    loop = Loop(monkeypatch)
+    app = App(view("principal"), decorations=False)
+    window = app.window(view("detalle"), decorations=False)
+    assert (app.main.decorations, window.decorations) == (False, False)
+    app.running = True
+    window.open()
+    (opened,) = loop.of("window_open")
+    assert opened[1][0]["decorations"] is False
+    window.decorations = True
+    window.minimize()
+    window.request_close()  # como el botón del sistema: el bucle pasa por `on_close`
+    assert [c[2] for c in loop.of("window_set")] == [{"decorations": True}, {"minimized": True}]
+    assert loop.of("window_close") == [("window_close", (window._id,), {"ask": True})]
+
+
+def test_the_main_window_travels_frameless(monkeypatch):
+    loop = Loop(monkeypatch)
+    App(view("principal"), decorations=False).run()
+    (run,) = loop.of("run")
+    assert run[1][0][0]["decorations"] is False
+
+
+def test_current_window_is_the_one_being_built():
+    seen = []
+    app = App(lambda: seen.append(current_window()) or column())
+    extra = app.window(lambda: seen.append(current_window()) or column())
+    app.pilot()
+    extra.pilot()
+    assert seen == [app.main, extra]

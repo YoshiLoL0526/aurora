@@ -35,7 +35,7 @@ use crate::image::{Decoded, Fit, ImageCache, ImageError, Loaded};
 use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
 use crate::motion::{IDENTITY, Timing, Track, Vec4};
 use crate::scroll::{BAR_WIDTH, ScrollState};
-use crate::spec::{Axis, Cursor, Edges, Kind, Len, Node, Span, Style, TextProps};
+use crate::spec::{Axis, Cursor, Edges, Kind, Len, Node, Span, Style, TextProps, WindowDrag};
 
 mod draw;
 mod geom;

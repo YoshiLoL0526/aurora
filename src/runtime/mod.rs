@@ -27,6 +27,7 @@ use crate::spec::{self, Node};
 pub use crate::spec::Cursor as CursorKind;
 
 mod a11y;
+mod chrome;
 mod clipboard;
 mod editing;
 mod files;
@@ -35,6 +36,7 @@ mod keyboard;
 mod pointer;
 mod wheel;
 
+pub use self::chrome::WindowRequest;
 pub use self::clipboard::Clipboard;
 pub use self::pointer::DragEvent;
 
@@ -164,6 +166,15 @@ pub struct Runtime {
     last_click: Option<(Instant, Point, u8)>,
     /// El puntero está sobre un `chart` con zoom (para el cursor de agarrar).
     zoom_hover: bool,
+    /// Los bordes de la ventana la redimensionan (sin marco, redimensionable y
+    /// sin maximizar): lo decide quien tiene la ventana.
+    pub window_edges: bool,
+    /// Tamaño de la vista en el último frame (píxeles lógicos), para los bordes.
+    size: (f32, f32),
+    /// Lo que pidió la última pulsación a la ventana (moverla, redimensionarla…).
+    window_request: Option<WindowRequest>,
+    /// Borde de la ventana bajo el puntero (para cambiar el cursor al entrar o salir).
+    edge_hover: Option<crate::spec::Edge>,
     clipboard: Clipboard,
     /// Último texto escrito con el teclado, para no duplicarlo si el IME lo confirma también.
     last_typed: Option<(String, Instant)>,
@@ -217,6 +228,10 @@ impl Runtime {
             selecting: None,
             last_click: None,
             zoom_hover: false,
+            window_edges: false,
+            size: (0.0, 0.0),
+            window_request: None,
+            edge_hover: None,
             clipboard,
             last_typed: None,
             stats: FrameStats::default(),
@@ -268,6 +283,7 @@ impl Runtime {
         age: u8,
     ) -> PyResult<(bool, Option<Rect>)> {
         let start = Instant::now();
+        self.size = (width, height);
         self.stats.layout = Duration::ZERO;
         self.stats.layout_cached = true;
         self.stats.draw = Duration::ZERO;
