@@ -21,6 +21,17 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - **`title_bar(title, ...)`**: barra de título lista para ventanas sin marco, con icono,
   acciones y los botones de minimizar, maximizar o restaurar, y cerrar, al estilo de Windows y
   Linux o de macOS (`controls`).
+- **Arrastrar y soltar dentro de la app**: `sortable(items, item, ...)` reordena una lista
+  arrastrando sus elementos, y varias con el mismo `group` forman un tablero kanban entre cuyas
+  listas pasan. El elemento sigue al puntero, una línea marca dónde caerá, un clic sin mover no
+  arrastra, y con el teclado se coge con Espacio, se mueve con las flechas (también a la lista
+  de al lado), se suelta con Espacio y se cancela con Esc, con anuncios para el lector de
+  pantalla. `on_move` recibe un `MoveEvent` (elemento, origen, destino e índices) cuyo `apply`
+  hace el movimiento sobre tus datos.
+- Propiedad de estilo **`drop_target`** y atributos **`target`** e **`index`** de `DragEvent`: la
+  zona de soltar bajo el puntero durante un `on_drag` y la posición en la que caería entre sus
+  hijos arrastrables. `Pilot.drag_to(key, to)` arrastra hasta otro nodo o un punto.
+- `Pilot.a11y_tree()` incluye `live` (las regiones vivas).
 - Cursores `"ns-resize"`, `"ew-resize"`, `"nesw-resize"` y `"nwse-resize"`.
 - `Pilot.window_requests` apunta lo que las pulsaciones piden a la ventana (moverla,
   redimensionarla, maximizarla), y `app.pilot()` de una ventana sin marco redimensiona por los

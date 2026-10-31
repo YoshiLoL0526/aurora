@@ -23,6 +23,7 @@ from ._deprecation import AuroraDeprecationWarning
 from .canvas import Canvas, Path, canvas
 from .charts import chart
 from .components import (
+    MoveEvent,
     accordion,
     avatar,
     badge,
@@ -45,6 +46,7 @@ from .components import (
     select,
     skeleton,
     slider,
+    sortable,
     spinner,
     splitter,
     stat,
@@ -82,6 +84,7 @@ __all__ = [
     "DragEvent",
     "Element",
     "KeyEvent",
+    "MoveEvent",
     "Path",
     "Pilot",
     "ResizeEvent",
@@ -127,6 +130,7 @@ __all__ = [
     "select",
     "skeleton",
     "slider",
+    "sortable",
     "spacer",
     "span",
     "spinner",

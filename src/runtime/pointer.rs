@@ -35,7 +35,8 @@ pub(super) struct Grip {
 }
 
 /// Lo que recibe un manejador `on_drag`: posición del puntero y desplazamiento
-/// desde donde se pulsó (píxeles lógicos), y la fase del gesto.
+/// desde donde se pulsó (píxeles lógicos), la fase del gesto y la zona de
+/// soltar bajo el puntero, si la hay.
 #[pyclass(frozen, get_all, module = "aurora._core", name = "DragEvent")]
 #[derive(Clone, Debug)]
 pub struct DragEvent {
@@ -45,14 +46,20 @@ pub struct DragEvent {
     pub dy: f32,
     /// `"start"` al pulsar, `"move"` en cada movimiento y `"end"` al soltar.
     pub phase: String,
+    /// Key de la zona de soltar (`drop_target`) más cercana bajo el puntero,
+    /// sin contar el nodo arrastrado ni lo que lleva dentro.
+    pub target: Option<String>,
+    /// Posición en la que caería entre los hijos arrastrables de `target`
+    /// (sin contar el arrastrado): cuántos tiene antes del puntero.
+    pub index: Option<usize>,
 }
 
 #[pymethods]
 impl DragEvent {
     fn __repr__(&self) -> String {
         format!(
-            "DragEvent(phase={:?}, x={}, y={}, dx={}, dy={})",
-            self.phase, self.x, self.y, self.dx, self.dy
+            "DragEvent(phase={:?}, x={}, y={}, dx={}, dy={}, target={:?}, index={:?})",
+            self.phase, self.x, self.y, self.dx, self.dy, self.target, self.index
         )
     }
 }
@@ -178,15 +185,51 @@ impl Runtime {
         };
         let (x, y) = grip.last;
         let key = grip.key.clone();
+        let (target, index) = self.drop_at(x, y, &key).unzip();
         let event = DragEvent {
             x,
             y,
             dx: x - grip.start.0,
             dy: y - grip.start.1,
             phase: phase.to_owned(),
+            target,
+            index,
         };
         let arg = Python::attach(|py| Py::new(py, event).map(|e| e.into_any()))?;
         self.dispatch(&key, "drag", Some(arg)).map(drop)
+    }
+
+    /// La zona de soltar bajo `(x, y)` y la posición en la que caería el nodo
+    /// `dragged` entre sus hijos arrastrables (los que tienen `on_drag`): cuántos
+    /// tienen el centro antes del puntero en el eje de la zona. El arrastrado y
+    /// lo que lleva dentro no cuentan, ni tapan lo que hay debajo (suele ir
+    /// pegado al puntero como vista previa).
+    fn drop_at(&self, x: f32, y: f32, dragged: &str) -> Option<(String, usize)> {
+        let regions = &self.engine.regions;
+        let inside = |i: usize| ancestors(regions, Some(i)).any(|r| r.key == dragged);
+        let top = (0..regions.len())
+            .rev()
+            .find(|&i| regions[i].contains(x, y) && !inside(i))?;
+        let zone = ancestors(regions, Some(top)).find(|r| r.drop_target)?;
+        let node = self.tree.as_ref()?.find(&zone.key)?;
+        let along = |r: Rect| {
+            if node.style.row {
+                (r.center_x(), x)
+            } else {
+                (r.center_y(), y)
+            }
+        };
+        let index = node
+            .children
+            .iter()
+            .filter(|c| c.key != dragged && c.is_draggable())
+            .filter_map(|c| self.rect(&c.key))
+            .filter(|&r| {
+                let (center, at) = along(r);
+                center < at
+            })
+            .count();
+        Some((zone.key.clone(), index))
     }
 
     pub fn pointer_leave(&mut self) {

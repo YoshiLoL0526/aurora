@@ -60,3 +60,16 @@ def test_settings_switch_changes_theme(studio):
 def test_gallery_renders(studio, tmp_path):
     studio["render_gallery"](tmp_path)
     assert len(list(tmp_path.glob("*.png"))) == 6
+
+
+def test_board_drags_a_task_to_another_column(studio):
+    pilot = studio["app"].pilot(size=(1280, 820))
+    pilot.click("nav-tablero")
+    pilot.settle()
+    todo = [t for t in studio["tasks"]() if t.status == "todo"]
+    first_done = next(t for t in studio["tasks"]() if t.status == "done")
+    pilot.drag_to(f"tablero:{todo[0].id}", f"task-{first_done.id}")
+    moved = next(t for t in studio["tasks"]() if t.id == todo[0].id)
+    assert moved.status == "done"
+    done = [t.id for t in studio["tasks"]() if t.status == "done"]
+    assert done.index(moved.id) == done.index(first_done.id) - 1  # delante de la que tapó

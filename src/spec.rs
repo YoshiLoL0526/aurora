@@ -333,6 +333,9 @@ pub struct Style {
     /// Zona de la ventana: pulsar en ella (fuera de un control) la mueve o la
     /// redimensiona desde ese borde (barras de título propias).
     pub window_drag: Option<WindowDrag>,
+    /// Zona de soltar: durante un `on_drag`, el evento dice si el puntero está
+    /// sobre ella y en qué posición caería entre sus hijos arrastrables.
+    pub drop_target: bool,
     // Imágenes
     pub src: Option<Source>,
     pub fit: Fit,
@@ -728,6 +731,7 @@ fn get<'py>(d: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyA
         "description" => hit!("description"),
         "direction" => hit!("direction"),
         "draw" => hit!("draw"),
+        "drop_target" => hit!("drop_target"),
         "enter" => hit!("enter"),
         "exit" => hit!("exit"),
         "expanded" => hit!("expanded"),
@@ -1010,6 +1014,7 @@ fn parse_style(d: &Bound<'_, PyDict>) -> PyResult<Style> {
                 ))
             })?),
         },
+        drop_target: bool_of(d, "drop_target")?,
         window_drag: match str_of(d, "window_drag")? {
             None => None,
             Some(name) => Some(WindowDrag::parse(&name).ok_or_else(|| {

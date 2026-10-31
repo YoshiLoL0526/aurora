@@ -498,8 +498,8 @@ const ACTIONS: &[(Action, &str)] = &[
 ];
 
 /// El árbol como lista de dicts (el piloto y los tests): `id`, `key`, `role`,
-/// `label`, `value`, estados, `bounds` en píxeles lógicos, `actions`,
-/// `children` y `focused`.
+/// `label`, `value`, estados, `live` (región viva), `bounds` en píxeles
+/// lógicos, `actions`, `children` y `focused`.
 pub fn to_dicts<'py>(py: Python<'py>, built: &Built, scale: f32) -> PyResult<Bound<'py, PyList>> {
     let key_of: HashMap<NodeId, &str> = built
         .keys
@@ -543,6 +543,7 @@ pub fn to_dicts<'py>(py: Python<'py>, built: &Built, scale: f32) -> PyResult<Bou
                 .map(|s| format!("{s:?}").to_lowercase()),
         )?;
         d.set_item("modal", node.is_modal())?;
+        d.set_item("live", node.live().map(|l| format!("{l:?}").to_lowercase()))?;
         d.set_item("bounds", node.bounds().map(|r| bounds(r, scale)))?;
         d.set_item(
             "actions",

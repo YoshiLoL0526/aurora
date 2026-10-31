@@ -4,7 +4,8 @@ Una app de gestión de proyectos con:
   • navegación entre 4 vistas (Resumen, Tablero, Equipo, Ajustes) con estado global en Signals
   • valores derivados (KPIs, progreso por proyecto, carga del equipo) calculados en cada build
   • gráfico de barras interactivo construido solo con primitivas (clic en una barra = detalle)
-  • tablero kanban: búsqueda, filtros por etiqueta, mover tareas y eliminar con confirmación
+  • tablero kanban: búsqueda, filtros por etiqueta, arrastrar tareas entre columnas (también con
+    el teclado: Espacio, flechas, Espacio) y eliminar con confirmación
   • formulario de nueva tarea en un modal: text_input con autofocus, select y Enter para crear
   • ajustes con tabs, switch, checkbox, radio, deslizador, select y textarea enlazados a Signals
   • scroll por página, tooltips, teclado (Tab, Esc, Ctrl/Cmd+N) y tema claro/oscuro reactivo
@@ -29,6 +30,7 @@ from aurora import (
     App,
     Element,
     KeyEvent,
+    MoveEvent,
     Signal,
     __version__,
     accordion,
@@ -50,6 +52,7 @@ from aurora import (
     segmented,
     select,
     slider,
+    sortable,
     spacer,
     stat,
     switch,
@@ -191,6 +194,30 @@ def move(task_id: int, delta: int) -> None:
     moved = next(t for t in tasks() if t.id == task_id)
     label = next(lbl for s, lbl, _ in STATUSES if s == moved.status)
     notify(f"«{moved.title[:28]}…» → {label}")
+
+
+def visible_tasks() -> list[Task]:
+    """Las tareas que muestra el tablero: las de las etiquetas activas que casan con la búsqueda."""
+    tags = active_tags()
+    q = query().strip().lower()
+    return [t for t in tasks() if (not tags or t.tag in tags) and q in t.title.lower()]
+
+
+def drop_task(e: MoveEvent[Task]) -> None:
+    """Una tarea soltada en el tablero: cambia de columna y queda en el sitio indicado."""
+    status = e.target.removeprefix("col-")
+    moved = replace(e.item, status=status)
+    rest = [t for t in tasks() if t.id != moved.id]
+    # El índice es entre las tareas visibles de la columna: va delante de la que ocupa ese
+    # sitio (o detrás de todas, si es el final).
+    shown = [t for t in visible_tasks() if t.status == status and t.id != moved.id]
+    before = shown[e.index].id if e.index < len(shown) else None
+    at = next((k for k, t in enumerate(rest) if t.id == before), len(rest))
+    rest.insert(at, moved)
+    tasks.set(tuple(rest))
+    if e.source != e.target:
+        label = next(lbl for s, lbl, _ in STATUSES if s == status)
+        notify(f"«{moved.title[:28]}…» → {label}")
 
 
 def confirm_delete() -> None:
@@ -574,10 +601,9 @@ def tag_chip(tag: str) -> Element:
 
 def board() -> Element:
     tags = active_tags()
-    q = query().strip().lower()
     # Ajustes → Densidad: "compacta" aprieta tarjetas y columnas para que quepan más.
     compact = density() == "compacta"
-    visible = [t for t in tasks() if (not tags or t.tag in tags) and q in t.title.lower()]
+    visible = visible_tasks()
     columns = []
     for i, (status, label, color) in enumerate(STATUSES):
         items = [t for t in visible if t.status == status]
@@ -597,10 +623,21 @@ def board() -> Element:
                     spacer(),
                     text(f"{sum(t.points for t in items)} pts", size=11, color="$muted"),
                 ],
-                [task_card(t, i, compact) for t in items]
-                or column(
-                    padding=(28, 12), align="center", radius=14, border_width=1, border_color="$border"
-                )[text("Sin tareas aquí", size=12, color="$muted"),],
+                # Las tarjetas se arrastran entre las columnas (el grupo "tablero").
+                sortable(
+                    items,
+                    lambda t, i=i: task_card(t, i, compact),
+                    key=f"col-{status}",
+                    group="tablero",
+                    ident=lambda t: t.id,
+                    item_label=lambda t: t.title,
+                    on_move=drop_task,
+                    gap=8 if compact else 12,
+                    label=label,
+                    empty=column(
+                        padding=(28, 12), align="center", radius=14, border_width=1, border_color="$border"
+                    )[text("Sin tareas aquí", size=12, color="$muted")],
+                ),
             ]
         )
     return column(gap=16)[

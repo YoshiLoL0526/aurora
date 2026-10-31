@@ -493,6 +493,30 @@ def view():
     ]
 ```
 
+### Reordenar arrastrando
+
+Para una lista que el usuario ordena a mano (prioridades, una cola de reproducción) o un tablero
+kanban, `sortable` pone el arrastre, el teclado y los anuncios; tú solo aplicas el movimiento:
+
+```python
+orden = Signal(["Revisar PR", "Escribir docs", "Publicar"])
+
+
+def view():
+    return sortable(
+        orden(),
+        lambda tarea: card(padding=12)[text(tarea)],
+        key="prioridades",
+        label="Prioridades",
+        on_move=lambda e: orden.set(e.apply(orden())),
+    )
+```
+
+Con varias listas y el mismo `group`, los elementos pasan de una a otra (`e.apply` recibe
+entonces un dict de key → lista). En los tests, `pilot.drag_to("prioridades:Publicar",
+"prioridades:Revisar PR")` lo arrastra delante de otro, y con `pilot.press("space")` y las
+flechas se prueba el teclado. Ver [`sortable`](reference.md#sortable).
+
 ## 7. Filtros y valores derivados
 
 Los valores derivados (totales, porcentajes, listas filtradas) **no se guardan**: se calculan

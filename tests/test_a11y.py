@@ -319,3 +319,26 @@ def test_title_bar_buttons_are_named_buttons():
     pilot = _pilot(lambda: column(grow=1)[title_bar("Notas", controls="windows")], size=(400, 120))
     labels = [n["label"] for n in _role_of(pilot, "button")]
     assert labels == ["Minimizar", "Maximizar", "Cerrar"]
+
+
+def test_sortable_is_a_list_and_announces_keyboard_moves():
+    from aurora import sortable
+
+    items = ["uno", "dos", "tres"]
+    pilot = _pilot(lambda: column()[sortable(items, lambda v: text(v), key="l", label="Tareas")])
+    rows = _role_of(pilot, "listitem")
+    assert [(r["label"], r["position_in_set"], r["set_size"]) for r in rows] == [
+        ("uno", 1, 3),
+        ("dos", 2, 3),
+        ("tres", 3, 3),
+    ]
+    assert _node(pilot, "l")["role"] == "list"
+    pilot.focus("l:uno")
+    pilot.press("space")
+    pilot.press("down")
+    assert _node(pilot, "l:uno")["selected"] is True
+    live = [n for n in pilot.a11y_tree() if n.get("live") == "assertive"]
+    assert [n["value"] for n in live] == ["«uno», posición 2 de 3 en «Tareas»."]
+    pilot.press("escape")
+    live = [n for n in pilot.a11y_tree() if n.get("live") == "assertive"]
+    assert [n["value"] for n in live] == ["Cancelado. «uno» vuelve a su sitio."]

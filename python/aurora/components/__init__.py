@@ -19,8 +19,10 @@ from .lists import tree, virtual_list
 from .navigation import accordion, pages, segmented, tabs
 from .overlays import dialog, menu, popover, select, tooltip
 from .pickers import color_picker, combobox, date_picker, time_picker
+from .sortable import MoveEvent, sortable
 
 __all__ = [
+    "MoveEvent",
     "accordion",
     "avatar",
     "badge",
@@ -43,6 +45,7 @@ __all__ = [
     "select",
     "skeleton",
     "slider",
+    "sortable",
     "spinner",
     "splitter",
     "stat",

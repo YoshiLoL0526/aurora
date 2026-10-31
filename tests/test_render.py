@@ -20,6 +20,7 @@ from aurora import (
     popover,
     rich_text,
     row,
+    sortable,
     spacer,
     span,
     splitter,
@@ -319,3 +320,24 @@ def test_title_bar_paints_the_window_buttons(tmp_path):
     assert _png_pixel(path, int(mx + mw / 2), int(my + mh / 2)) == (0xE6, 0xE8, 0xF0)
     # Los tres botones van a la derecha, del mismo ancho.
     assert pilot.rect("title-bar-close")[0] + 46 == 400
+
+
+def test_sortable_marks_where_the_item_will_land(tmp_path):
+    items = ["uno", "dos", "tres"]
+    view = lambda: column(padding=20)[
+        sortable(items, lambda v: box(height=30, bg="#203040")[text(v)], key="l", gap=10)
+    ]
+    pilot = App(view, size=(200, 160)).pilot()
+    pilot.focus("l:uno")
+    pilot.press("space")  # cogido con el teclado: se queda en su sitio, con borde
+    pilot.press("down")  # caería tras «dos»: la línea va entre «dos» y «tres»
+    path = tmp_path / "sortable.png"
+    pilot.png(str(path))
+    _, y2, _, h2 = pilot.rect("l:dos")
+    _, y3, _, _ = pilot.rect("l:tres")
+    line = int((y2 + h2 + y3) / 2)
+    # La línea es del primario (MIDNIGHT: #7C5CFF) en el centro del hueco entre los dos.
+    assert _png_pixel(path, 100, line) == (0x7C, 0x5C, 0xFF)
+    # Entre «uno» y «dos» no hay línea: el fondo.
+    _, y1, _, h1 = pilot.rect("l:uno")
+    assert _png_pixel(path, 100, int((y1 + h1 + y2) / 2)) == (0x0B, 0x0D, 0x14)

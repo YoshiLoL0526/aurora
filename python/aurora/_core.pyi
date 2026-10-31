@@ -201,13 +201,16 @@ class ResizeEvent:
 
 class DragEvent:
     """Evento que reciben los manejadores `on_drag`: posición del puntero, desplazamiento
-    desde donde se pulsó (px lógicos) y fase del gesto (`"start"`, `"move"` o `"end"`)."""
+    desde donde se pulsó (px lógicos), fase del gesto (`"start"`, `"move"` o `"end"`) y la zona de
+    soltar (`drop_target`) bajo el puntero con la posición en la que caería (o `None`)."""
 
     x: float
     y: float
     dx: float
     dy: float
     phase: str
+    target: str | None
+    index: int | None
 
 class Pilot:
     """Ejecuta una app sin ventana y simula el puntero frame a frame (para tests).
@@ -237,6 +240,8 @@ class Pilot:
     def click_at(self, x: float, y: float) -> None: ...
     def drag(self, key: str, dx: float = 0.0, dy: float = 0.0, steps: int = 4) -> None:
         """Arrastra desde el centro de `key` desplazando `(dx, dy)` en `steps` movimientos, y suelta."""
+    def drag_to(self, key: str, to: str | tuple[float, float], steps: int = 8) -> None:
+        """Arrastra desde el centro de `key` hasta el centro de `to` (una key) o el punto `to`, y suelta."""
     def hover_files(self, files: Sequence[str | PathLike[str]] | None) -> None:
         """Archivos del sistema que pasan sobre la ventana, o `None` si salen sin soltar."""
     def drop_files(
@@ -282,7 +287,8 @@ class Pilot:
     def a11y_tree(self) -> list[dict[str, Any]]:
         """Árbol de accesibilidad del último frame: lo que ve un lector de pantalla.
         Un dict por nodo con `id`, `key`, `role`, `label`, `value`, estados
-        (`checked`, `selected`, `expanded`…), `bounds` en píxeles lógicos,
+        (`checked`, `selected`, `expanded`…), `live` (región viva: `"polite"` o
+        `"assertive"`), `bounds` en píxeles lógicos,
         `actions`, `children` y `focused`; lo decorativo no aparece."""
     def a11y_action(self, key: str, action: str, value: str | float | None = None) -> None:
         """Pide una acción de accesibilidad sobre el nodo `key`, como un lector:

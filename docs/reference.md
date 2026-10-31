@@ -486,6 +486,7 @@ def test_counter():
 | `click(key)` | Clic en el centro del nodo `key`, como una persona: si otro nodo lo tapa, el clic llega a ese otro. `LookupError` si el nodo no se pintó. |
 | `click_at(x, y)` | Mueve el puntero, pulsa y suelta. |
 | `drag(key, dx=0, dy=0, steps=4)` | Pulsa en el centro de `key`, mueve el puntero `(dx, dy)` en `steps` pasos y suelta. |
+| `drag_to(key, to, steps=8)` | Arrastra desde el centro de `key` hasta el centro de otro nodo (`to`, su key) o hasta el punto `to=(x, y)`, y suelta. Para probar [`sortable`](#sortable): soltar sobre el centro de un elemento lo deja delante de él. |
 | `window_requests` | Lo que las pulsaciones han pedido a la ventana, en orden: `"move"` (una zona `window_drag="move"`), `"resize-<borde>"` (`"resize-se"`…: un borde de una ventana [sin marco](#ventanas-sin-marco) o una zona de redimensionar) y `"toggle-maximize"` (doble clic en una zona que la mueve). |
 | `hover_files(files)` | Archivos del sistema que entran arrastrándose en la ventana (`None`: salen sin soltar). Llama a los `on_drop_hover`. |
 | `drop_files(files, key=None, at=None)` | Suelta archivos sobre el centro de `key`, en `at=(x, y)` o, sin ninguno, sin posición (como en macOS y Linux). Devuelve `True` si un `on_drop` los recibió. Ver [Soltar archivos](#soltar-archivos). |
@@ -501,7 +502,7 @@ def test_counter():
 | `type(texto)` | Escribe en el campo enfocado, grafema a grafema, como desde el teclado (`"\n"` = Enter). |
 | `ime_preedit(texto)` / `ime_commit(texto)` | Simulan la composición y la confirmación de un IME. |
 | `selection(key)` | Selección del campo `key` en caracteres: `(inicio, fin)`, iguales si solo hay cursor. |
-| `a11y_tree()` | El árbol de accesibilidad del último frame —lo que ve un lector de pantalla—: una lista de dicts por nodo con `id`, `key`, `role`, `label`, `value`, estados (`checked`, `selected`, `expanded`…), `bounds` en píxeles lógicos, `actions`, `children` y `focused`. Lo decorativo no aparece. |
+| `a11y_tree()` | El árbol de accesibilidad del último frame —lo que ve un lector de pantalla—: una lista de dicts por nodo con `id`, `key`, `role`, `label`, `value`, estados (`checked`, `selected`, `expanded`…), `live` (región viva: `"polite"`, `"assertive"` o `None`), `bounds` en píxeles lógicos, `actions`, `children` y `focused`. Lo decorativo no aparece. |
 | `a11y_action(key, action, value=None)` | Pide una acción como un lector de pantalla sobre el nodo `key`: `"click"`, `"focus"`, `"blur"`, `"set_value"` (con `value`: texto o número), `"increment"`, `"decrement"`, `"expand"`, `"collapse"` o `"scroll_into_view"`. |
 | `clipboard` | Portapapeles del piloto, en memoria (se puede leer y asignar); no toca el del sistema. |
 | `focus(key)` | Enfoca `key` como si se llegara con el teclado. `LookupError` si no se pintó o no es enfocable. |
@@ -860,6 +861,11 @@ Lo que reciben los manejadores `on_drag`, en píxeles lógicos:
 | `phase` | `"start"` al pulsar, `"move"` en cada movimiento y `"end"` al soltar. |
 | `x`, `y` | Posición actual del puntero en la ventana. |
 | `dx`, `dy` | Desplazamiento desde donde se pulsó (no desde el último evento). |
+| `target` | Key de la zona de soltar (un elemento con `drop_target=True`) más cercana bajo el puntero, o `None`. El elemento arrastrado y lo que lleva dentro no cuentan ni tapan lo que hay debajo: puede ir pegado al puntero como vista previa. |
+| `index` | Con `target`, la posición en la que caería: cuántos hijos arrastrables (con `on_drag`) de la zona, sin contar el arrastrado, tienen el centro antes del puntero en el eje de la zona. Si no, `None`. |
+
+Con `target` e `index`, el núcleo resuelve lo único que Python no puede saber (la geometría);
+[`sortable`](#sortable) construye encima las listas reordenables y los tableros.
 
 ```python
 ancho = Signal(240.0)
@@ -1523,6 +1529,82 @@ row(gap=12)[  # oculto
 ]  # oculto
 ```
 
+### `sortable(items, item, *, key, group=None, ident=None, item_label=str, on_move=None, direction="column", gap=8, empty=None, **estilo)` { #sortable }
+
+Lista cuyos elementos se reordenan arrastrándolos, o con el teclado. `item(valor)` construye
+cada uno. Al soltar uno en otra posición se llama a `on_move(evento)` con un
+[`MoveEvent`](#moveevent): la lista no cambia sola, la cambias tú, y `evento.apply(...)` hace el
+movimiento sobre tus datos. Las `sortable` con el mismo `group` forman un **tablero**: los
+elementos pasan de una a otra, y se llama al `on_move` de la de destino (o, si no tiene, al de la
+de origen).
+
+```python live size=480x220 align=stretch
+from aurora import App, Signal, box, column, row, sortable, text
+
+tablero = Signal({"Pendiente": ["Diseño", "Docs"], "En curso": ["API"], "Hecho": []})
+
+
+def tarjeta(titulo):
+    return box(padding=10, radius="$sm", bg="$surface", border_width=1, border_color="$border")[text(titulo)]
+
+
+def view():
+    return row(gap=12, padding=16, align="start")[
+        [
+            column(gap=8, grow=1, width=0)[
+                text(nombre, size=12, weight=700, color="$muted"),
+                sortable(
+                    tareas,
+                    tarjeta,
+                    key=nombre,
+                    group="tablero",
+                    label=nombre,
+                    empty=text("Suelta aquí", size=12, color="$muted", padding=12),
+                    on_move=lambda e: tablero.set(e.apply(tablero())),
+                ),
+            ]
+            for nombre, tareas in tablero().items()
+        ]
+    ]
+
+
+App(view, size=(480, 220)).run()
+```
+
+- **Puntero**: el arrastre empieza al mover 4 px con el botón pulsado, así que un clic no
+  arrastra y los botones de dentro de un elemento siguen funcionando. El elemento se levanta y
+  sigue al puntero por encima de todo (con sombra), su hueco queda libre y una línea del color
+  `$primary` marca dónde caerá; una lista vacía se resalta entera. Soltar fuera de las listas
+  del grupo lo cancela.
+- **Teclado**: con un elemento enfocado (Tab), Espacio o Enter lo coge; las flechas del eje de
+  la lista lo mueven, las del otro eje lo pasan a la lista anterior o siguiente del grupo (en
+  el orden en que se construyen), Espacio o Enter lo sueltan y Esc cancela. El foco sigue al
+  elemento de una lista a otra.
+- **Lectores de pantalla**: es una `"list"` de `"listitem"`s con su posición y la descripción
+  «Espacio para mover»; el elemento cogido queda `selected`, y cada paso se anuncia en una
+  región viva (`"assertive"`): ««Docs», posición 2 de 3 en «Pendiente»», «soltado en…»,
+  «Cancelado…». Dale a cada lista un `label`: es el nombre que dicen los anuncios.
+- `ident(valor)` identifica cada elemento (por defecto, el propio valor, que debe ser hashable);
+  su key es `f"{grupo}:{identidad}"`, para hacer clic, enfocarlo o arrastrarlo en tests
+  (`pilot.drag_to("tablero:Docs", "En curso")`). `item_label(valor)` es su nombre accesible y
+  el de los anuncios (por defecto, `str`).
+- `direction="row"` la pone en fila; `gap` separa los elementos; `empty` se muestra dentro de la
+  lista cuando está vacía (sigue siendo zona de soltar). El resto de argumentos son estilo del
+  contenedor (por defecto, `min_height=48`).
+
+Lo hace sin código nativo propio: el núcleo solo dice, en cada [`DragEvent`](#dragevent), sobre
+qué zona (`drop_target=True`) está el puntero y en qué posición caería. Con esas dos piezas se
+puede construir otro tipo de arrastre (soltar en una papelera, en una carpeta de un `tree`…).
+
+#### `MoveEvent`
+
+| Atributo | Descripción |
+|---|---|
+| `item` | El valor movido. |
+| `source`, `source_index` | La key de la lista de origen y dónde estaba en ella. |
+| `target`, `index` | La key de la lista de destino (la misma si se reordena) y dónde queda en ella, ya quitado de la de origen. |
+| `apply(datos)` | Una copia de tus datos con el movimiento hecho: con una lista (reordenar una sola `sortable`), la lista nueva; con un dict de key de lista → elementos (un tablero), el dict nuevo. No cambia los originales. |
+
 ### `virtual_list(count, item, *, item_height, key, gap=0, overscan=4, **estilo)`
 
 Lista desplazable de `count` filas que **solo construye las visibles**: con 100 000 filas, cada
@@ -2057,6 +2139,7 @@ contenedores (como en CSS).
 | `selection_color` | color | Fondo del texto seleccionado. Por defecto, `focus_color` translúcido. |
 | `tooltip` | texto | Texto de ayuda que aparece al dejar el puntero encima. Ver [`tooltip`](#tooltipchild-tip). |
 | `cursor` | `"default"`, `"pointer"`, `"text"`, `"grab"`, `"grabbing"`, `"col-resize"`, `"row-resize"`, `"ns-resize"`, `"ew-resize"`, `"nesw-resize"`, `"nwse-resize"`, `"crosshair"` | Cursor del ratón sobre el elemento y sus hijos (salvo que un hijo fije otro). Durante un `on_drag` se mantiene el del elemento arrastrado. |
+| `drop_target` | `bool` | Zona de soltar: mientras se arrastra un elemento con `on_drag`, su [`DragEvent`](#dragevent) dice si el puntero está sobre ella (`target`) y en qué posición caería entre sus hijos arrastrables (`index`). |
 | `window_drag` | `"move"` · `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"nw"`, `"se"`, `"sw"` | Pulsar en el elemento (fuera de sus controles) mueve la ventana —doble clic: maximizar o restaurar— o la redimensiona desde ese borde. Para barras de título propias: ver [Ventanas sin marco](#ventanas-sin-marco). |
 | `capture` | `bool` | Barrera de eventos: los clics dentro no llegan a los ancestros. Úsalo en el contenido de un modal. |
 | `placement`, `offset` | `"bottom"`, `"top-start"`, `"right-end"`… · número | Solo con `layer="overlay"`: coloca el elemento junto a su ancla —el hermano anterior que ocupa sitio en el flujo o, si no lo hay, el contenedor—, en ese lado y con esa alineación (`start`, `center` —la de por defecto— o `end`), a `offset` píxeles. Si no cabe se vuelca al lado opuesto, y nunca se sale de la ventana. Ver [`popover`](#popover). |

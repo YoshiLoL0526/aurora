@@ -34,3 +34,9 @@ _TREE_OPEN: dict[str, Signal[set[Any]]] = {}
 _TREE_SELECTED: dict[str, Signal[Any]] = {}
 # Tono, saturación y brillo de cada `color_picker` (el tono no sobrevive a un gris).
 _HSV: dict[str, Signal[tuple[float, float, float]]] = {}
+# Arrastre en curso de cada grupo de `sortable` (`None`: ninguno), sus listas
+# construidas (por key) y el último anuncio para el lector de pantalla
+# (`(lista donde se anuncia, texto)`).
+_DRAGS: dict[str, Signal[Any]] = {}
+_ZONES: dict[str, dict[str, Any]] = {}
+_ANNOUNCE: dict[str, Signal[tuple[str, str]]] = {}

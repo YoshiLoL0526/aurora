@@ -20,6 +20,7 @@ from aurora import (
     popover,
     row,
     scroll,
+    sortable,
     spacer,
     splitter,
     text,
@@ -837,3 +838,151 @@ def test_title_bar_buttons_act_on_their_window():
 def test_current_window_outside_a_build_is_an_error():
     with pytest.raises(RuntimeError, match="mientras se construye"):
         current_window()
+
+
+# --- Arrastrar y soltar dentro de la app ----------------------------------------
+
+
+def _card(value):
+    return box(height=30, padding=(0, 8), bg="$surface")[text(value)]
+
+
+def _sortable_app(items, **kw):
+    moves = []
+
+    def on_move(e):
+        moves.append(e)
+        items.set(e.apply(items()))
+
+    def view():
+        return column(padding=20)[sortable(items(), _card, key="l", on_move=on_move, label="Tareas", **kw)]
+
+    return App(view, size=(240, 260)).pilot(), moves
+
+
+def test_drag_event_reports_the_drop_zone_and_index():
+    events = []
+    view = lambda: row(gap=20, padding=10)[
+        column(key="a", drop_target=True, gap=4, width=80)[
+            [box(key=f"a{i}", height=20, on_drag=events.append) for i in range(3)]
+        ],
+        column(key="b", drop_target=True, gap=4, width=80, height=100),
+    ]
+    pilot = App(view, size=(240, 140)).pilot()
+    pilot.drag_to("a0", "a2")  # al centro de «a2»: antes de él, contando sin «a0»
+    end = events[-1]
+    assert (end.phase, end.target, end.index) == ("end", "a", 1)
+    pilot.drag_to("a1", "b")
+    assert (events[-1].target, events[-1].index) == ("b", 0)
+    pilot.drag_to("a1", (230, 130))  # fuera de toda zona
+    assert (events[-1].target, events[-1].index) == (None, None)
+
+
+def test_sortable_reorders_with_the_pointer():
+    items = Signal(["uno", "dos", "tres", "cuatro"])
+    pilot, moves = _sortable_app(items)
+    _, y, _, h = pilot.rect("l:cuatro")
+    pilot.drag_to("l:uno", (120, y + h - 2))  # pasado el centro del último
+    assert items() == ["dos", "tres", "cuatro", "uno"]
+    (move,) = moves
+    assert (move.item, move.source, move.source_index, move.target, move.index) == ("uno", "l", 0, "l", 3)
+
+
+def test_sortable_preview_follows_the_pointer():
+    items = Signal(["uno", "dos", "tres"])
+    pilot, moves = _sortable_app(items)
+    x, y, w, h = pilot.rect("l:uno")
+    pilot.move_to(x + 10, y + 10)
+    pilot.mouse_down()
+    pilot.move_to(x + 40, y + 70)
+    assert pilot.rect("l:uno") == (x + 30, y + 60, w, h)
+    assert pilot.cursor == "grabbing"
+    pilot.mouse_up()
+    assert pilot.rect("l:uno")[:2] != (x + 30, y + 60)
+    assert len(moves) == 1
+
+
+def test_a_click_without_moving_is_not_a_drag():
+    clicked = []
+    items = Signal(["uno", "dos"])
+    card = lambda v: row(height=30)[text(v), button("x", lambda: clicked.append(v), key=f"x-{v}")]
+    view = lambda: column()[sortable(items(), card, key="l", on_move=lambda e: items.set(e.apply(items())))]
+    pilot = App(view, size=(240, 200)).pilot()
+    pilot.click("l:uno")
+    pilot.drag("l:uno", dy=2)  # por debajo del umbral
+    pilot.click("x-dos")  # los botones de dentro siguen funcionando
+    assert items() == ["uno", "dos"]
+    assert clicked == ["dos"]
+
+
+def test_kanban_moves_items_between_lists_of_a_group():
+    board = Signal({"todo": ["a", "b"], "doing": ["c"], "done": []})
+    moves = []
+
+    def on_move(e):
+        moves.append(e)
+        board.set(e.apply(board()))
+
+    view = lambda: row(gap=16, padding=10, align="start")[
+        [
+            sortable(board()[name], _card, key=name, group="board", on_move=on_move, width=120)
+            for name in board()
+        ]
+    ]
+    pilot = App(view, size=(440, 240)).pilot()
+    pilot.drag_to("board:a", "board:c")  # antes de «c»
+    assert board() == {"todo": ["b"], "doing": ["a", "c"], "done": []}
+    pilot.drag_to("board:c", "done")  # una lista vacía
+    assert board() == {"todo": ["b"], "doing": ["a"], "done": ["c"]}
+    assert [(m.source, m.target, m.index) for m in moves] == [("todo", "doing", 0), ("doing", "done", 0)]
+    # Otro grupo no acepta lo de este.
+    pilot.drag_to("board:b", (430, 230))
+    assert board()["todo"] == ["b"] and len(moves) == 2
+
+
+def test_sortable_keyboard_grab_move_drop_and_cancel():
+    items = Signal(["uno", "dos", "tres"])
+    pilot, moves = _sortable_app(items)
+    pilot.focus("l:uno")
+    pilot.press("space")
+    pilot.press("down")
+    pilot.press("down")
+    pilot.press("down")  # no pasa del final
+    pilot.press("enter")
+    assert items() == ["dos", "tres", "uno"]
+    assert pilot.focused == "l:uno"  # el foco sigue al elemento
+    pilot.press("space")
+    pilot.press("up")
+    pilot.press("escape")
+    assert items() == ["dos", "tres", "uno"] and len(moves) == 1
+
+
+def test_sortable_keyboard_crosses_to_the_next_list():
+    board = Signal({"todo": ["a", "b"], "doing": ["c"]})
+    view = lambda: row(gap=16)[
+        [
+            sortable(board()[n], _card, key=n, group="g", on_move=lambda e: board.set(e.apply(board())))
+            for n in board()
+        ]
+    ]
+    pilot = App(view, size=(400, 200)).pilot()
+    pilot.focus("g:b")
+    pilot.press("space")
+    pilot.press("right")
+    pilot.press("down")
+    pilot.press("space")
+    assert board() == {"todo": ["a"], "doing": ["c", "b"]}
+    assert pilot.focused == "g:b"
+
+
+def test_move_event_apply():
+    from aurora import MoveEvent
+
+    same = MoveEvent("a", "l", 0, "l", 2)
+    assert same.apply(["a", "b", "c"]) == ["b", "c", "a"]
+    across = MoveEvent("a", "x", 0, "y", 1)
+    lists = {"x": ["a"], "y": ["b", "c"]}
+    assert across.apply(lists) == {"x": [], "y": ["b", "a", "c"]}
+    assert lists == {"x": ["a"], "y": ["b", "c"]}  # sin tocar los originales
+    with pytest.raises(ValueError, match="usa un dict"):
+        across.apply(["a"])

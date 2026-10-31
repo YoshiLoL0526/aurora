@@ -48,7 +48,9 @@ DAYLIGHT: Theme
 class DragEvent()
     .dx
     .dy
+    .index
     .phase
+    .target
     .x
     .y
 class Element(kind: 'str' = 'box', *, content: 'TextLike | None' = None, key: 'str | None' = None, **props: 'Any') -> 'None'
@@ -70,6 +72,13 @@ class KeyEvent()
     .shift
     .text
 MIDNIGHT: Theme
+class MoveEvent(item: 'T', source: 'str', source_index: 'int', target: 'str', index: 'int') -> None
+    .apply(self, lists: 'Sequence[T] | Mapping[str, Sequence[T]]') -> 'list[T] | dict[str, list[T]]'
+    .index
+    .item
+    .source
+    .source_index
+    .target
 class Path() -> 'None'
     .arc(self, cx: 'float', cy: 'float', r: 'float', start: 'float', sweep: 'float') -> 'Path'
     .close(self) -> 'Path'
@@ -86,6 +95,7 @@ class Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False, framel
     .clipboard
     .cursor
     .drag(self, /, key, dx=0.0, dy=0.0, steps=4)
+    .drag_to(self, /, key, to, steps=8)
     .drop_files(self, /, files, key=None, at=None)
     .focus(self, /, key)
     .focused
@@ -197,6 +207,7 @@ segmented(options: 'Options', selected: 'Signal[Any]', *, width: 'float' = 220, 
 select(value: 'Signal[Any]', options: 'Options', *, placeholder: 'str' = 'Elegir…', key: 'str | None' = None, **style: 'Any') -> 'Element'
 skeleton(*, lines: 'int' = 1, width: 'str | float' = '100%', height: 'float' = 14, gap: 'float' = 8, **style: 'Any') -> 'Element'
 slider(value: 'Signal[float]', *, min: 'float' = 0.0, max: 'float' = 1.0, width: 'float' = 180, on_change: 'Callable[[float], Any] | None' = None, key: 'str | None' = None, **style: 'Any') -> 'Element'
+sortable(items: 'Sequence[T]', item: 'Callable[[T], Element]', *, key: 'str', group: 'str | None' = None, ident: 'Callable[[T], Hashable] | None' = None, item_label: 'Callable[[T], TextLike]' = <class 'str'>, on_move: 'Callable[[MoveEvent[T]], Any] | None' = None, direction: "Literal['column', 'row']" = 'column', gap: 'float' = 8, empty: 'Child' = None, **style: 'Any') -> 'Element'
 spacer() -> 'Element'
 span(content: 'str', *, weight: 'int | None' = None, color: 'str | None' = None, italic: 'bool' = False, underline: 'bool' = False, strike: 'bool' = False, code: 'bool' = False, size: 'float | None' = None, family: 'str | None' = None, bg: 'str | None' = None, on_click: 'Callable[[], Any] | None' = None) -> 'Span'
 spinner(*, size: 'float' = 8, gap: 'float' = 5, tone: 'str' = '$primary', key: 'str | None' = None, **style: 'Any') -> 'Element'

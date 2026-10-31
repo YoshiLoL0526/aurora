@@ -144,6 +144,23 @@ impl Pilot {
         self.mouse_up()
     }
 
+    /// Arrastra desde el centro de `key` hasta el centro de `to` (otra key) o
+    /// hasta el punto `to=(x, y)`, en `steps` movimientos, y suelta.
+    #[pyo3(signature = (key, to, steps = 8))]
+    fn drag_to(&mut self, key: &str, to: &Bound<'_, PyAny>, steps: u32) -> PyResult<()> {
+        let from = self.center(key)?;
+        let end = match to.extract::<String>() {
+            Ok(target) => self.center(&target)?,
+            Err(_) => {
+                let (x, y): (f32, f32) = to.extract().map_err(|_| {
+                    PyValueError::new_err("`to` debe ser una key o un punto (x, y)")
+                })?;
+                Point::new(x, y)
+            }
+        };
+        self.drag(key, end.x - from.x, end.y - from.y, steps)
+    }
+
     /// Cursor del ratón en el último frame (`"default"`, `"pointer"`, `"col-resize"`…).
     #[getter]
     fn cursor(&self) -> &'static str {
