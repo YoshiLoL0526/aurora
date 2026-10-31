@@ -80,6 +80,9 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - El núcleo comparte entre reconstrucciones los subárboles que llegan como el mismo dict en vez
   de copiarlos, y la fase de estilo los salta: reconstruir una lista de 10 000 filas
   `@component` cuesta un tercio que antes.
+- El recolector de ciclos de Python se pausa mientras se construye la vista (si estaba activo):
+  construir crea cientos de miles de objetos sin ciclos y cada pasada recorría además todo lo vivo.
+  Reconstruir una vista de 50 000 nodos tras un clic cuesta ~25 % menos.
 - `menu`, `select`, `combobox` y `date_picker` abren su panel con `placement`: si no cabe debajo
   del disparador se abre encima. `menu` acepta `placement`, y su `drop` pasa a ser opcional (por
   defecto `None`: el panel se coloca solo, 6 px por debajo del disparador).

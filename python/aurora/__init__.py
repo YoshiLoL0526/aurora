@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import math
 import re
 import sys
@@ -519,6 +520,13 @@ class App:
         reactive.begin_build(owner)
         # Los componentes leen el interruptor de movimiento al construirse.
         previous_motion = _motion.activate(self.motion)
+        # Construir crea cientos de miles de objetos sin ciclos (elementos, dicts):
+        # con el GC activo, cada pasada de la generación más vieja recorre además
+        # todo lo vivo (la vista anterior que guarda la reconstrucción parcial, los
+        # componentes memorizados…). Se pausa mientras se construye; si el usuario lo
+        # había desactivado, se queda como estaba.
+        collect = gc.isenabled()
+        gc.disable()
         try:
             # El tema puede ser reactivo (p. ej. un Signal[Theme]) para alternar claro/oscuro.
             theme = self.theme if isinstance(self.theme, Theme) else self.theme()
@@ -547,6 +555,8 @@ class App:
                 spec = self._inspector.dock(spec, info, theme.font_family)
             return spec
         finally:
+            if collect:
+                gc.enable()
             _motion.activate(previous_motion)
             reactive.end_build()
 
