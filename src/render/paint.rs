@@ -484,11 +484,27 @@ impl<'a> Painter<'a> {
     /// `origin`: esquina absoluta del padre; `shift`: desplazamiento acumulado
     /// de los `scroll` que lo contienen (local = absoluto + `shift`).
     fn paint(&mut self, node: &'a Node, lnode: &'a LayoutNode, origin: Point, shift: Point) {
+        // Se descarta con lo que dice el `LayoutNode`, sin leer el `Node`: los hijos
+        // son `Arc` repartidos por la memoria (los compartidos entre parseos) y, en
+        // una lista de 10 000 filas fuera de la zona dañada, leer cada uno cuesta
+        // más que pintar. Una capa superior es `sticky`: nunca se descarta aquí.
+        if self.culled(node, lnode, shift) {
+            return;
+        }
         if node.style.overlay {
             self.overlays.push((node, lnode, origin, shift));
             return;
         }
         self.paint_node(node, lnode, origin, shift);
+    }
+
+    /// Si el subárbol queda fuera de la zona a repintar y se puede saltar. Solo
+    /// mira la key del nodo si hay alguno animando su layout.
+    fn culled(&self, node: &Node, lnode: &LayoutNode, shift: Point) -> bool {
+        self.cull
+            && !lnode.sticky
+            && !overlaps(lnode.ink.with_offset(-shift), self.damage)
+            && (self.engine.moving.is_empty() || !self.engine.moving.contains(&node.key))
     }
 
     /// Pinta el nodo y sus hijos. Una capa aplazada se pinta en coordenadas
@@ -500,11 +516,7 @@ impl<'a> Painter<'a> {
         origin: Point,
         shift: Point,
     ) {
-        if self.cull
-            && !lnode.sticky
-            && !overlaps(lnode.ink.with_offset(-shift), self.damage)
-            && !self.engine.moving.contains(&node.key)
-        {
+        if self.culled(node, lnode, shift) {
             return;
         }
         let canvas = self.canvas;
