@@ -316,6 +316,9 @@ const FULL_PAINT_RATIO: f32 = 0.7;
 /// cerca del corte.
 const CLIP_MARGIN: f32 = 32.0;
 
+/// Radio del anillo de foco de un enlace (antes de sumarle su separación).
+const LINK_RING_RADIUS: f32 = 2.0;
+
 /// Sombra de la burbuja del tooltip.
 const TIP_SHADOW_SIGMA: f32 = 6.0;
 const TIP_SHADOW_DY: f32 = 3.0;
@@ -648,6 +651,7 @@ impl<'a> Painter<'a> {
             let pad = layout.padding;
             ctx.paragraph
                 .paint(canvas, (rect.left + pad.left, rect.top + pad.top));
+            self.paint_link_rings(node, ctx, rect, layout);
         }
         if node.is_editable() {
             self.paint_input(node, lnode, rect);
@@ -707,6 +711,37 @@ impl<'a> Painter<'a> {
 }
 
 impl<'a> Painter<'a> {
+    /// Anillo de foco de los enlaces de un texto enriquecido: uno por cada
+    /// línea que ocupa el enlace enfocado (las mismas cajas que sus regiones).
+    fn paint_link_rings(&self, node: &Node, ctx: &TextCtx, rect: Rect, layout: &taffy::Layout) {
+        let (Some(spans), Some(text)) = (node.style.spans.as_ref(), node.text.as_deref()) else {
+            return;
+        };
+        if !spans.has_links() {
+            return;
+        }
+        let (b, pad) = (layout.border, layout.padding);
+        let origin = (rect.left + b.left + pad.left, rect.top + b.top + pad.top);
+        for (span, range) in spans.ranges(text) {
+            let Some(link) = span.link else {
+                continue;
+            };
+            let key = crate::spec::link_key(&node.key, link, 0);
+            let Some(st) = self.engine.anim.get(&key).filter(|st| st.focus > 0.0) else {
+                continue;
+            };
+            for r in crate::input::range_rects(&ctx.paragraph, text, range) {
+                paint_focus_ring(
+                    self.canvas,
+                    r.with_offset(origin),
+                    LINK_RING_RADIUS,
+                    node.text_props.focus_color,
+                    st.focus,
+                );
+            }
+        }
+    }
+
     /// Campo de texto: selección, texto (o placeholder), subrayado de la
     /// composición del IME y cursor, recortados a la caja de relleno. Un campo
     /// de una línea se desplaza en horizontal para que el cursor siempre se vea.

@@ -167,7 +167,8 @@ pub(super) fn compute_ink(
         let m = node.text_props.size * 0.5;
         ink = join(ink, rect.with_outset((m, m)));
     }
-    if node.is_focusable() {
+    // Los enlaces de un texto enriquecido también llevan anillo.
+    if node.is_focusable() || node.style.spans.as_ref().is_some_and(|s| s.has_links()) {
         ink = join(ink, rect.with_outset((FOCUS_OUTSET, FOCUS_OUTSET)));
     }
     let own = ink;
@@ -455,7 +456,8 @@ impl Geometry<'_> {
                     layer,
                     interactive: true,
                     capture: false,
-                    focusable: false,
+                    // Se enfoca entero por su primera parte (ver `spec::link_focus_key`).
+                    focusable: part == 0,
                     editable: false,
                     tooltip: false,
                     cursor: Some(Cursor::Pointer),
@@ -772,6 +774,10 @@ impl Engine {
 
     /// Zona (absoluta y visible) que puede pintar el subárbol de `key`.
     pub(super) fn region_ink(&self, key: &str) -> Option<Rect> {
+        // El anillo de un enlace rodea todas sus líneas: se repinta su texto.
+        if let Some((owner, _)) = crate::spec::parse_link_key(key) {
+            return self.region_ink(owner);
+        }
         let r = self.regions.iter().rev().find(|r| r.key == key)?;
         let ink = r.ink.with_offset(-self.layers[r.layer].offset);
         Some(intersect(ink, r.clip))

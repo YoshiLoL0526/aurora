@@ -394,6 +394,7 @@ impl Runtime {
         // conserva el foco: el anillo solo lo pinta el foco de teclado.
         if let Some(focused) = &self.engine.focused
             && tree.find(focused).is_none()
+            && !has_link(&tree, focused)
         {
             self.engine.focused = None;
         }
@@ -706,6 +707,15 @@ impl ResizeEvent {
     fn __repr__(&self) -> String {
         format!("ResizeEvent(width={}, height={})", self.width, self.height)
     }
+}
+
+/// Si `key` es un enlace (`spec::link_key`) que sigue en el texto de su dueño.
+fn has_link(tree: &Node, key: &str) -> bool {
+    spec::parse_link_key(key).is_some_and(|(owner, link)| {
+        tree.find(owner)
+            .and_then(|node| node.style.spans.as_ref())
+            .is_some_and(|spans| spans.list.iter().any(|s| s.link == Some(link)))
+    })
 }
 
 fn collect_autofocus(node: &Node, out: &mut Vec<String>) {

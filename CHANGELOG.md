@@ -9,6 +9,13 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ## [Sin publicar]
 
+### Añadido
+
+- Los enlaces de `rich_text` (un `span` con `on_click`) y de `markdown` entran en el orden de
+  Tab: se enfocan como una sola parada aunque ocupen varias líneas, muestran el anillo de foco
+  alrededor de cada una y se activan con Enter. Antes solo respondían al clic y a los lectores
+  de pantalla. El lector también puede enfocarlos, y sus bounds cubren todas sus líneas.
+
 ## [0.9.1] — 2026-10-31
 
 ### Cambiado

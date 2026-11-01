@@ -264,7 +264,8 @@ struct Builder<'a> {
 
 impl Builder<'_> {
     /// Los enlaces de un texto enriquecido, como hijos `Link` del texto: con
-    /// su texto de nombre, los bounds de su primera línea y la acción de clic.
+    /// su texto de nombre, los bounds de todas sus líneas y las acciones de
+    /// clic y de foco (entran en el orden de Tab por su primera línea).
     fn links(&mut self, node: &Node, children: &mut Vec<NodeId>) {
         let (Some(spans), Some(text)) = (node.style.spans.as_ref(), node.text.as_deref()) else {
             return;
@@ -277,10 +278,28 @@ impl Builder<'_> {
             let id = self.state.id(&key);
             let mut ac = AcNode::new(Role::Link);
             ac.set_label(text[range].to_owned());
-            if let Some(region) = self.regions.get(key.as_str()) {
-                ac.set_bounds(physical(region.rect, self.scale));
+            let lines = (0..)
+                .map_while(|part| {
+                    self.regions
+                        .get(crate::spec::link_key(&node.key, link, part).as_str())
+                })
+                .map(|region| region.rect)
+                .reduce(|a, b| {
+                    Rect::new(
+                        a.left.min(b.left),
+                        a.top.min(b.top),
+                        a.right.max(b.right),
+                        a.bottom.max(b.bottom),
+                    )
+                });
+            if let Some(rect) = lines {
+                ac.set_bounds(physical(rect, self.scale));
             }
             ac.add_action(Action::Click);
+            ac.add_action(Action::Focus);
+            if self.focused == Some(key.as_str()) {
+                self.focus_id = id;
+            }
             self.nodes.push((id, ac));
             self.keys.push((id, key));
             children.push(id);

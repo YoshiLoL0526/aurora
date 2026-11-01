@@ -54,12 +54,16 @@ impl Runtime {
             .as_ref()
             .and_then(|f| self.tree.as_ref().and_then(|t| t.find(f)))
             .is_some_and(Node::is_interactive);
+        // Un enlace de un texto enriquecido se activa con Enter (Espacio desplaza).
+        let link = focused
+            .as_deref()
+            .is_some_and(|f| spec::parse_link_key(f).is_some());
         match input.key.as_str() {
             "Tab" if !shortcut => {
                 self.focus_next(input.mods.shift)?;
                 Ok(true)
             }
-            "Enter" if clickable && !shortcut => {
+            "Enter" if (clickable || link) && !shortcut => {
                 if let Some(key) = focused {
                     self.dispatch(&key, "click", None)?;
                 }

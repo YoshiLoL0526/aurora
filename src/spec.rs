@@ -207,6 +207,12 @@ pub fn parse_link_key(key: &str) -> Option<(&str, usize)> {
     Some((owner, link.parse().ok()?))
 }
 
+/// Key con la que se enfoca un enlace: la de su primera parte, sea cual sea
+/// la línea de `key` (`None` si `key` no es de un enlace).
+pub fn link_focus_key(key: &str) -> Option<String> {
+    parse_link_key(key).map(|(owner, link)| link_key(owner, link, 0))
+}
+
 /// Lado del ancla en el que se coloca una capa superior con `placement`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {

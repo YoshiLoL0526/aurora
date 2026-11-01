@@ -967,9 +967,11 @@ letras; `code=True` lo escribe en monoespaciada sobre `$surface_hover` (la const
 `aurora.richtext` es esa lista de fuentes). Con `on_click` el tramo es un **enlace**: en `$primary`
 y subrayado (salvo que se fije otro `color` o `underline`), con cursor de mano, recibe clics en
 todas las líneas que ocupe y se anuncia como `"link"` (con su texto como nombre) a los lectores de
-pantalla, que pueden activarlo. Las zonas de los enlaces tienen la key
-`f"{key}#link-{n}-{parte}"` (`n`, el orden del enlace en el párrafo; `parte`, el trozo por línea),
-útil con `Pilot.click`.
+pantalla, que pueden activarlo. Entra en el orden de Tab (una sola parada aunque ocupe varias
+líneas, con el anillo de foco alrededor de cada una) y se activa con Enter. Las zonas de los
+enlaces tienen la key `f"{key}#link-{n}-{parte}"` (`n`, el orden del enlace en el párrafo; `parte`,
+el trozo por línea), útil con `Pilot.click`; el enlace enfocado es el de `parte` 0, el que dan
+`Pilot.focused` y `Pilot.focus`.
 
 ### `markdown(source, *, on_link=None, gap=12, key=None, **estilo)` { #markdown }
 

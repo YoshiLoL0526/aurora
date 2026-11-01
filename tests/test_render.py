@@ -306,6 +306,34 @@ def test_rich_text_link_regions_follow_the_span(tmp_path):
     assert x < lx and lx + lw < x + w
 
 
+def test_focused_link_rings_every_line_it_spans(tmp_path):
+    view = lambda: column(padding=20)[
+        column(width=110)[rich_text(span("un enlace que ocupa dos líneas", on_click=lambda: None), key="r")]
+    ]
+    pilot = App(view, size=(200, 120)).pilot()
+    primary = (0x7C, 0x5C, 0xFF)  # MIDNIGHT: el anillo es del color de foco
+
+    def ring_pixels(path, part):
+        # La columna de 2 px justo a la izquierda de la línea, donde va el trazo del anillo.
+        x, y, _, h = pilot.rect(f"r#link-0-{part}")
+        channels, rows = _png_rows(path, int(y + h) + 1)
+        return sum(
+            tuple(rows[py][px * channels : px * channels + 3]) == primary
+            for py in range(int(y), int(y + h))
+            for px in range(int(x) - 4, int(x) - 2)
+        )
+
+    before = tmp_path / "link-before.png"
+    pilot.png(str(before))
+    assert ring_pixels(before, 0) == ring_pixels(before, 1) == 0
+    pilot.press("tab")
+    assert pilot.focused == "r#link-0-0"
+    pilot.settle()
+    after = tmp_path / "link-focused.png"
+    pilot.png(str(after))
+    assert ring_pixels(after, 0) > 0 and ring_pixels(after, 1) > 0
+
+
 def test_title_bar_paints_the_window_buttons(tmp_path):
     view = lambda: column(grow=1)[title_bar("Notas", controls="windows"), box(grow=1)]
     pilot = App(view, size=(400, 120), decorations=False).pilot()

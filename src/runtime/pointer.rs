@@ -298,8 +298,11 @@ impl Runtime {
         }
         let target = self.pointer.and_then(|(x, y)| {
             ancestors(&self.engine.regions, topmost(&self.engine.regions, x, y))
-                .find(|r| r.focusable)
-                .map(|r| (r.key.clone(), r.editable))
+                .find(|r| r.focusable || spec::parse_link_key(&r.key).is_some())
+                .map(|r| {
+                    let key = spec::link_focus_key(&r.key).unwrap_or_else(|| r.key.clone());
+                    (key, r.editable)
+                })
         });
         let editable = target.as_ref().filter(|(_, e)| *e).map(|(k, _)| k.clone());
         let result = self.focus(target.map(|(k, _)| k));

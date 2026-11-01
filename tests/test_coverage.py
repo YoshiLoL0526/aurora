@@ -378,7 +378,6 @@ R, A = (
 )
 STATIC_TEST = "test_coverage.py::test_static_components_take_neither_focus_nor_clicks"
 NOT_INTERACTIVE = "(no es interactivo)"
-LINKS_PENDING = "(pendiente para la 1.0: los enlaces no entran en el orden de Tab; un lector sí los pulsa)"
 
 COVERAGE: dict[str, dict[str, str]] = {
     "accordion": {
@@ -434,7 +433,7 @@ COVERAGE: dict[str, dict[str, str]] = {
     },
     "markdown": {
         "pilot": "test_richtext.py::test_markdown_links_call_on_link_with_the_url",
-        "keyboard": LINKS_PENDING,
+        "keyboard": "test_richtext.py::test_markdown_links_are_reached_with_tab_and_followed_with_enter",
     },
     "menu": {
         "pilot": "test_components.py::test_menu_opens_chooses_and_closes",
@@ -459,7 +458,7 @@ COVERAGE: dict[str, dict[str, str]] = {
     },
     "rich_text": {
         "pilot": "test_richtext.py::test_link_spans_receive_clicks_and_are_announced_as_links",
-        "keyboard": LINKS_PENDING,
+        "keyboard": "test_richtext.py::test_links_join_the_tab_order_and_activate_with_enter",
     },
     "segmented": {
         "render": "test_components.py::test_segmented_thumb_slides",

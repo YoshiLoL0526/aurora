@@ -2,7 +2,7 @@
 
 import pytest
 
-from aurora import DAYLIGHT, App, Signal, column, markdown, rich_text, span, text
+from aurora import DAYLIGHT, App, Signal, button, column, markdown, rich_text, span, text
 
 
 def _pilot(view, size=(420, 300)):
@@ -70,6 +70,59 @@ def test_link_that_wraps_is_clickable_on_both_lines():
     pilot.click("r#link-0-0")
     pilot.click("r#link-0-1")
     assert clicks() == 2
+
+
+def test_links_join_the_tab_order_and_activate_with_enter():
+    clicks: list[str] = []
+    view = lambda: column(padding=10, gap=8)[
+        button("Antes", lambda: clicks.append("antes"), key="b"),
+        rich_text(
+            "Lee ",
+            span("la guía", on_click=lambda: clicks.append("guía")),
+            " o ",
+            span("el código", on_click=lambda: clicks.append("código")),
+            key="r",
+        ),
+    ]
+    pilot = _pilot(view)
+    pilot.press("tab")
+    assert pilot.focused == "b"
+    pilot.press("tab")
+    assert pilot.focused == "r#link-0-0"
+    pilot.press("enter")
+    assert clicks == ["guía"]
+    # Tras la reconstrucción que provoca el clic, el foco sigue en el enlace.
+    assert pilot.focused == "r#link-0-0"
+    pilot.press("tab")
+    assert pilot.focused == "r#link-1-0"
+    pilot.press("enter")
+    pilot.press("space")  # Espacio no activa un enlace (como en la web)
+    assert clicks == ["guía", "código"]
+    pilot.press("shift+tab")
+    assert pilot.focused == "r#link-0-0"
+    focused = [n for n in pilot.a11y_tree() if n["focused"]]
+    assert [(n["role"], n["label"]) for n in focused] == [("link", "la guía")]
+    assert "focus" in focused[0]["actions"]
+
+
+def test_wrapped_link_is_one_tab_stop_and_its_bounds_cover_every_line():
+    view = lambda: column()[
+        column(width=120)[
+            rich_text("Texto previo ", span("enlace muy largo que se parte", on_click=lambda: None), key="r")
+        ]
+    ]
+    pilot = _pilot(view)
+    pilot.press("tab")
+    assert pilot.focused == "r#link-0-0"
+    pilot.press("tab")  # el único enlace: el foco da la vuelta a él mismo
+    assert pilot.focused == "r#link-0-0"
+    # Al pulsar su segunda línea, el foco va al enlace entero.
+    pilot.click("r#link-0-1")
+    assert pilot.focused == "r#link-0-0"
+    (link,) = [n for n in pilot.a11y_tree() if n["role"] == "link"]
+    _, top, _, bottom = link["bounds"]
+    _, y1, _, h1 = pilot.rect("r#link-0-1")
+    assert top <= pilot.rect("r#link-0-0")[1] and bottom >= y1 + h1
 
 
 def test_rich_text_without_links_has_no_link_handler():
@@ -140,6 +193,18 @@ def test_markdown_links_call_on_link_with_the_url():
     for k in keys:
         pilot.a11y_action(k, "click")
     assert seen == ["https://a.b/c", "#x"]
+
+
+def test_markdown_links_are_reached_with_tab_and_followed_with_enter():
+    seen: list[str] = []
+    view = lambda: column()[
+        markdown("# Enlaces\n\n- [uno](u1)\n- [dos](u2)\n\nY [tres](u3).", on_link=seen.append, key="md")
+    ]
+    pilot = _pilot(view)
+    for _ in range(3):
+        pilot.press("tab")
+        pilot.press("enter")
+    assert seen == ["u1", "u2", "u3"]
 
 
 def test_markdown_default_links_only_open_web_urls(monkeypatch):
