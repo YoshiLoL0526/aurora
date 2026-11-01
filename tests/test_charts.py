@@ -735,7 +735,11 @@ def test_non_numeric_data_raises():
 @pytest.mark.parametrize("scale", [1.0, 1.5])
 def test_repaints_from_the_raster_cache_look_the_same(tmp_path, scale):
     """Un gráfico que se repinta sin cambiar se copia de una imagen rasterizada: tiene que
-    verse exactamente como al pintarlo directamente (también con escala fraccionaria)."""
+    verse como al pintarlo directamente (también con escala fraccionaria). No es idéntico al
+    bit: la imagen se compone sobre un fondo transparente de 8 bits, y donde se solapan bordes
+    suavizados (los puntos de una dispersión) el redondeo difiere en unos pocos niveles; cuánto,
+    depende del Skia de cada plataforma (en Linux, hasta 4 en algún píxel suelto). Un desfase de
+    medio píxel, en cambio, cambia decenas de niveles en todo el borde del trazo."""
     x = np.arange(400, dtype=np.float64)
     y = np.sin(x / 9) + np.sin(x / 31) * 0.4
 
@@ -762,5 +766,6 @@ def test_repaints_from_the_raster_cache_look_the_same(tmp_path, scale):
     pilot.png(str(cached))
     _, a = _png_rows(direct)
     _, b = _png_rows(cached)
-    worst = max(abs(p - q) for ra, rb in zip(a, b, strict=True) for p, q in zip(ra, rb, strict=True))
-    assert worst <= 2
+    diffs = [abs(p - q) for ra, rb in zip(a, b, strict=True) for p, q in zip(ra, rb, strict=True)]
+    assert max(diffs) <= 6
+    assert sum(d > 2 for d in diffs) <= 8

@@ -5,7 +5,9 @@
 //! contiene, una transición vecina…) aunque el dibujo no haya cambiado. Si un
 //! dibujo se pinta dos veces seguidas con la misma posición subpíxel y la misma
 //! escala, se rasteriza una vez en una imagen del tamaño de la caja y desde ahí
-//! se copia: el resultado es el mismo píxel a píxel que pintar el `Picture`.
+//! se copia: el resultado es el mismo que pintar el `Picture`, salvo el redondeo
+//! de componer sobre una imagen transparente de 8 bits (unos pocos niveles donde
+//! se solapan bordes suavizados, como los puntos de una dispersión).
 //!
 //! Un dibujo que se mueve en fracciones de píxel (una animación de layout) o
 //! que se transforma (escala, `press_scale`) se pinta directamente, sin caché.
