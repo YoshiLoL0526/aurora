@@ -17,6 +17,7 @@ from aurora import (
     card,
     color_picker,
     column,
+    markdown,
     popover,
     rich_text,
     row,
@@ -332,6 +333,33 @@ def test_focused_link_rings_every_line_it_spans(tmp_path):
     after = tmp_path / "link-focused.png"
     pilot.png(str(after))
     assert ring_pixels(after, 0) > 0 and ring_pixels(after, 1) > 0
+
+
+def test_markdown_in_a_start_column_is_as_wide_as_a_long_text(tmp_path):
+    long = "una línea larga que no cabe en el ancho de la ventana y se parte en varias " * 2
+    view = lambda: column(padding=10, gap=10, align="start")[
+        text(long, key="t"),
+        markdown(f"- {long}\n- dos", key="lista"),
+        markdown(f"> {long}", key="cita"),
+        markdown("- a\n- b", key="corta"),
+        row(gap=8, key="fila")[text(long)],
+    ]
+    pilot = App(view, size=(400, 600)).pilot()
+    width = pilot.rect("t")[2]
+    assert width == 380  # el ancho disponible
+    # Antes, la lista y la cita medían ~20 px y pintaban una letra por línea.
+    assert pilot.rect("lista")[2] == pilot.rect("cita")[2] == width
+    assert pilot.rect("lista")[3] < 3 * pilot.rect("t")[3]
+    # Una lista corta, lo que ocupa su contenido.
+    assert 20 < pilot.rect("corta")[2] < 60
+    # Una fila con un texto largo tampoco se sale: se parte como el texto suelto.
+    assert pilot.rect("fila")[2] == width and pilot.rect("fila")[3] == pilot.rect("t")[3]
+    path = tmp_path / "markdown-start.png"
+    pilot.png(str(path))
+    # Nada se pinta pegado al borde derecho de la ventana (no hay texto desbordado).
+    channels, rows = _png_rows(path)
+    background = tuple(rows[5][5 * channels : 5 * channels + 3])
+    assert all(tuple(r[397 * channels : 397 * channels + 3]) == background for r in rows)
 
 
 def test_title_bar_paints_the_window_buttons(tmp_path):

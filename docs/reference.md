@@ -2198,7 +2198,7 @@ contenedores (como en CSS).
 | `direction` | `"row"`, `"column"` | `"column"` | Eje principal. |
 | `gap` | número | `0` | Espacio entre hijos. |
 | `padding` | número · `(v, h)` · `(t, r, b, l)` | `0` | Relleno interior. |
-| `align` | `"start"`, `"center"`, `"end"`, `"baseline"`, `"stretch"` | `"stretch"` | Alineación en el eje cruzado. `"baseline"` alinea textos de distinto tamaño por su línea base. |
+| `align` | `"start"`, `"center"`, `"end"`, `"baseline"`, `"stretch"` | `"stretch"` | Alineación en el eje cruzado. `"baseline"` alinea textos de distinto tamaño por su línea base. En una columna que no estira, cada hijo mide lo que ocupa su contenido sin pasar del ancho de la columna (como `fit-content` en CSS): un texto largo, una fila o un `markdown` se parten en líneas en vez de salirse. |
 | `justify` | `"start"`, `"center"`, `"end"`, `"between"`, `"around"`, `"evenly"` | `"start"` | Distribución en el eje principal. |
 | `width`, `height` | número · `"50%"` | automático | Tamaño fijo o relativo al contenedor. |
 | `min_width`, `max_width` | número | — | Límites de ancho. |

@@ -128,11 +128,15 @@ impl Engine {
     /// imagen) o sus hijos. Así Taffy conserva la caché de las ramas intactas, y
     /// un cambio que solo afecta a la pintura (colores, sombras…) no rehace el
     /// layout. `in_scroll`: el padre se desplaza a lo largo de su eje principal.
+    /// `fit`: el padre es una columna que no estira a sus hijos (`align` distinto
+    /// de `stretch`) ni se desplaza en horizontal.
+    #[allow(clippy::too_many_arguments)]
     fn reconcile(
         &self,
         tree: &mut TaffyTree<Leaf>,
         node: &Node,
         in_scroll: bool,
+        fit: bool,
         root_size: Option<(f32, f32)>,
         old: &mut Previous,
     ) -> LayoutNode {
@@ -150,16 +154,29 @@ impl Engine {
             };
         }
         let spec = self.leaf_spec(node, &mut style);
+        // Ancho «fit-content» de CSS: en una columna que no lo estira, un
+        // contenedor sin ancho propio no pasa del ancho de su padre (y sus hijos
+        // se encogen y parten sus líneas, como un `text`). Taffy solo lo hace con
+        // las hojas: una fila mediría la suma de lo que ocupa cada hijo sin partir.
+        if fit
+            && spec.is_none()
+            && !node.style.absolute
+            && node.style.width.is_none()
+            && node.style.max_width.is_none()
+        {
+            style.max_size.width = LengthPercentageAuto::percent(1.0);
+        }
         let children: Vec<LayoutNode> = if spec.is_some() {
             Vec::new()
         } else {
-            let scrolls_main = node
-                .style
-                .scroll
-                .is_some_and(|a| if node.style.row { a.x() } else { a.y() });
+            let s = &node.style;
+            let scrolls_main = s.scroll.is_some_and(|a| if s.row { a.x() } else { a.y() });
+            let fit = !s.row
+                && !s.scroll.is_some_and(Axis::x)
+                && s.align.as_deref().is_some_and(|a| a != "stretch");
             node.children
                 .iter()
-                .map(|c| self.reconcile(tree, c, scrolls_main, None, old))
+                .map(|c| self.reconcile(tree, c, scrolls_main, fit, None, old))
                 .collect()
         };
         let ids: Vec<NodeId> = children.iter().map(|c| c.id).collect();
@@ -240,7 +257,7 @@ impl Engine {
                 stack.extend(lnode.children);
             }
         }
-        let lroot = self.reconcile(tree, root, false, Some((width, height)), &mut old);
+        let lroot = self.reconcile(tree, root, false, false, Some((width, height)), &mut old);
         // Los nodos que ya no existen (o que se sustituyeron) salen del árbol.
         for id in old.by_key.into_values().chain(old.retired) {
             tree.remove(id).expect("taffy remove");

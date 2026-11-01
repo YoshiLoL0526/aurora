@@ -772,7 +772,7 @@ Para textos largos con formato (notas de versión, ayuda, descripciones que escr
 `markdown(texto)` pinta títulos, listas, citas, código y enlaces sobre `rich_text`, sin
 dependencias:
 
-```python live continue size=480 align=stretch
+```python live continue size=480
 markdown("""
 ### Incidencia en Workers
 

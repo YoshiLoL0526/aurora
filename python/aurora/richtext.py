@@ -255,7 +255,7 @@ def _blocks(lines: list[str], on_link: Callable[[str], Any]) -> list[Element]:
             out.append(
                 row(gap=12)[
                     box(width=3, radius=2, bg="$border", shrink=0),
-                    column(gap=8, grow=1, width=0, color="$muted")[_blocks(quoted, on_link)],
+                    column(gap=8, grow=1, color="$muted")[_blocks(quoted, on_link)],
                 ]
             )
             continue
@@ -301,7 +301,7 @@ def _list(items: list[tuple[int, str | None, str]], on_link: Callable[[str], Any
             nested.append(items[j])
             j += 1
         bullet = f"{marker}." if marker is not None else "•"
-        content = column(gap=6, grow=1, width=0)[
+        content = column(gap=6, grow=1)[
             rich_text(_inline(body_text, on_link), line_height=1.5),
             _list(nested, on_link) if nested else None,
         ]

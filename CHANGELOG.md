@@ -21,6 +21,14 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   ventana visible (`"Zoom 1,25×: 100 – 400"`), una región viva la anuncia al cambiar y su
   descripción explica las teclas.
 
+### Corregido
+
+- En una columna con `align` distinto de `"stretch"`, un contenedor sin `width` (una fila, una
+  columna, un `markdown`) ya no se sale del ancho de la columna: mide como mucho lo que ella
+  (`fit-content` de CSS) y su contenido se parte en líneas, como un `text` largo. Antes una
+  fila con un texto largo medía todo el texto en una línea, y las listas y citas de `markdown`
+  se quedaban en ~20 px de ancho con una letra por línea.
+
 ## [0.9.1] — 2026-10-31
 
 ### Cambiado
