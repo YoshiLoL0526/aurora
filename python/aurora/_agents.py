@@ -11,10 +11,30 @@ from pathlib import Path
 START = "<!-- aurora:inicio (generado por `aurora agents`; se actualiza al volver a ejecutarlo) -->"
 END = "<!-- aurora:fin -->"
 
-# Comandos con los que un agente comprueba su trabajo desde la terminal. Cuando existan
-# (`aurora shot`, `aurora tree`, `aurora check`, `aurora pilot`), se añaden aquí como
-# `("aurora shot app.py", "qué hace")` y salen en la sección sin más cambios.
-CHECK_COMMANDS: list[tuple[str, str]] = []
+# Comandos con los que un agente comprueba su trabajo desde la terminal (salen en la sección).
+CHECK_COMMANDS: list[tuple[str, str]] = [
+    (
+        "aurora check app.py",
+        "construye y pinta un frame; si falla, dice el archivo y la línea de tu código. Lista los "
+        "avisos de layout (texto que no cabe, controles fuera de la ventana o sin nombre); "
+        "`--strict` los hace fallar",
+    ),
+    (
+        "aurora shot app.py -o captura.png",
+        "renderiza la app a PNG sin ventana (`--key K` recorta a un nodo, `--scale 2`, "
+        "`--theme light`): mírala para revisar el diseño",
+    ),
+    (
+        "aurora tree app.py",
+        "el árbol pintado en texto (rol, texto, `#key`, caja y estados) y los avisos; úsalo para "
+        "encontrar las keys",
+    ),
+    (
+        'aurora pilot app.py "click guardar; type hola; press enter; expect text hola; shot s.png"',
+        "interacción guionizada; se para en el paso que falla y sugiere keys parecidas "
+        "(`aurora pilot --help` tiene la gramática)",
+    ),
+]
 
 
 def section(version: str) -> str:

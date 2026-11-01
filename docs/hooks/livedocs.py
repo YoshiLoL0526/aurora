@@ -35,24 +35,19 @@ El módulo no depende de MkDocs: `mkdocs_hooks.py` lo conecta con el sitio.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import math
 import os
 import posixpath
 import re
 import shlex
-import sys
 import traceback
 import types
-from collections.abc import Generator
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from aurora import DAYLIGHT, MIDNIGHT, App, Element, column, row
-from aurora import reload as _reload
+from aurora import DAYLIGHT, MIDNIGHT, App, Element, _headless, column, row
 
 ROOT = Path(__file__).resolve().parents[2]
 """Raíz del repositorio: las rutas de `file=` se resuelven desde aquí."""
@@ -250,23 +245,12 @@ def _execute(block: Block, session: _Session) -> tuple[App, bool]:
     sources.append((block.code, f"<{block.where}>"))
     value: Any = None
     ran: App | None = None
-    with _as_main(module, filename if file else None):
+    with _headless.as_main(module, filename if file else None):
         for source, name in sources:
-            tree = ast.parse(source, filename=name)
-            last = tree.body[-1] if tree.body else None
-            if isinstance(last, ast.Expr):
-                tree.body.pop()  # la última expresión se evalúa aparte: puede ser lo que se dibuja
-            else:
-                last = None
-            _reload.context.active, _reload.context.created, _reload.context.ran = True, None, None
-            try:
-                exec(compile(tree, name, "exec"), module.__dict__)
-                if last is not None:
-                    expr = ast.Expression(last.value)
-                    value = eval(compile(expr, name, "eval"), module.__dict__)
-                ran = _reload.context.ran or ran
-            finally:
-                _reload.context.active, _reload.context.created, _reload.context.ran = False, None, None
+            # `App.run()` no abre ventana: deja la app en `context.ran`.
+            with _headless.capturing() as context:
+                value = _headless.exec_source(source, name, module.__dict__)
+                ran = context.ran or ran
 
     if ran is not None:
         session.app = ran
@@ -283,23 +267,6 @@ def _execute(block: Block, session: _Session) -> tuple[App, bool]:
         f"{block.where}: el bloque vivo no dibuja nada: termina en `App(...).run()`, en una "
         "expresión que dé un elemento o, con `continue`, define `view`"
     )
-
-
-@contextmanager
-def _as_main(module: types.ModuleType, script: str | None) -> Generator[None]:
-    """Ejecuta como script principal: `__main__`, `sys.argv` y `sys.path` como `python script.py`."""
-    saved_main, saved_argv, saved_path = sys.modules.get("__main__"), sys.argv, list(sys.path)
-    sys.modules["__main__"] = module
-    sys.argv = [script or module.__file__ or ""]
-    if script:
-        sys.path.insert(0, str(Path(script).parent))
-    try:
-        yield
-    finally:
-        if saved_main is not None:
-            sys.modules["__main__"] = saved_main
-        sys.argv = saved_argv
-        sys.path[:] = saved_path
 
 
 def _fragment(block: Block, items: list[Element]) -> App:

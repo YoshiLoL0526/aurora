@@ -26,6 +26,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Formatos de valores](#formatos-de-valores)
 - [Empaquetado: `aurora build`](#empaquetado-aurora-build)
 - [Para agentes: `aurora docs` y `aurora agents`](#para-agentes-aurora-docs-y-aurora-agents)
+- [Comprobar desde la terminal](#comprobar-desde-la-terminal)
 - [Avisos de obsolescencia](#avisos-de-obsolescencia)
 
 ---
@@ -516,7 +517,8 @@ def test_counter():
 | `frame(dt=1/60)` | Avanza un frame. Devuelve `True` si quedan transiciones en curso. |
 | `settle()` | Avanza frames hasta que terminen todas las transiciones. |
 | `resize(ancho, alto)` | Cambia el tamaño de la "ventana". |
-| `png(path)` | Guarda el último frame como PNG. |
+| `png(path, key=None)` | Guarda el último frame como PNG; con `key`, solo la caja de ese nodo (`LookupError` si no se pintó). |
+| `layout()` | Volcado del layout del último frame: un dict por nodo pintado, en orden de pintura (las capas superiores al final), con `key`, `kind` (`"box"`, `"text"`, `"input"`, `"image"`, `"canvas"`, `"chart"` o `"link"`, un tramo de enlace), `text`, `parent` (índice en la lista o `None`), `rect` y `visible` (la parte que no recortan los `scroll` ni los `overflow="hidden"`, o `None`) como `(x, y, ancho, alto)`, `cut` (lo recorta un `overflow="hidden"`), `interactive`, `focusable`, `editable`, `scroll` (`"x"`, `"y"`, `"both"` o `None`) y, en los textos, `text_size` (línea más larga y alto del párrafo), `content_size` (su caja de contenido) y `truncated` (lo cortó `max_lines`). Es lo que usa [`aurora tree`](#comprobar-desde-la-terminal). |
 | `inspection` | Estado del inspector si el piloto se creó con `inspector=True` (si no, `None`): `open`, `pick` (modo selección), `selected` y `hovered` (keys), `rect` (caja del nodo elegido en el último frame) y `frames` (lista de `stats` de los últimos frames, solo con el panel abierto). |
 | `stats` | Coste del último frame por fases, en milisegundos: `build` (tu `view()` y la serialización), `parse`, `style` (comparar el árbol nuevo con el anterior), `layout`, `draw` (las funciones `draw` de los `canvas` y la grabación de los `chart`), `paint` (composición y pintura) y `total` (la suma de todas); además `nodes` (nodos del árbol), `rebuilt` (si se reconstruyó la vista; si no, `build`, `parse` y `style` valen 0), `layout_cached` (si se reutilizó el layout del frame anterior) y `damage`, la zona repintada `(x, y, ancho, alto)` o `None` si el frame no pintó nada. Lo usa la [suite de benchmarks](https://github.com/YoshiLoL0526/aurora/blob/main/benchmarks/README.md). |
 
@@ -2376,11 +2378,167 @@ y cada página en Markdown (`guide.md`, `reference.md`…) junto a su HTML.
 
 **`aurora agents [ruta] [--force] [--print]`** escribe en el `AGENTS.md` del proyecto (en la
 carpeta actual o en `ruta`) una sección breve que le dice a un agente de programación que consulte
-`aurora docs` y que compruebe su trabajo sin ventana con `render_png` y `pilot()`. Si el archivo
+`aurora docs` y que compruebe su trabajo sin ventana con `render_png`, `pilot()` y los comandos de
+[Comprobar desde la terminal](#comprobar-desde-la-terminal). Si el archivo
 ya existe, añade la sección al final sin tocar el resto; si ya tenía una de Aurora (va entre las
 marcas `<!-- aurora:inicio … -->` y `<!-- aurora:fin -->`), la sustituye, así que volver a
 ejecutarlo tras actualizar Aurora la pone al día. `--force` sobrescribe el archivo entero y
 `--print` la imprime en vez de escribirla.
+
+## Comprobar desde la terminal
+
+Cuatro comandos para que un agente (o tú, o la CI) compruebe una app desde la terminal sin abrir
+ninguna ventana: `check` dice si funciona, `shot` enseña cómo se ve, `tree` describe lo que se
+pintó en texto y `pilot` interactúa con ella. Son *experimentales* (ver
+[estabilidad](stability.md#qué-es-api-pública)).
+
+```bash
+aurora check app.py                         # ¿construye y pinta? errores con archivo y línea
+aurora shot app.py -o captura.png           # el primer frame a PNG
+aurora tree app.py                          # el árbol pintado en texto, con avisos de layout
+aurora pilot app.py "click add; type hola; press enter; expect text hola; shot fin.png"
+```
+
+Cada llamada ejecuta el script desde cero como `python app.py` (con `__name__ == "__main__"`,
+`sys.argv == [app.py]` y su carpeta en `sys.path`), pero `App.run()` no abre ventana: deja la app
+lista para un [`Pilot`](#pilot-tests-de-interacción) con el runtime de verdad, y el primer frame se
+asienta (sin transiciones a medias) antes de hacer nada. Si el script crea la `App` sin llamar a
+`run()`, se usa la última que crea. El resto del script se ejecuta de verdad (si escribe archivos,
+los escribe); lo que imprime va a stderr, para que stdout lleve solo el resultado.
+
+Opciones comunes a los cuatro:
+
+| Opción | Efecto |
+|---|---|
+| `--size ANCHOxALTO` | Tamaño de la ventana (por defecto, el suyo): `--size 800x600`. |
+| `--theme light\|dark` | Fuerza `DAYLIGHT` o `MIDNIGHT`. Funciona si la app usa uno de los dos, fijo o en un `Signal` (el interruptor de tema habitual); con un tema propio, sale con 2. |
+| `--window ID\|TÍTULO` | En una app con varias ventanas, cuál: su número (0 es la principal, las de `app.window(...)` van de 1 en adelante en orden de creación) o su título (exacto o una parte única, sin distinguir mayúsculas). |
+| `--json` | El resultado en JSON por stdout, también cuando falla (`"ok": false` y `"error"`). |
+| `--traceback` | En los errores, la traza completa, con la de Aurora. |
+
+Códigos de salida: **0** bien; **1** la app falla (una excepción al ejecutar el script, al
+construir la vista o en un manejador; una key que no existe; un paso del guion; un aviso con
+`check --strict`); **2** uso incorrecto (el script no existe o no crea ninguna `App`, una opción
+mal escrita, una ventana que no existe, un guion mal formado). La salida va sin colores y en
+UTF-8 aunque se redirija a una tubería (en Windows también).
+
+Un error del código del usuario se imprime limpio, con el punto más interno de **tu** código (no
+el de Aurora):
+
+```text
+aurora check: la app falla
+app.py:8: TypeError: text() no acepta la prop 'colr'. ¿Quisiste decir 'color'?
+    text("hola", colr="red"),
+```
+
+### `aurora check`
+
+`aurora check app.py [--strict]` construye y pinta un frame y sale con 0 si todo va bien. Imprime
+una línea de resumen (título, tamaño y nodos pintados) y los avisos de layout de `aurora tree`;
+con `--strict`, un aviso también hace fallar (código 1).
+
+### `aurora shot`
+
+`aurora shot app.py [-o RUTA] [--scale N] [--key KEY]` renderiza el primer frame a PNG e imprime
+la ruta escrita (por defecto, `<script>-shot.png` en la carpeta actual). `--scale` es la densidad
+de píxeles (1 por defecto: una captura pequeña; 2 para verla como en una pantalla Retina) y
+`--key` recorta la captura a la caja de ese nodo. Es lo que mira un agente multimodal para revisar
+el diseño.
+
+### `aurora tree`
+
+`aurora tree app.py [--depth N] [--key KEY]` imprime el árbol pintado, una línea por nodo e
+indentado dos espacios por nivel, pensado para un agente que solo lee texto:
+
+```text
+box #0 @0,0 400x300
+  text "Clics: 0" #total @24,24 352x27
+  button "Sumar" #add @24,63 77x39
+  button "Reset" #reset @109,63 71x39
+  textbox placeholder="Tu nombre" #name @24,114 352x39
+  text "Sin nombre" #greeting @24,165 352x19
+
+Sin avisos de layout.
+```
+
+Cada línea es `tipo "texto o nombre" #key = "valor" scroll=eje @x,y anchoxalto [estados]`: el tipo
+es el rol accesible si lo hay (`button`, `checkbox`, `textbox`, `slider`…) y si no la primitiva
+(`box`, `text`, `image`, `canvas`, `chart`); la key se muestra si la puso el código o si el nodo es
+interactivo (entonces puede ser una ruta como `#0/2/1`, que cambia si cambia el árbol: mejor dale
+una `key`). La caja va en píxeles lógicos. Los estados son `focused`, `checked`/`unchecked`,
+`selected`, `expanded`/`collapsed`, `modal`, `truncated` (lo cortó `max_lines`) y `hidden` (no se
+ve: lo dejó fuera un `scroll` o un `overflow="hidden"`). Los contenedores anónimos (sin key, sin rol
+y sin interacción) no tienen línea propia: sus hijos suben un nivel; tampoco el texto de un control
+que ya da su nombre (el de un botón).
+
+`--depth N` muestra N niveles por debajo de la raíz (resume lo demás en `… (n nodos más)`) y
+`--key` solo el subárbol de ese nodo. Con `--json`, el árbol completo, sin omitir nada: por nodo
+`key`, `kind`, `role`, `explicit_key`, `rect`, `visible`, `text`, `label`, `value`, `placeholder`,
+`scroll`, `interactive`, `focusable`, `editable`, `states`, `actions` (las de accesibilidad),
+`text_size` y `content_size` (en los textos) y `children`; además `focused` y `warnings`. Los datos
+salen de [`Pilot.layout()`](#pilot-tests-de-interacción) y `Pilot.a11y_tree()`.
+
+**Avisos de layout.** Se calculan sobre el frame pintado, con el tamaño de ventana indicado, y solo
+los que se detectan con fiabilidad con esos datos:
+
+| Código | Cuándo |
+|---|---|
+| `text-overflow` | Un texto no cabe: el párrafo maquetado (con la misma medición que se pinta) es más alto o más ancho que la caja que le dio el layout (un `height` fijo, un hueco que lo aplasta), o el nodo de texto se sale de la caja de su contenedor (una palabra larga en una fila estrecha). |
+| `text-clipped` | Un texto queda cortado por un ancestro con `overflow="hidden"` y se ve solo en parte. |
+| `zero-size` | Un nodo interactivo o enfocable mide menos de 1 px de ancho o de alto: no se puede pulsar. |
+| `offscreen` | Un nodo interactivo visible queda fuera de la ventana, del todo o en parte. |
+| `no-label` | Un control (algo que se pulsa o se enfoca) no tiene nada que lo nombre: ni nombre accesible (`label`), ni placeholder, ni texto dentro (el valor no cuenta). Típico de un botón con solo un icono o de un `slider` sin `label`. |
+
+Límites: no ven solapes (un nodo tapado por otro), contraste, tamaños mínimos táctiles ni lo que
+dibujan `canvas` y `chart` por dentro; `text-overflow` y `text-clipped` miran la caja del texto, no
+su tinta (sombras, cursivas que sobresalen); un contenedor con `scroll` desborda a propósito y no
+cuenta, y lo que oculta del todo un `overflow="hidden"` (un panel plegado) tampoco: se considera
+intencionado. `offscreen` depende del tamaño de ventana (prueba con `--size`), y `no-label` se
+fía de los roles y nombres que declaran los componentes: un `box(on_click=...)` con texto dentro no
+avisa aunque le falte un rol.
+
+### `aurora pilot`
+
+`aurora pilot app.py "pasos"` (o `--script pasos.txt`, o `--script -` para leer de stdin) ejecuta
+un guion de interacción sobre un `Pilot`. Los pasos se separan con `;` o con saltos de línea; cada
+uno es un comando y sus argumentos separados por espacios, con comillas si un argumento lleva
+espacios o `;` (`type "hola; adiós"`). La barra invertida no escapa nada (las rutas de Windows se
+escriben tal cual) y las líneas que empiezan por `#` son comentarios. `KEY` es la key de un nodo
+(la que muestra `aurora tree`); `X`, `Y`, `DX`, `DY`, `W` y `H`, píxeles lógicos.
+
+| Paso | Hace |
+|---|---|
+| `click KEY` | Clic en el centro del nodo (como una persona: si otro lo tapa, el clic llega a ese). |
+| `click_at X Y` | Clic en ese punto. |
+| `type TEXTO` | Escribe en el campo enfocado (los argumentos se unen con espacios; `\n` es Enter). |
+| `press COMBO` | Pulsa una tecla o combinación: `enter`, `tab`, `shift+tab`, `ctrl+s`, `escape`. |
+| `focus KEY` | Enfoca el nodo como con el teclado. |
+| `hover KEY` / `move X Y` / `leave` | Pone el puntero sobre el nodo, en un punto o fuera de la ventana. |
+| `scroll KEY DY [DX]` | Desplaza bajo el nodo (positivo: hacia el final). |
+| `drag KEY DX DY` | Arrastra desde el centro del nodo y suelta. |
+| `drag_to KEY DESTINO` / `drag_to KEY X Y` | Arrastra hasta el centro de otro nodo o hasta un punto. |
+| `a11y KEY ACCIÓN [VALOR]` | Acción de lector de pantalla (`click`, `focus`, `set_value`, `increment`…; ver `Pilot.a11y_action`). |
+| `wait SEGUNDOS` | Avanza el tiempo, frame a frame (tooltips, temporizadores). |
+| `frame [N]` | Avanza N frames (1 por defecto). |
+| `settle` | Avanza hasta que acaben las transiciones. |
+| `resize W H` / `resize WxH` | Cambia el tamaño de la ventana. |
+| `shot RUTA [KEY]` | Guarda el frame (o la caja de `KEY`) como PNG; con `--scale`, a esa densidad. |
+| `tree [KEY]` | Imprime el árbol (o el subárbol de `KEY`), como `aurora tree`. |
+| `expect exists KEY` / `expect missing KEY` | Comprueba que el nodo está pintado / que no. |
+| `expect focused KEY` / `expect focused none` | Comprueba qué nodo tiene el foco / que ninguno. |
+| `expect checked KEY` / `expect unchecked KEY` | Comprueba el estado de una casilla, un interruptor o una opción. |
+| `expect text TEXTO [in KEY]` | Comprueba que el texto aparece (contenido en los textos, nombres y valores de la ventana o del subárbol de `KEY`). |
+| `expect value KEY TEXTO` | Comprueba el valor exacto de un nodo (el de un campo o, si no tiene, su texto). |
+
+Cada paso, salvo `wait`, `frame` y `settle`, espera después a que acaben las transiciones, así que
+el siguiente ve la interfaz quieta. El guion entero se valida antes de ejecutar nada (un comando
+desconocido o un argumento que falta salen con 2, con el uso correcto). Se ejecuta en orden y se
+para en el primer paso que falla, con su número y su texto: una key que no está sugiere las
+parecidas (`¿Quisiste decir 'reset'?`), un `expect` que no se cumple dice qué hay y una excepción
+en un manejador se imprime con el archivo y la línea de tu código. La salida lista cada paso hecho
+(`[1] click add`) con lo que imprime (`tree`, la ruta de `shot`) y termina en `ok: N pasos`; con
+`--json`, `{"ok", "window", "steps"}` con un resultado por paso (`step`, `command`, `ok` y, según
+el paso, `path`, `tree`, `size`, `error` o `exception`).
 
 ## Avisos de obsolescencia
 

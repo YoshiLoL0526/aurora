@@ -19,6 +19,19 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   todo. `aurora agents` escribe en el `AGENTS.md` del proyecto (sin pisar lo que tenga) cómo
   consultar esa documentación y comprobar el trabajo con `render_png` y `Pilot`. El sitio publica
   `llms.txt`, `llms-full.txt` y cada página en Markdown.
+- Comandos para comprobar una app sin abrir ventanas, pensados para agentes (experimentales):
+  `aurora check app.py` construye y pinta un frame y, si el script o la vista fallan, imprime el
+  error con el archivo y la línea de tu código (sin la traza de Aurora); `aurora shot` renderiza
+  a PNG (`--key` recorta a un nodo); `aurora tree` imprime el árbol pintado en texto compacto (rol,
+  texto, key, caja y estados) con avisos de layout (texto que no cabe o queda recortado, controles
+  de tamaño 0, fuera de la ventana o sin nombre accesible), y `aurora pilot` ejecuta un guion de
+  interacción (`"click add; type hola; press enter; expect text hola; shot fin.png"`) que se para
+  en el paso que falla y sugiere keys parecidas. Todos aceptan `--json`, `--size`, `--theme` y
+  `--window`, y salen con 0, 1 (la app falla) o 2 (uso incorrecto). `aurora agents` los incluye
+  en la sección de `AGENTS.md`.
+- `Pilot.layout()`: el layout del último frame, un dict por nodo pintado con su caja, la parte
+  visible, si lo recorta un `overflow="hidden"`, si es interactivo y, en los textos, lo que mide el
+  párrafo frente a su caja. `Pilot.png(path, key=...)` guarda solo la caja de un nodo.
 - Los enlaces de `rich_text` (un `span` con `on_click`) y de `markdown` entran en el orden de
   Tab: se enfocan como una sola parada aunque ocupen varias líneas, muestran el anillo de foco
   alrededor de cada una y se activan con Enter. Antes solo respondían al clic y a los lectores

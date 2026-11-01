@@ -107,11 +107,12 @@ class Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False, framel
     .inspection
     .key_down(self, /, combo)
     .key_up(self, /, combo)
+    .layout(self, /)
     .leave(self, /)
     .mouse_down(self, /)
     .mouse_up(self, /)
     .move_to(self, /, x, y)
-    .png(self, /, path)
+    .png(self, /, path, key=None)
     .press(self, /, combo)
     .rect(self, /, key)
     .resize(self, /, width, height)

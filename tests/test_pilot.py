@@ -986,3 +986,46 @@ def test_move_event_apply():
     assert lists == {"x": ["a"], "y": ["b", "c"]}  # sin tocar los originales
     with pytest.raises(ValueError, match="usa un dict"):
         across.apply(["a"])
+
+
+def test_layout_vuelca_cajas_recortes_y_medidas_del_texto():
+    long = "Supercalifragilisticoespialidoso"
+    app = App(
+        lambda: column(padding=10, gap=4)[
+            row(width=60, overflow="hidden", key="clip")[text(long, key="cut")],
+            text("abajo", key="low", width=80, height=8),
+            scroll(height=40, key="list")[column()[*(text(f"fila {i}", key=f"f{i}") for i in range(10))]],
+            button("Ok", lambda: None, key="ok"),
+        ],
+        size=(300, 300),
+    )
+    pilot = app.pilot()
+    pilot.settle()
+    nodes = pilot.layout()
+    by_key = {n["key"]: n for n in nodes}
+    assert nodes[0]["parent"] is None and nodes[0]["rect"] == (0, 0, 300, 300)
+    cut = by_key["cut"]
+    assert cut["kind"] == "text" and cut["text"] == long
+    assert nodes[cut["parent"]]["key"] == "clip"
+    assert cut["cut"] and cut["rect"][2] > 60 and cut["visible"][2] == pytest.approx(60)
+    assert cut["text_size"][0] > 60 and cut["truncated"] is False
+    low = by_key["low"]
+    assert low["text_size"][1] > low["content_size"][1] == pytest.approx(8)
+    # Lo que el scroll deja fuera no se ve, pero no está recortado por overflow="hidden".
+    assert by_key["f9"]["visible"] is None and not by_key["f9"]["cut"]
+    assert by_key["list"]["scroll"] == "y"
+    ok = by_key["ok"]
+    assert ok["interactive"] and ok["focusable"] and ok["kind"] == "box" and "text_size" not in ok
+
+
+def test_png_recorta_a_la_caja_de_una_key(tmp_path):
+    app = App(lambda: column(padding=20)[box(key="b", width=50, height=30, bg="#FF0000")], size=(200, 100))
+    pilot = app.pilot(scale=2)
+    pilot.settle()
+    path = tmp_path / "b.png"
+    pilot.png(str(path), key="b")
+    header = path.read_bytes()[:24]
+    assert (int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")) == (100, 60)
+    assert _png_pixel(path, 10, 10) == (255, 0, 0)
+    with pytest.raises(LookupError, match="no hay ningún nodo pintado"):
+        pilot.png(str(path), key="nada")

@@ -255,6 +255,11 @@ impl Runtime {
         self.tree.is_some()
     }
 
+    /// El árbol del último frame, si ya se construyó.
+    pub fn tree(&self) -> Option<&Node> {
+        self.tree.as_ref()
+    }
+
     /// Si la vista tiene que reconstruirse (un manejador cambió estado).
     pub fn is_dirty(&self) -> bool {
         self.dirty

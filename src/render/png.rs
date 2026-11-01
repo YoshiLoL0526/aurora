@@ -22,7 +22,7 @@ pub fn render_png(
     charts.rebuilt();
     charts.draw(root, &mut engine, true)?;
     engine.paint(surface.canvas(), root, width, height, None);
-    write_png(&mut surface, path).map_err(PyRuntimeError::new_err)
+    write_png(&mut surface, path, None).map_err(PyRuntimeError::new_err)
 }
 
 /// Superficie en memoria de `width × height` píxeles lógicos a la escala dada.
@@ -35,8 +35,20 @@ pub fn raster_surface(width: f32, height: f32, scale: f32) -> Result<Surface, St
         .ok_or_else(|| "no se pudo crear la superficie".into())
 }
 
-pub fn write_png(surface: &mut Surface, path: &str) -> Result<(), String> {
-    let image = surface.image_snapshot();
+/// Guarda la superficie como PNG; con `crop`, solo esa zona (en píxeles físicos,
+/// recortada a la superficie).
+pub fn write_png(surface: &mut Surface, path: &str, crop: Option<IRect>) -> Result<(), String> {
+    let image = match crop {
+        None => surface.image_snapshot(),
+        Some(area) => {
+            let frame = IRect::from_wh(surface.width(), surface.height());
+            let area = IRect::intersect(&area, &frame)
+                .ok_or("la zona que se quiere guardar no está dentro del frame")?;
+            surface
+                .image_snapshot_with_bounds(area)
+                .ok_or("no se pudo recortar el frame")?
+        }
+    };
     let data = image
         .encode(None, EncodedImageFormat::PNG, None)
         .ok_or("no se pudo codificar el PNG")?;

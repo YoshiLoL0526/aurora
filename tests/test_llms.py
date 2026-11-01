@@ -296,6 +296,10 @@ def test_agents_print_y_carpeta_inexistente(tmp_path: Path, capsys: pytest.Captu
 
 
 def test_agents_lista_los_comandos_de_comprobacion(monkeypatch: pytest.MonkeyPatch) -> None:
+    section = _agents.section("1.0")
+    for command in ("check", "shot", "tree", "pilot"):
+        assert f"- `aurora {command} app.py" in section
+    monkeypatch.setattr(_agents, "CHECK_COMMANDS", [])
     assert "Desde la terminal" not in _agents.section("1.0")
     monkeypatch.setattr(_agents, "CHECK_COMMANDS", [("aurora shot app.py", "captura sin ventana")])
     assert "- `aurora shot app.py`: captura sin ventana" in _agents.section("1.0")

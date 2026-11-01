@@ -48,6 +48,34 @@ pub struct HitRegion {
     pub drop_target: bool,
     /// Índice del padre en el vector de regiones (para subir hasta un nodo interactivo).
     pub parent: Option<usize>,
+    /// Nodo de Taffy de un texto (no editable): de ahí salen sus medidas (`text_metrics`).
+    pub(super) text_leaf: Option<taffy::NodeId>,
+}
+
+/// Medidas del texto de una región, en píxeles lógicos: lo que ocupa el
+/// párrafo frente a la caja de contenido que le dio el layout.
+#[derive(Clone, Copy, Debug)]
+pub struct TextMetrics {
+    /// Ancho de la línea más larga y alto del párrafo maquetado.
+    pub text: (f32, f32),
+    /// Caja de contenido del nodo (sin padding ni borde).
+    pub content: (f32, f32),
+    /// `max_lines` cortó el texto (con puntos suspensivos).
+    pub truncated: bool,
+}
+
+impl HitRegion {
+    /// La región queda recortada por un ancestro con `overflow="hidden"` (no
+    /// por un `scroll`, que recorta a propósito).
+    pub fn cut(&self) -> bool {
+        let (r, c) = (self.local, self.object_clip);
+        r.width() > 0.0
+            && r.height() > 0.0
+            && (r.left < c.left - 0.5
+                || r.top < c.top - 0.5
+                || r.right > c.right + 0.5
+                || r.bottom > c.bottom + 0.5)
+    }
 }
 
 impl HitRegion {
@@ -368,6 +396,7 @@ impl<'a> Geometry<'a> {
             window_drag: node.style.window_drag,
             drop_target: node.style.drop_target,
             parent,
+            text_leaf: (node.kind == Kind::Text).then_some(lnode.id),
         });
         if let Some(spans) = node.style.spans.as_ref().filter(|s| s.has_links()) {
             self.collect_links(node, lnode, spans, rect, layout, index, layer, clip);
@@ -465,6 +494,7 @@ impl Geometry<'_> {
                     window_drag: None,
                     drop_target: false,
                     parent: Some(parent),
+                    text_leaf: None,
                 });
             }
         }
@@ -770,6 +800,22 @@ impl Engine {
             }
         }
         damage
+    }
+
+    /// Medidas del texto de una región (ver `TextMetrics`); `None` si no es un texto.
+    pub fn text_metrics(&self, region: &HitRegion) -> Option<TextMetrics> {
+        let tree = &self.layout_cache.as_ref()?.tree;
+        let id = region.text_leaf?;
+        let Some(Leaf::Text(ctx)) = tree.get_node_context(id) else {
+            return None;
+        };
+        let layout = tree.layout(id).ok()?;
+        let p = &ctx.paragraph;
+        Some(TextMetrics {
+            text: (p.longest_line(), p.height()),
+            content: (layout.content_box_width(), layout.content_box_height()),
+            truncated: p.did_exceed_max_lines(),
+        })
     }
 
     /// Zona (absoluta y visible) que puede pintar el subárbol de `key`.

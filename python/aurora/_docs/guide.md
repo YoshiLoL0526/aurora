@@ -1065,4 +1065,7 @@ opciones están en la [referencia](reference.md#empaquetado-aurora-build).
 - ¿Programas con un agente o un asistente de IA? No conoce Aurora por su entrenamiento: ejecuta
   `aurora agents` en tu proyecto para que su `AGENTS.md` le diga que lea `aurora docs`, la
   documentación de tu versión pensada para modelos (la [chuleta](llms.md), la referencia y la
-  guía en Markdown).
+  guía en Markdown), y que compruebe su trabajo sin abrir ventanas: `aurora check app.py` dice si
+  la app funciona y dónde falla, `aurora shot` la renderiza a PNG, `aurora tree` describe en texto
+  lo que se pintó (con avisos de layout) y `aurora pilot` la maneja con un guion de clics y teclas
+  (ver [Comprobar desde la terminal](reference.md#comprobar-desde-la-terminal)).

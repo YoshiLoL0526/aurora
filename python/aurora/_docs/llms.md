@@ -125,6 +125,20 @@ Comprueba tu trabajo así: construye la vista, haz una captura con `render_png` 
 recorre la interacción con `pilot`. Una prop o un token mal escritos fallan al construir la vista,
 con la sugerencia correcta en el mensaje.
 
+Desde la terminal, sin escribir un test (`aurora docs comprobar desde la terminal`):
+
+```bash
+aurora check app.py        # ¿funciona? el error, con archivo y línea; avisos de layout
+aurora shot app.py -o captura.png --key panel   # PNG del frame (o de un nodo); míralo
+aurora tree app.py         # el árbol pintado en texto: rol, texto, #key, caja, estados
+aurora pilot app.py "click nombre; type Ada; click saludar; expect text 'Hola, Ada'; shot fin.png"
+```
+
+Todos aceptan `--json`, `--size 800x600`, `--theme light|dark` y `--window`; salen con 0 (bien),
+1 (la app falla, o un paso del guion) o 2 (uso incorrecto). `aurora pilot --help` lista la
+gramática del guion: `click`, `type`, `press`, `focus`, `hover`, `scroll`, `drag_to`, `wait`,
+`resize`, `shot`, `tree` y `expect exists|missing|focused|checked|text|value`.
+
 ## Firmas
 
 `**style` acepta cualquier prop de estilo, de accesibilidad o manejador de la lista siguiente. Toda
@@ -271,11 +285,12 @@ Pilot(build, width=960.0, height=640.0, scale=1.0, inspector=False, frameless=Fa
     .inspection
     .key_down(combo)
     .key_up(combo)
+    .layout()
     .leave()
     .mouse_down()
     .mouse_up()
     .move_to(x, y)
-    .png(path)
+    .png(path, key=None)
     .press(combo)
     .rect(key)
     .resize(width, height)

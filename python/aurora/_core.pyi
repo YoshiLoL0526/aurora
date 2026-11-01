@@ -290,6 +290,11 @@ class Pilot:
         (`checked`, `selected`, `expanded`…), `live` (región viva: `"polite"` o
         `"assertive"`), `bounds` en píxeles lógicos,
         `actions`, `children` y `focused`; lo decorativo no aparece."""
+    def layout(self) -> list[dict[str, Any]]:
+        """Volcado del layout del último frame: un dict por nodo pintado, en orden de
+        pintura, con `key`, `kind`, `text`, `parent` (índice o `None`), `rect` y
+        `visible` (`(x, y, ancho, alto)` o `None`), `cut`, `interactive`, `focusable`,
+        `editable`, `scroll` y, en los textos, `text_size`, `content_size` y `truncated`."""
     def a11y_action(self, key: str, action: str, value: str | float | None = None) -> None:
         """Pide una acción de accesibilidad sobre el nodo `key`, como un lector:
         `"click"`, `"focus"`, `"blur"`, `"set_value"`, `"increment"`,
@@ -317,5 +322,5 @@ class Pilot:
     def inspection(self) -> dict[str, Any] | None:
         """Estado del inspector (como `inspection()`), o `None` si se creó sin inspector."""
     def resize(self, width: float, height: float) -> None: ...
-    def png(self, path: str) -> None:
-        """Guarda el último frame como PNG."""
+    def png(self, path: str, key: str | None = None) -> None:
+        """Guarda el último frame como PNG; con `key`, solo la caja de ese nodo."""

@@ -2,6 +2,7 @@
 //! frame. Usa el mismo `Runtime` que la ventana, así que un test que pasa con
 //! el piloto ejercita el mismo hit-testing, burbujeo y reconstrucción.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use pyo3::exceptions::{PyLookupError, PyRuntimeError, PyValueError};
@@ -13,6 +14,7 @@ use crate::keys::KeyInput;
 use crate::render::{raster_surface, write_png};
 use crate::runtime::{Clipboard, Runtime};
 use crate::scroll::LINE;
+use crate::spec::{Axis, Kind, Node};
 use accesskit::{Action, ActionData};
 
 /// Paso de tiempo de un frame simulado.
@@ -54,6 +56,25 @@ impl Pilot {
                 .draw_frame(canvas, self.width, self.height, self.scale, age)?;
         // Un `on_scroll` puede haber vuelto a cambiar un `Signal`: queda otro frame.
         Ok(animating || hover_changed || self.rt.needs_sync() || self.rt.animating())
+    }
+}
+
+/// Nodos del árbol por key (para completar las regiones del volcado de layout).
+fn index_nodes<'a>(node: &'a Node, out: &mut HashMap<&'a str, &'a Node>) {
+    out.insert(node.key.as_str(), node);
+    for child in &node.children {
+        index_nodes(child, out);
+    }
+}
+
+fn kind_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Box => "box",
+        Kind::Text => "text",
+        Kind::Input => "input",
+        Kind::Image => "image",
+        Kind::Canvas => "canvas",
+        Kind::Chart => "chart",
     }
 }
 
@@ -305,6 +326,68 @@ impl Pilot {
         crate::a11y::to_dicts(py, &built, self.scale)
     }
 
+    /// Volcado del layout del último frame: un dict por nodo pintado, en orden
+    /// de pintura (las capas superiores al final), con `key`, `kind` (`"box"`,
+    /// `"text"`, `"input"`, `"image"`, `"canvas"`, `"chart"` o `"link"`, el
+    /// tramo de un enlace), `text`, `parent` (índice en la lista o `None`),
+    /// `rect` y `visible` (la parte que no recortan los `scroll` ni los
+    /// `overflow="hidden"`; `None` si no se ve nada) como `(x, y, ancho, alto)`
+    /// en píxeles lógicos, `cut` (lo recorta un `overflow="hidden"`),
+    /// `interactive`, `focusable`, `editable`, `scroll` (`"x"`, `"y"`,
+    /// `"both"` o `None`) y, en los textos, `text_size` (línea más larga y alto
+    /// del párrafo), `content_size` (su caja de contenido) y `truncated` (lo
+    /// cortó `max_lines`).
+    fn layout<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        let mut nodes = HashMap::new();
+        if let Some(tree) = self.rt.tree() {
+            index_nodes(tree, &mut nodes);
+        }
+        let xywh = |r: skia_safe::Rect| (r.left, r.top, r.width(), r.height());
+        let out = PyList::empty(py);
+        for region in &self.rt.engine.regions {
+            let d = PyDict::new(py);
+            let node = nodes.get(region.key.as_str());
+            let kind = match node {
+                Some(n) => kind_name(n.kind),
+                None if crate::spec::parse_link_key(&region.key).is_some() => "link",
+                None => "box",
+            };
+            d.set_item("key", &region.key)?;
+            d.set_item("kind", kind)?;
+            d.set_item("text", node.and_then(|n| n.text.as_deref()))?;
+            d.set_item("parent", region.parent)?;
+            d.set_item("rect", xywh(region.rect))?;
+            let (r, c) = (region.rect, region.clip);
+            let v = skia_safe::Rect::new(
+                r.left.max(c.left),
+                r.top.max(c.top),
+                r.right.min(c.right),
+                r.bottom.min(c.bottom),
+            );
+            let visible = (v.width() > 0.0 && v.height() > 0.0).then(|| xywh(v));
+            d.set_item("visible", visible)?;
+            d.set_item("cut", region.cut())?;
+            d.set_item("interactive", region.interactive)?;
+            d.set_item("focusable", region.focusable)?;
+            d.set_item("editable", region.editable)?;
+            d.set_item(
+                "scroll",
+                region.scroll.map(|a| match a {
+                    Axis::X => "x",
+                    Axis::Y => "y",
+                    Axis::Both => "both",
+                }),
+            )?;
+            if let Some(m) = self.rt.engine.text_metrics(region) {
+                d.set_item("text_size", m.text)?;
+                d.set_item("content_size", m.content)?;
+                d.set_item("truncated", m.truncated)?;
+            }
+            out.append(d)?;
+        }
+        Ok(out)
+    }
+
     /// Pide una acción de accesibilidad sobre el nodo `key`, como la pediría un
     /// lector de pantalla: `"click"`, `"focus"`, `"blur"`, `"set_value"` (con
     /// `value`: texto o número), `"increment"`, `"decrement"`, `"expand"`,
@@ -478,8 +561,25 @@ impl Pilot {
         self.step(FRAME).map(|_| ())
     }
 
-    /// Guarda el último frame pintado como PNG.
-    fn png(&mut self, path: &str) -> PyResult<()> {
-        write_png(&mut self.surface, path).map_err(PyRuntimeError::new_err)
+    /// Guarda el último frame pintado como PNG; con `key`, solo la caja de ese
+    /// nodo (`LookupError` si no se pintó).
+    #[pyo3(signature = (path, key = None))]
+    fn png(&mut self, path: &str, key: Option<&str>) -> PyResult<()> {
+        let crop = match key {
+            None => None,
+            Some(key) => {
+                let r = self.rt.rect(key).ok_or_else(|| {
+                    PyLookupError::new_err(format!("no hay ningún nodo pintado con key {key:?}"))
+                })?;
+                let s = self.scale;
+                Some(skia_safe::IRect::new(
+                    (r.left * s).floor() as i32,
+                    (r.top * s).floor() as i32,
+                    (r.right * s).ceil() as i32,
+                    (r.bottom * s).ceil() as i32,
+                ))
+            }
+        };
+        write_png(&mut self.surface, path, crop).map_err(PyRuntimeError::new_err)
     }
 }
