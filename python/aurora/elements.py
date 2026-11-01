@@ -23,8 +23,8 @@ import threading
 from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Union
 
-from ._style import ENUMS, EVENT_NAMES, STYLE_NAMES, invalid_value, unknown_prop
-from .theme import Theme, ThemeTokenError
+from ._style import ENUMS, EVENT_NAMES, STYLE_NAMES, TOKEN_PROPS, invalid_value, unknown_prop
+from .theme import KNOWN, Theme, ThemeTokenError, remember_origin
 
 if TYPE_CHECKING:
     from typing import Unpack
@@ -101,6 +101,9 @@ class Element:
                 elif name in ENUMS and v not in ENUMS[name]:
                     # Un valor reactivo (una función) lo valida el núcleo al leerlo.
                     raise invalid_value(kind, k, v)
+                elif name in TOKEN_PROPS and type(v) is str and v[:1] == "$" and v[1:] not in KNOWN:
+                    # Fallará al serializar: se apunta dónde se escribió para el error.
+                    remember_origin(v)
                 continue
             event = EVENT_NAMES.get(k)
             if event is None:
@@ -215,8 +218,10 @@ def _resolve(theme: Theme, prop: str, value: Any) -> Any:
         if isinstance(value, tuple):
             return theme.resolve(value)
     except ThemeTokenError as err:
-        # El tema no sabe en qué propiedad estaba el token: se añade al mensaje.
-        raise ThemeTokenError(err.token, [*theme.colors, *theme.radius], prop) from None
+        # El tema no sabe en qué propiedad estaba el token: se añade al mensaje, y
+        # las sugerencias son del tipo que pide (radios en `radius`, colores en el resto).
+        known = [*theme.radius] if prop == "radius" else [*theme.colors]
+        raise ThemeTokenError(err.token, known, prop) from None
     return value
 
 

@@ -181,6 +181,14 @@ EVENT_NAMES: dict[str, str] = {k: k[3:] for k in Style.__optional_keys__ if k.st
 
 _ALL = sorted(STYLE_NAMES.keys() | EVENT_NAMES.keys())
 
+# Props de color y `radius`: las que suelen llevar un `"$token"` como cadena.
+# (Las anotaciones son texto o, según la versión de Python, un `ForwardRef` con él.)
+TOKEN_PROPS = frozenset(
+    STYLE_NAMES[k]
+    for k, hint in Style.__annotations__.items()
+    if getattr(hint, "__forward_arg__", hint) == "Prop[Color]" or k == "radius"
+)
+
 # Valores admitidos de las props enumeradas (los `Literal` de `Style`, por el
 # nombre con el que viajan al núcleo; `tests/test_validation.py` comprueba que
 # coinciden). `Element` mira aquí cada valor de texto: un valor mal escrito
@@ -324,13 +332,64 @@ def _called_as(kind: str) -> str:
     return name if name and not name.startswith("_") and name != "<module>" else kind
 
 
+# Nombres de otras librerías (CSS, Flutter, SwiftUI…) → la prop de Aurora. Un
+# parecido de letras no los encuentra (`secure` se parece más a `capture`).
+PROP_ALIASES = {
+    "background": "bg",
+    "background_color": "bg",
+    "bgcolor": "bg",
+    "border_radius": "radius",
+    "corner_radius": "radius",
+    "rounded": "radius",
+    "flex": "grow",
+    "flex_grow": "grow",
+    "flex_shrink": "shrink",
+    "flex_direction": "direction",
+    "flex_wrap": "wrap",
+    "align_items": "align",
+    "justify_content": "justify",
+    "font_color": "color",
+    "text_color": "color",
+    "foreground": "color",
+    "fg": "color",
+    "font": "font_family",
+    "bold": "weight",
+    "z_index": "layer",
+    "hint": "placeholder",
+    "secure": "password",
+    "secret": "password",
+    "masked": "password",
+    "obscure": "password",
+    "obscure_text": "password",
+    "is_password": "password",
+    "aria_label": "label",
+    "title": "tooltip",
+    "on_press": "on_click",
+    "on_tap": "on_click",
+    "on_input": "on_change",
+    "on_enter": "on_submit",
+}
+
+# Lo que no existe con ningún nombre, y qué usar en su lugar.
+_MISSING = {
+    "margin": "No hay `margin`: separa con `gap` o `padding` en el contenedor.",
+    "on_hover": "No hay `on_hover`: `bg_hover` cambia el fondo y `tooltip` muestra una ayuda.",
+}
+
+
 def unknown_prop(kind: str, name: str) -> TypeError:
     """El error de un argumento que no es ni estilo ni manejador, con la sugerencia."""
     import difflib  # solo al fallar: no cuesta en el arranque
 
     what = "el manejador" if name.startswith("on_") else "la prop"
     message = f"{_called_as(kind)}() no acepta {what} {name!r}."
-    close = difflib.get_close_matches(name, _ALL, n=1)
+    snake = "".join(f"_{c.lower()}" if c.isupper() else c for c in name).lstrip("_")
+    base = snake.removeprefix("margin_").removesuffix("_margin")
+    if base in _MISSING or snake.startswith("margin"):
+        return TypeError(f"{message} {_MISSING.get(base, _MISSING['margin'])}")
+    alias = PROP_ALIASES.get(snake)
+    # Solo una sugerencia que se parezca bastante: una lejana confunde más que ayuda.
+    close = [alias] if alias else difflib.get_close_matches(snake, _ALL, n=1, cutoff=0.75)
     if close:
         return TypeError(f"{message} ¿Quisiste decir {close[0]!r}?")
     return TypeError(f"{message} Las propiedades válidas están en la referencia (Propiedades de estilo).")

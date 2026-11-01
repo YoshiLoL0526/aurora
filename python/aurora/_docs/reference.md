@@ -2132,6 +2132,11 @@ button("OK", onclick=f) → TypeError: button() no acepta la prop 'onclick'. ¿Q
 box(on_clik=f)          → TypeError: box() no acepta el manejador 'on_clik'. ¿Quisiste decir 'on_click'?
 ```
 
+La sugerencia sale de los nombres que se suelen traer de otras librerías (`background` → `bg`,
+`border_radius` → `radius`, `flex` → `grow`, `justify_content` → `justify`, `secure` →
+`password`; `margin` y `on_hover`, que no existen, dicen qué usar en su lugar) o del parecido entre
+nombres, pero solo si se parecen bastante: si no, el error remite a la referencia.
+
 Pasa también con `None` (`box(bgg=None)` falla igual) y con el `**estilo` de los componentes,
 que va a uno de sus nodos. Comprobarlo no cuesta nada al reconstruir la vista: la misma consulta
 que decide si el argumento es estilo o manejador detecta el error.
@@ -2286,10 +2291,15 @@ OCEAN = Theme(
 
 Un token que no existe en el tema lanza **`ThemeTokenError`** al construir la vista, para que los
 errores de escritura se detecten enseguida. Dice en qué propiedad estaba y sugiere el token más
-parecido; es subclase de `KeyError`, así que un `except KeyError` lo sigue atrapando:
+parecido del tipo que pide la propiedad (un radio en `radius`, un color en el resto), también si
+escribiste el nombre que se usa en otras librerías (`$bg` → `$background`, `$fg` → `$text`,
+`$error` → `$danger`, `$large` → `$lg`); es subclase de `KeyError`, así que un `except KeyError` lo
+sigue atrapando. Su atributo `origin` es `(archivo, línea)` del código que creó el elemento, y
+`aurora check` lo usa para señalar esa línea:
 
 ```text
 box(bg="$primry") → ThemeTokenError: token de tema desconocido en 'bg': '$primry'. ¿Quisiste decir '$primary'?
+box(bg="$bg")     → ThemeTokenError: token de tema desconocido en 'bg': '$bg'. ¿Quisiste decir '$background'?
 ```
 
 `Theme.resolve(value)` hace esa traducción a mano: devuelve el color o el radio de un `"$token"`,

@@ -14,6 +14,7 @@ import ast
 import inspect
 import os
 import re
+import sys
 import typing
 from pathlib import Path
 
@@ -111,6 +112,62 @@ def test_token_dentro_de_una_tupla_y_de_radio():
         box(shadow=(0, 4, 8, "$shadw")).to_spec(MIDNIGHT)
     with pytest.raises(ThemeTokenError, match=r"¿Quisiste decir '\$full'\?"):
         box(radius="$ful").to_spec(MIDNIGHT)
+
+
+@pytest.mark.parametrize(
+    ("make", "hint"),
+    [
+        (lambda: box(bg="$bg"), "$background"),  # no '$lg', que es un radio
+        (lambda: text("x", color="$fg"), "$text"),
+        (lambda: box(border_color="$error"), "$danger"),
+        (lambda: box(radius="$large"), "$lg"),
+        (lambda: box(radius="$mdd"), "$md"),
+    ],
+)
+def test_los_tokens_se_sugieren_por_tipo_y_alias(make, hint):
+    with pytest.raises(ThemeTokenError) as info:
+        make().to_spec(MIDNIGHT)
+    assert str(info.value).endswith(f"¿Quisiste decir {hint!r}?")
+
+
+def test_un_color_no_sugiere_un_radio():
+    with pytest.raises(ThemeTokenError) as info:
+        box(bg="$lgg").to_spec(MIDNIGHT)  # se parece a "$lg", pero es un radio
+    assert "Quisiste" not in str(info.value)
+
+
+def test_el_error_de_token_sabe_donde_se_escribio():
+    el = box(bg="$nadaa")  # la línea que se espera
+    line = sys._getframe().f_lineno - 1
+    with pytest.raises(ThemeTokenError) as info:
+        el.to_spec(MIDNIGHT)
+    assert info.value.origin == (__file__, line)
+
+
+@pytest.mark.parametrize(
+    ("make", "message"),
+    [
+        (lambda: text_input("", secure=True), "¿Quisiste decir 'password'?"),
+        (lambda: box(background="#fff"), "¿Quisiste decir 'bg'?"),
+        (lambda: box(borderRadius=4), "¿Quisiste decir 'radius'?"),
+        (lambda: row(justify_content="center"), "¿Quisiste decir 'justify'?"),
+        (lambda: box(margin=8), "No hay `margin`"),
+        (lambda: box(margin_top=8), "No hay `margin`"),
+        (lambda: box(on_hover=print), "No hay `on_hover`"),
+    ],
+)
+def test_alias_de_otras_librerias(make, message):
+    with pytest.raises(TypeError) as info:
+        make()
+    assert message in str(info.value)
+
+
+def test_una_sugerencia_lejana_no_se_muestra():
+    # `secret` no se parece a nada (antes sugería 'sort'): mejor remitir a la referencia.
+    with pytest.raises(TypeError) as info:
+        box(sekrit=1)
+    assert "Quisiste" not in str(info.value)
+    assert "Las propiedades válidas" in str(info.value)
 
 
 def test_el_error_de_token_sigue_siendo_un_keyerror():

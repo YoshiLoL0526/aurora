@@ -144,6 +144,18 @@ def test_check_prop_inventada(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Traceback" not in err and "elements.py" not in err
 
 
+def test_check_token_desconocido_apunta_a_la_linea_del_usuario(capsys: pytest.CaptureFixture[str]) -> None:
+    # El token falla al serializar (dentro de Aurora); el error señala dónde se creó el elemento.
+    code, out, _ = run(capsys, "check", str(APPS / "token_malo.py"), "--json")
+    assert code == 1
+    error = json.loads(out)["error"]
+    assert error["type"] == "ThemeTokenError"
+    assert error["file"].endswith("token_malo.py")
+    assert error["line"] == 8
+    assert error["code"] == 'return column(padding=16, bg="$bg")[titulo]'
+    assert "¿Quisiste decir '$background'?" in error["message"]
+
+
 def test_check_excepcion_en_la_vista(capsys: pytest.CaptureFixture[str]) -> None:
     code, _, err = run(capsys, "check", str(APPS / "vista_rota.py"))
     assert code == 1

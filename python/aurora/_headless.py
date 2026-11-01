@@ -12,6 +12,7 @@ la línea del usuario sin la traza interna de Aurora.
 from __future__ import annotations
 
 import ast
+import linecache
 import sys
 import sysconfig
 import traceback
@@ -26,6 +27,7 @@ from . import DAYLIGHT, MIDNIGHT, App, Window
 from . import reload as _reload
 from ._core import Pilot
 from .signal import Signal
+from .theme import ThemeTokenError
 
 _PACKAGE = Path(__file__).resolve().parent
 # Código que no es del usuario: Aurora y la librería estándar o los paquetes instalados.
@@ -110,6 +112,12 @@ def user_location(error: BaseException) -> Location | None:
     """El punto más interno del código del usuario en la traza de `error`."""
     if isinstance(error, SyntaxError) and error.filename:
         return Location(_shown_path(error.filename), error.lineno, (error.text or "").strip())
+    # Un token de tema desconocido falla al serializar, lejos de donde se escribió:
+    # el error sabe en qué línea se creó el elemento.
+    origin = getattr(error, "origin", None)
+    if isinstance(error, ThemeTokenError) and origin is not None:
+        file, line = origin
+        return Location(_shown_path(file), line, linecache.getline(file, line).strip())
     frames = traceback.extract_tb(error.__traceback__)
     for frame in reversed(frames):
         if _is_user(frame.filename):

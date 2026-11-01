@@ -79,6 +79,13 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - El control de 60 fps de los benchmarks (`benchmarks/run.py --check`, el que usa la CI) exige
   16,7 ms también a `dashboard_50 rebuild` y `typing type`, que tenían un presupuesto
   provisional de 25 ms: ya caben en un frame (8,2 y 5,4 ms de mediana en la CI).
+- Sugerencias mÃ¡s Ãºtiles en los errores. Un token de tema desconocido sugiere uno del tipo que pide
+  la propiedad (un color en `bg`, un radio en `radius`; antes `bg="$bg"` sugerÃ­a `'$lg'`, un
+  radio) y entiende alias habituales (`$bg` â†’ `$background`, `$fg` â†’ `$text`, `$error` â†’
+  `$danger`, `$large` â†’ `$lg`). Una prop desconocida reconoce los nombres de otras librerÃ­as
+  (`background`, `border_radius`, `flex`, `justify_content`, `secure` â†’ `password`â€¦), explica
+  que `margin` y `on_hover` no existen y quÃ© usar, y ya no sugiere nombres poco parecidos
+  (`text_input(secure=True)` sugerÃ­a `'capture'`).
 
 ### Corregido
 
@@ -101,6 +108,9 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - Cuando el valor de un campo cambia desde fuera y el cursor estaba al final (tambiÃ©n en un campo
   vacÃ­o que se rellena), el cursor sigue al final. Antes volvÃ­a al principio y lo siguiente que se
   escribÃ­a iba delante del texto.
+- `aurora check` seÃ±ala la lÃ­nea de tu cÃ³digo que escribiÃ³ un token de tema desconocido (el
+  `ThemeTokenError` lleva `origin`, el archivo y la lÃ­nea donde se creÃ³ el elemento). Antes, como el
+  token falla al serializar la vista, el error salÃ­a sin archivo (`file: null`).
 
 ## [0.9.1] — 2026-10-31
 

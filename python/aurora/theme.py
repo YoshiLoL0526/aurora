@@ -5,19 +5,76 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# Nombres que se suelen escribir por costumbre (CSS, otros toolkits) → el token de Aurora.
+TOKEN_ALIASES = {
+    "bg": "background",
+    "back": "background",
+    "fg": "text",
+    "foreground": "text",
+    "text_color": "text",
+    "font": "text",
+    "error": "danger",
+    "red": "danger",
+    "destructive": "danger",
+    "ok": "success",
+    "green": "success",
+    "card": "surface",
+    "panel": "surface",
+    "subtle": "muted",
+    "secondary": "muted",
+    "dim": "muted",
+    "line": "border",
+    "outline": "border",
+    "brand": "primary",
+    "small": "sm",
+    "medium": "md",
+    "large": "lg",
+    "round": "full",
+    "pill": "full",
+    "circle": "full",
+}
+
+# Todos los tokens de los temas creados: un `"$token"` que no está en ninguno se
+# señala al crear el elemento (ver `remember_origin`).
+KNOWN: set[str] = set()
+
+# Dónde escribió el usuario cada token desconocido (archivo, línea; la última vez,
+# que es la de la vista que se está serializando): el error, que salta al
+# serializar, lo lleva para que `aurora check` apunte a esa línea.
+_ORIGINS: dict[str, tuple[str, int]] = {}
+
+
+def remember_origin(token: str) -> None:
+    """Apunta la línea del código del usuario que escribió un token que no está en ningún tema."""
+    import sys
+
+    frame = sys._getframe(1)
+    while frame is not None:
+        module = frame.f_globals.get("__name__", "")
+        if module != "aurora" and not module.startswith("aurora."):
+            _ORIGINS[token] = (frame.f_code.co_filename, frame.f_lineno)
+            return
+        frame = frame.f_back
+
 
 class ThemeTokenError(KeyError):
     """Un `"$token"` que no está en el tema. Hereda de `KeyError` (lo que se
-    lanzaba antes) y sugiere el token más parecido."""
+    lanzaba antes) y sugiere el token del mismo tipo (color o radio) más
+    parecido. `origin` es `(archivo, línea)` del código que lo escribió, si se sabe."""
 
     def __init__(self, token: str, known: list[str], prop: str | None = None) -> None:
         import difflib  # solo al fallar: no cuesta en el arranque
 
         self.token = token
         self.prop = prop
+        self.origin = _ORIGINS.get(token)
         where = f" en {prop!r}" if prop else ""
         message = f"token de tema desconocido{where}: {token!r}."
-        close = difflib.get_close_matches(token, [f"${name}" for name in known], n=1)
+        alias = TOKEN_ALIASES.get(token[1:].lower())
+        if alias in known:
+            close = [f"${alias}"]
+        else:
+            close = difflib.get_close_matches(token, [f"${name}" for name in known], n=1, cutoff=0.7)
         if close:
             message += f" ¿Quisiste decir {close[0]!r}?"
         super().__init__(message)
@@ -32,6 +89,9 @@ class Theme:
     colors: dict[str, str] = field(default_factory=dict)
     radius: dict[str, float] = field(default_factory=dict)
     font_family: str = "Inter"
+
+    def __post_init__(self) -> None:
+        KNOWN.update(self.colors, self.radius)
 
     def resolve(self, value: Any) -> Any:
         if isinstance(value, str) and value.startswith("$"):
