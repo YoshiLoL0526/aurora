@@ -1054,6 +1054,26 @@ fn str_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<String>> {
     get(d, key)?.map(|v| v.extract::<String>()).transpose()
 }
 
+/// Una cadena que tiene que ser uno de `valid` (un valor reactivo llega aquí sin
+/// pasar por la validación de `Element`).
+#[inline(always)]
+fn choice_of(d: &Props<'_, '_>, key: &str, valid: &[&str]) -> PyResult<Option<String>> {
+    let Some(value) = str_of(d, key)? else {
+        return Ok(None);
+    };
+    if valid.contains(&value.as_str()) {
+        return Ok(Some(value));
+    }
+    Err(PyValueError::new_err(format!(
+        "{key} inválido: {value:?} (usa {})",
+        valid
+            .iter()
+            .map(|v| format!("{v:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )))
+}
+
 #[inline(always)]
 fn len_of(d: &Props<'_, '_>, key: &str) -> PyResult<Option<Len>> {
     let Some(v) = get(d, key)? else {
@@ -1155,14 +1175,19 @@ fn parse_style(d: &Props<'_, '_>) -> PyResult<Style> {
         .map(|v| motion::parse_timing(&v))
         .transpose()?;
     Ok(Style {
-        row: str_of(d, "direction")?.as_deref() == Some("row"),
+        row: choice_of(d, "direction", &["row", "column"])?.as_deref() == Some("row"),
         gap: f32_of(d, "gap")?.unwrap_or(0.0),
         padding: edges_of(d, "padding")?,
-        align: str_of(d, "align")?,
-        justify: str_of(d, "justify")?,
+        align: choice_of(d, "align", &["start", "center", "end", "baseline", "stretch"])?,
+        justify: choice_of(
+            d,
+            "justify",
+            &["start", "center", "end", "between", "around", "evenly"],
+        )?,
         width: len_of(d, "width")?,
         height: len_of(d, "height")?,
-        absolute: str_of(d, "position")?.as_deref() == Some("absolute"),
+        absolute: choice_of(d, "position", &["relative", "absolute"])?.as_deref()
+            == Some("absolute"),
         inset: [
             len_of(d, "top")?,
             len_of(d, "right")?,
@@ -1239,7 +1264,7 @@ fn parse_style(d: &Props<'_, '_>) -> PyResult<Style> {
             .map(|v| Spans::parse(&v).map(Arc::new))
             .transpose()?,
         max_lines: f32_of(d, "max_lines")?.map(|n| n as usize),
-        text_align: str_of(d, "text_align")?,
+        text_align: choice_of(d, "text_align", &["left", "center", "right"])?,
         multiline: bool_of(d, "multiline")?,
         password: bool_of(d, "password")?,
         placeholder: str_of(d, "placeholder")?,

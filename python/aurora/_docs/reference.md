@@ -2136,6 +2136,20 @@ Pasa también con `None` (`box(bgg=None)` falla igual) y con el `**estilo` de lo
 que va a uno de sus nodos. Comprobarlo no cuesta nada al reconstruir la vista: la misma consulta
 que decide si el argumento es estilo o manejador detecta el error.
 
+Las props con **valores enumerados** (`direction`, `align`, `justify`, `position`, `overflow`,
+`fit`, `scroll`, `cursor`, `window_drag`, `layer`, `text_align`, `live`, `sort`, `orientation` y
+`placement`) y los parámetros enumerados de los componentes (`button(variant=)`, `chart(kind=)`,
+`Column(align=)`) lanzan `ValueError` con un valor que no existe, con la lista de los válidos y una
+sugerencia si se parece a uno o es el nombre que usa CSS:
+
+```text
+row(justify="space-between") → ValueError: row(justify=...) no acepta 'space-between'. ¿Quisiste decir 'between'? Valores válidos: 'around', 'between', 'center', 'end', 'evenly' o 'start'.
+button("OK", variant="sof")  → ValueError: button(variant=...) no acepta 'sof'. ¿Quisiste decir 'soft'? Valores válidos: 'ghost', 'primary' o 'soft'.
+```
+
+Con un valor fijo, el error salta al crear el elemento (cuesta una consulta a un dict por prop
+enumerada); un valor reactivo (`justify=lambda: ...`) lo comprueba el núcleo al leerlo.
+
 Los `**estilo` están tipados: **`Style`** es un `TypedDict` con todas las propiedades, los alias
 (`size`, `weight`, `family`), `key` y los manejadores, con sus valores (`direction` es
 `"row" | "column"`, `padding` un número o una tupla…; cualquiera admite además una función sin

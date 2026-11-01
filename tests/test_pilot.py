@@ -814,7 +814,7 @@ def test_explicit_resize_zone():
 
 
 def test_invalid_window_drag_is_a_clear_error():
-    with pytest.raises(ValueError, match="window_drag inválido"):
+    with pytest.raises(ValueError, match="no acepta 'up'"):
         App(lambda: box(window_drag="up")).pilot()  # ty: ignore[invalid-argument-type]
 
 

@@ -23,7 +23,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Union
 
-from ._style import EVENT_NAMES, STYLE_NAMES, unknown_prop
+from ._style import ENUMS, EVENT_NAMES, STYLE_NAMES, invalid_value, unknown_prop
 from .theme import Theme, ThemeTokenError
 
 if TYPE_CHECKING:
@@ -98,6 +98,9 @@ class Element:
                 style[name] = v
                 if callable(v):
                     dyn |= _LAZY_STYLE
+                elif name in ENUMS and v not in ENUMS[name]:
+                    # Un valor reactivo (una función) lo valida el núcleo al leerlo.
+                    raise invalid_value(kind, k, v)
                 continue
             event = EVENT_NAMES.get(k)
             if event is None:

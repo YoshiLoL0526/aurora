@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
 
+from .._style import invalid_choice
 from ..elements import Element, TextLike, box, column, image, row, text
 from ._shared import _a11y_label
 
@@ -50,6 +51,10 @@ def button(
     key: str | None = None,
     **style: Unpack[ButtonStyle],
 ) -> Element:
+    if variant not in _BUTTON_VARIANTS:
+        raise invalid_choice(
+            "button(variant=...)", variant, _BUTTON_VARIANTS, {"outline": "soft", "secondary": "soft"}
+        )
     styles = {
         **_BUTTON_VARIANTS[variant],
         "padding": (10, 18),

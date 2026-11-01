@@ -23,6 +23,7 @@ from array import array
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
+from ._style import invalid_choice
 from .elements import Element, _default_height
 from .theme import Theme
 
@@ -193,7 +194,9 @@ def chart(
     de alto). En `kind="bar"`, los clics caen en el gráfico, no en cada barra.
     """
     if kind not in _KINDS:
-        raise ValueError(f'chart: kind inválido: {kind!r} (usa "line", "area", "bar" o "scatter")')
+        raise invalid_choice(
+            "chart(kind=...)", kind, _KINDS, {"column": "bar", "points": "scatter", "dots": "scatter"}
+        )
     columns = _columns(y)
     if x is not None:
         if labels is not None:

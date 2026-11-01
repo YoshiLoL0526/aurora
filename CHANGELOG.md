@@ -54,6 +54,14 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   de AccessKit sin ver el valor. `Pilot.a11y_tree()` lo da con `role="password"` y los puntos como
   `value`; `Pilot.layout()` y `aurora tree` tambiÃ©n muestran solo los puntos. La prop de estilo
   `password` hace lo mismo en un `Element("input")`.
+- Los valores de las props enumeradas (`justify`, `align`, `direction`, `position`, `overflow`,
+  `fit`, `scroll`, `cursor`, `window_drag`, `layer`, `text_align`, `live`, `sort`, `orientation`
+  y `placement`) y de `button(variant=)`, `chart(kind=)` y `Column(align=)` se validan al crear el
+  elemento: un valor que no existe lanza `ValueError` con los vÃ¡lidos y una sugerencia, que
+  entiende los nombres de CSS (`justify="space-between"` â†’ `'between'`, `align="flex-start"` â†’
+  `'start'`, `text_align="end"` â†’ `'right'`). Antes `row(justify="space-between")` se aceptaba y
+  no alineaba, y `button(variant="sof")` daba un `KeyError: 'sof'` desnudo. Un valor reactivo
+  lo comprueba el nÃºcleo al leerlo. `live` admite en el tipado `"off"`, que el nÃºcleo ya aceptaba.
 
 ### Cambiado
 

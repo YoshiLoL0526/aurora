@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Literal, TypedDict, TypeVar
 
 _T = TypeVar("_T")
@@ -141,7 +141,7 @@ class Style(TypedDict, total=False):
     selected: Prop[bool]
     expanded: Prop[bool]
     level: Prop[int]
-    live: Prop[Literal["polite", "assertive"]]
+    live: Prop[Literal["polite", "assertive", "off"]]
     position_in_set: Prop[int]
     set_size: Prop[int]
     sort: Prop[Literal["ascending", "descending"]]
@@ -180,6 +180,134 @@ STYLE_NAMES: dict[str, str] = {
 EVENT_NAMES: dict[str, str] = {k: k[3:] for k in Style.__optional_keys__ if k.startswith("on_")}
 
 _ALL = sorted(STYLE_NAMES.keys() | EVENT_NAMES.keys())
+
+# Valores admitidos de las props enumeradas (los `Literal` de `Style`, por el
+# nombre con el que viajan al núcleo; `tests/test_validation.py` comprueba que
+# coinciden). `Element` mira aquí cada valor de texto: un valor mal escrito
+# falla en la línea que creó el elemento y no al pintar.
+ENUMS: dict[str, frozenset[str]] = {
+    "direction": frozenset(("row", "column")),
+    "align": frozenset(("start", "center", "end", "baseline", "stretch")),
+    "justify": frozenset(("start", "center", "end", "between", "around", "evenly")),
+    "position": frozenset(("relative", "absolute")),
+    "overflow": frozenset(("visible", "hidden")),
+    "fit": frozenset(("contain", "cover", "fill", "none")),
+    "scroll": frozenset(("x", "y", "both")),
+    "cursor": frozenset(
+        (
+            "default",
+            "pointer",
+            "text",
+            "grab",
+            "grabbing",
+            "col-resize",
+            "row-resize",
+            "ns-resize",
+            "ew-resize",
+            "nesw-resize",
+            "nwse-resize",
+            "crosshair",
+        )
+    ),
+    "window_drag": frozenset(("move", "n", "s", "e", "w", "ne", "nw", "se", "sw")),
+    "layer": frozenset(("base", "overlay")),
+    "text_align": frozenset(("left", "center", "right")),
+    "live": frozenset(("polite", "assertive", "off")),
+    "sort": frozenset(("ascending", "descending")),
+    "orientation": frozenset(("horizontal", "vertical")),
+    "placement": frozenset(
+        side + end for side in ("top", "bottom", "left", "right") for end in ("", "-start", "-center", "-end")
+    ),
+}
+
+# Lo que se suele escribir por costumbre de CSS u otros toolkits → el valor de Aurora.
+VALUE_ALIASES: dict[str, dict[str, str]] = {
+    "justify": {
+        "space-between": "between",
+        "space_between": "between",
+        "space-around": "around",
+        "space_around": "around",
+        "space-evenly": "evenly",
+        "space_evenly": "evenly",
+        "flex-start": "start",
+        "flex-end": "end",
+        "left": "start",
+        "right": "end",
+        "top": "start",
+        "bottom": "end",
+        "middle": "center",
+    },
+    "align": {
+        "flex-start": "start",
+        "flex-end": "end",
+        "left": "start",
+        "right": "end",
+        "top": "start",
+        "bottom": "end",
+        "middle": "center",
+        "stretched": "stretch",
+        "fill": "stretch",
+    },
+    "text_align": {"start": "left", "end": "right", "middle": "center"},
+    "direction": {
+        "horizontal": "row",
+        "vertical": "column",
+        "col": "column",
+        "columns": "column",
+        "rows": "row",
+    },
+    "overflow": {"clip": "hidden"},
+    "position": {"fixed": "absolute", "static": "relative"},
+    "cursor": {"hand": "pointer", "move": "grab", "ibeam": "text", "arrow": "default"},
+    "fit": {"contains": "contain", "stretch": "fill"},
+    "orientation": {"row": "horizontal", "column": "vertical"},
+    "placement": {
+        "above": "top",
+        "below": "bottom",
+        "top-left": "top-start",
+        "top-right": "top-end",
+        "bottom-left": "bottom-start",
+        "bottom-right": "bottom-end",
+    },
+}
+
+
+def suggest(name: str, valid: Iterable[str], aliases: dict[str, str] | None = None) -> str | None:
+    """El valor de `valid` que se quiso escribir: un alias conocido o, si no, el
+    más parecido (solo si se parece bastante; uno lejano confunde más que ayuda)."""
+    import difflib  # solo al fallar: no cuesta en el arranque
+
+    if aliases and name in aliases:
+        return aliases[name]
+    lowered = name.lower().strip()
+    if lowered in valid:
+        return lowered
+    close = difflib.get_close_matches(lowered, list(valid), n=1, cutoff=0.7)
+    return close[0] if close else None
+
+
+def choices(valid: Iterable[str]) -> str:
+    """Los valores válidos como texto: `'a', 'b' o 'c'`."""
+    items = [repr(v) for v in sorted(valid)]
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " o " + items[-1]
+
+
+def invalid_choice(
+    what: str, value: Any, valid: Iterable[str], aliases: dict[str, str] | None = None
+) -> ValueError:
+    """El error de un valor que no está entre los válidos, con la sugerencia y la lista."""
+    valid = list(valid)
+    message = f"{what} no acepta {value!r}."
+    close = suggest(value, valid, aliases) if isinstance(value, str) else None
+    if close is not None:
+        message += f" ¿Quisiste decir {close!r}?"
+    return ValueError(f"{message} Valores válidos: {choices(valid)}.")
+
+
+def invalid_value(kind: str, prop: str, value: Any) -> ValueError:
+    """El error de una prop enumerada con un valor que no existe."""
+    name = ALIASES.get(prop, prop)
+    return invalid_choice(f"{_called_as(kind)}({prop}=...)", value, ENUMS[name], VALUE_ALIASES.get(name))
 
 
 def _called_as(kind: str) -> str:

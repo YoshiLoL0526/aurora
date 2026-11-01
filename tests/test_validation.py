@@ -14,6 +14,7 @@ import ast
 import inspect
 import os
 import re
+import typing
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,7 @@ from aurora import (
     text,
     text_input,
 )
-from aurora._style import EVENT_NAMES, STYLE_NAMES, Style
+from aurora._style import ENUMS, EVENT_NAMES, STYLE_NAMES, Style
 
 ROOT = Path(__file__).parents[1]
 SPEC = ROOT / "src" / "spec.rs"
@@ -133,6 +134,61 @@ def _rust_events() -> set[str]:
         events |= set(re.findall(r'\b(?:handler|contains_key|keys_with)\("([a-z_]+)"\)', source))
         events |= set(re.findall(r'\b(?:dispatch|call)\([^;()]*?"([a-z_]+)"', source))
     return events
+
+
+@pytest.mark.parametrize(
+    ("make", "hint"),
+    [
+        (lambda: row(justify="space-between"), "'between'"),  # ty: ignore[invalid-argument-type]
+        (lambda: row(justify="flex-end"), "'end'"),  # ty: ignore[invalid-argument-type]
+        (lambda: column(align="flex-start"), "'start'"),  # ty: ignore[invalid-argument-type]
+        (lambda: text("a", text_align="end"), "'right'"),  # ty: ignore[invalid-argument-type]
+        (lambda: box(direction="horizontal"), "'row'"),  # ty: ignore[invalid-argument-type]
+        (lambda: box(overflow="clip"), "'hidden'"),  # ty: ignore[invalid-argument-type]
+        (lambda: box(position="fixed"), "'absolute'"),  # ty: ignore[invalid-argument-type]
+        (lambda: box(cursor="hand"), "'pointer'"),  # ty: ignore[invalid-argument-type]
+        (lambda: box(placement="bottom-left"), "'bottom-start'"),
+        (lambda: button("x", variant="sof"), "'soft'"),  # ty: ignore[invalid-argument-type]
+        (lambda: chart([1, 2], kind="lines"), "'line'"),  # ty: ignore[invalid-argument-type]
+        (lambda: aurora.Column("a", align="right"), "'end'"),  # ty: ignore[invalid-argument-type]
+    ],
+)
+def test_valor_enumerado_invalido_sugiere_el_correcto(make, hint):
+    with pytest.raises(ValueError, match="Valores válidos") as err:
+        make()
+    assert f"¿Quisiste decir {hint}?" in str(err.value)
+
+
+def test_valor_enumerado_sin_parecido_lista_los_validos():
+    with pytest.raises(ValueError) as err:
+        button("x", variant="zzz")  # ty: ignore[invalid-argument-type]
+    message = str(err.value)
+    assert "Quisiste" not in message
+    assert "'ghost', 'primary' o 'soft'" in message
+    assert message.startswith("button(variant=...) no acepta 'zzz'.")
+
+
+def test_valor_enumerado_reactivo_lo_valida_el_nucleo():
+    # Una función no se puede mirar al crear el elemento: el núcleo la rechaza al leerla.
+    spec = row(justify=lambda: "space-between").to_spec(MIDNIGHT)  # ty: ignore[invalid-argument-type]
+    with pytest.raises(ValueError, match="justify inválido"):
+        aurora._core.render_png(spec, 10, 10, os.devnull, 1.0)
+
+
+def _literals(hint) -> frozenset[str]:
+    """Los valores de los `Literal` que hay dentro de una anotación."""
+    if typing.get_origin(hint) is typing.Literal:
+        return frozenset(typing.get_args(hint))
+    return frozenset().union(*(_literals(arg) for arg in typing.get_args(hint)))
+
+
+def test_los_valores_enumerados_coinciden_con_style():
+    # Cada `Literal` de `Style` (por el nombre que llega al núcleo) es una entrada de `ENUMS`.
+    hints = typing.get_type_hints(Style)
+    literal = {STYLE_NAMES[k]: v for k in STYLE_NAMES if (v := _literals(hints[k]))}
+    assert {k: v for k, v in ENUMS.items() if k in literal} == literal
+    # `placement` no es un `Literal` en `Style`: combina lado y extremo.
+    assert set(ENUMS) - set(literal) == {"placement"}
 
 
 def test_las_props_coinciden_con_las_que_lee_el_nucleo():

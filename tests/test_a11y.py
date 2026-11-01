@@ -40,7 +40,7 @@ def test_rol_desconocido_es_error_claro():
 
 
 def test_live_desconocido_es_error_claro():
-    with pytest.raises(ValueError, match="live desconocido"):
+    with pytest.raises(ValueError, match="no acepta 'shouty'"):
         _pilot(lambda: box(live="shouty"))  # ty: ignore[invalid-argument-type]
 
 

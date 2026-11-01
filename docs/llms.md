@@ -79,6 +79,7 @@ App(view, title="Contador", size=(520, 200)).run()
 | `onClick=f`, `border_radius=8`, `flex=1` | `on_click=f`, `radius=8`, `grow=1` | Nombres de otras librerías. |
 | `bg="red"`, `color="primary"` | `bg="#EF4444"`, `color="$primary"` | Solo hex o tokens con `$`. |
 | `font_weight="bold"`, `width="100px"` | `weight=700`, `width=100` (o `"50%"`) | Números y porcentajes. |
+| `justify="space-between"`, `align="flex-start"` | `justify="between"`, `align="start"` | Valores cortos, no los de CSS: `ValueError` con la sugerencia. |
 | `on_click=guardar(x)` | `on_click=lambda: guardar(x)` | Lo primero llama a `guardar` al construir. |
 | `items().append(x)` | `items.update(lambda xs: (*xs, x))` | Mutar no avisa, y `set` del mismo objeto es `==`: no hace nada. |
 | `text(f"{count}")` | `text(lambda: f"{count()}")` | Un `Signal` se lee llamándolo. |
@@ -354,7 +355,7 @@ Las de *Texto* se heredan de los contenedores, como en CSS. Detalles y valores p
 - **Texto**: `font_size`: float, `size` (= `font_size`), `font_weight`: float, `weight` (= `font_weight`), `color`: color, `font_family`: str, `family` (= `font_family`), `line_height`: float, `letter_spacing`: float, `focus_color`: color, `tooltip_bg`: color, `tooltip_color`: color, `max_lines`: int, `text_align`: 'left' | 'center' | 'right', `spans`: Any
 - **Campos de texto**: `multiline`: bool, `password`: bool, `placeholder`: str, `rows`: int
 - **Foco**: `focusable`: bool, `autofocus`: bool
-- **Accesibilidad**: `role`: str, `label`: str, `alt`: str, `description`: str, `value`: str | float, `checked`: bool, `selected`: bool, `expanded`: bool, `level`: int, `live`: 'polite' | 'assertive', `position_in_set`: int, `set_size`: int, `sort`: 'ascending' | 'descending', `orientation`: 'horizontal' | 'vertical', `modal`: bool, `hidden`: bool, `value_min`: float, `value_max`: float, `value_step`: float
+- **Accesibilidad**: `role`: str, `label`: str, `alt`: str, `description`: str, `value`: str | float, `checked`: bool, `selected`: bool, `expanded`: bool, `level`: int, `live`: 'polite' | 'assertive' | 'off', `position_in_set`: int, `set_size`: int, `sort`: 'ascending' | 'descending', `orientation`: 'horizontal' | 'vertical', `modal`: bool, `hidden`: bool, `value_min`: float, `value_max`: float, `value_step`: float
 - **Manejadores**: `on_click`, `on_drag`, `on_key`, `on_focus`, `on_blur`, `on_scroll`, `on_resize`, `on_drop`, `on_drop_hover`, `on_context_menu`, `on_change`, `on_submit`, `on_link`, `on_value`
 
 <!-- /generado -->

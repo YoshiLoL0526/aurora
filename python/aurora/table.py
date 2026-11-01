@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from ._core import DragEvent
 from ._icons import _ARROW_DOWN, _ARROW_UP
+from ._style import VALUE_ALIASES, invalid_choice
 from .components import divider, virtual_list
 from .elements import Element, box, column, image, row, scroll, text
 from .signal import Signal
@@ -26,6 +27,7 @@ Sort = tuple[str, bool] | None
 """Orden de una tabla: `(key de la columna, descendente)`, o `None` (orden original)."""
 
 Align = Literal["start", "center", "end"]
+_ALIGNS = ("start", "center", "end")
 
 
 @dataclass(frozen=True)
@@ -49,6 +51,10 @@ class Column:
     cell: Callable[[Any], Element] | None = None
     sortable: bool = True
     resizable: bool = True
+
+    def __post_init__(self) -> None:
+        if self.align not in _ALIGNS:
+            raise invalid_choice("Column(align=...)", self.align, _ALIGNS, VALUE_ALIASES["justify"])
 
 
 # Estado de cada tabla, por key (los componentes no tienen estado propio).
