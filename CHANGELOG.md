@@ -9,6 +9,8 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ## [Sin publicar]
 
+## [0.9.1] — 2026-10-31
+
 ### Cambiado
 
 - Con la reconstrucción parcial, el núcleo ya no recorre el árbol entero en cada cambio para
@@ -684,7 +686,8 @@ Primera versión: la base del framework.
 - Ejemplos: `hello.py`, `studio.py` (demo completa) y `brand.py` (genera las imágenes del README).
 - Documentación: guía, referencia, arquitectura, visión y roadmap.
 
-[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.9.0...HEAD
+[Sin publicar]: https://github.com/YoshiLoL0526/aurora/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/YoshiLoL0526/aurora/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/YoshiLoL0526/aurora/compare/v0.6.0...v0.7.0
