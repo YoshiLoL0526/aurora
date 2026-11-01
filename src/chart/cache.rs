@@ -180,6 +180,9 @@ impl Charts {
 }
 
 fn collect<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
+    if !node.contains(crate::spec::Marks::CHART) {
+        return;
+    }
     if node.chart.is_some() {
         out.push(node);
     }

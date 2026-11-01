@@ -35,7 +35,9 @@ use crate::image::{Decoded, Fit, ImageCache, ImageError, Loaded};
 use crate::input::{CARET_WIDTH, InputFrame, InputState, caret_rect, range_rects};
 use crate::motion::{IDENTITY, Timing, Track, Vec4};
 use crate::scroll::{BAR_WIDTH, ScrollState};
-use crate::spec::{Axis, Cursor, Edges, Kind, Len, Node, Span, Style, TextProps, WindowDrag};
+use crate::spec::{
+    Axis, Cursor, Edges, Kind, Len, Marks, Node, Span, Style, TextProps, WindowDrag,
+};
 
 mod draw;
 mod geom;
@@ -261,6 +263,9 @@ impl Engine {
         let mut alive = HashSet::new();
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
+            if !node.contains(Marks::INPUT) {
+                continue;
+            }
             if node.is_editable() {
                 let text = node.text.as_deref().unwrap_or("");
                 let state = self
@@ -282,6 +287,9 @@ impl Engine {
         let mut images = HashMap::new();
         let mut stack = vec![root];
         while let Some(node) = stack.pop() {
+            if !node.contains(Marks::IMAGE) {
+                continue;
+            }
             if node.kind == Kind::Image
                 && let Some(src) = &node.style.src
             {

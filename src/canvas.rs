@@ -27,7 +27,7 @@ use skia_safe::{
 
 use crate::color::parse_color;
 use crate::render::Engine;
-use crate::spec::{Kind, Node};
+use crate::spec::{Kind, Marks, Node};
 
 /// Relleno y trazo de un pincel: una figura puede tener los dos.
 struct Brush {
@@ -552,6 +552,9 @@ impl Canvases {
 }
 
 fn collect<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
+    if !node.contains(Marks::CANVAS) {
+        return;
+    }
     if node.kind == Kind::Canvas {
         out.push(node);
     }

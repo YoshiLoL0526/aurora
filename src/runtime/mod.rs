@@ -22,7 +22,7 @@ use crate::inspect::{self, Inspector, PANEL_KEY};
 use crate::keys::{KeyEvent, KeyInput, Mods};
 use crate::render::{Engine, Mark, TIP_DELAY, ancestors, hit_test, topmost};
 use crate::scroll::{LINE, ScrollEvent};
-use crate::spec::{self, Node};
+use crate::spec::{self, Marks, Node};
 
 pub use crate::spec::Cursor as CursorKind;
 
@@ -673,6 +673,9 @@ fn collect_listeners(
     resize: &mut Vec<String>,
     reveals: &mut Vec<(String, (f32, f32))>,
 ) {
+    if !node.contains(Marks::LISTENERS) {
+        return;
+    }
     if node.style.scroll.is_some() && node.handler("scroll").is_some() {
         scroll.push(node.key.clone());
     }
@@ -706,6 +709,9 @@ impl ResizeEvent {
 }
 
 fn collect_autofocus(node: &Node, out: &mut Vec<String>) {
+    if !node.contains(Marks::AUTOFOCUS) {
+        return;
+    }
     if node.style.autofocus && node.is_focusable() {
         out.push(node.key.clone());
     }

@@ -601,6 +601,24 @@ impl A11y {
     }
 }
 
+/// Qué contiene un subárbol, como bits: lo calcula el parser al montar cada nodo
+/// (los subárboles compartidos ya lo traen), y lo usan los recorridos del árbol
+/// entero para no bajar por ramas donde no hay nada que buscar.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Marks(u8);
+
+impl Marks {
+    /// Un nodo con `autofocus`.
+    pub const AUTOFOCUS: Marks = Marks(1);
+    /// `on_scroll` o `reveal` en un `scroll`, u `on_resize`.
+    pub const LISTENERS: Marks = Marks(1 << 1);
+    pub const IMAGE: Marks = Marks(1 << 2);
+    /// Un campo de texto (`Kind::Input`).
+    pub const INPUT: Marks = Marks(1 << 3);
+    pub const CANVAS: Marks = Marks(1 << 4);
+    pub const CHART: Marks = Marks(1 << 5);
+}
+
 #[derive(Debug)]
 pub struct Node {
     /// Identidad estable entre reconstrucciones (key explícita o ruta en el árbol).
@@ -618,6 +636,11 @@ pub struct Node {
     pub children: Vec<Arc<Node>>,
     /// El nodo o algún descendiente tiene `placement` (el layout solo recorre esas ramas).
     pub has_placement: bool,
+    /// Número de nodos del subárbol, incluido este.
+    pub size: usize,
+    /// Qué hay en el subárbol (`Marks`): los recorridos que cada reconstrucción
+    /// hace del árbol entero (inputs, imágenes, lienzos…) saltan las ramas sin nada.
+    pub marks: Marks,
     /// Manejadores de eventos por nombre (`"click"`, …), sin el prefijo `on_`.
     pub handlers: HashMap<String, Py<PyAny>>,
     /// Solo en `Kind::Canvas`: `draw(width, height, force)` devuelve el lote de
@@ -641,6 +664,8 @@ impl Node {
             a11y: self.a11y.clone(),
             children: self.children.clone(),
             has_placement: self.has_placement,
+            size: self.size,
+            marks: self.marks,
             handlers: self
                 .handlers
                 .iter()
@@ -661,7 +686,39 @@ impl Node {
 
     /// Número de nodos del subárbol, incluido este.
     pub fn count(&self) -> usize {
-        1 + self.children.iter().map(|c| c.count()).sum::<usize>()
+        self.size
+    }
+
+    /// Si en el subárbol hay algo de `marks` (alguno de sus bits).
+    pub fn contains(&self, marks: Marks) -> bool {
+        self.marks.0 & marks.0 != 0
+    }
+
+    /// Lo que el propio nodo aporta a `marks` (sin sus hijos).
+    fn own_marks(&self) -> Marks {
+        let mut m = 0;
+        if self.style.autofocus {
+            m |= Marks::AUTOFOCUS.0;
+        }
+        let scroll = self.style.scroll.is_some();
+        if (scroll && (self.handler("scroll").is_some() || self.style.reveal.is_some()))
+            || self.handler("resize").is_some()
+        {
+            m |= Marks::LISTENERS.0;
+        }
+        if self.kind == Kind::Image {
+            m |= Marks::IMAGE.0;
+        }
+        if self.is_editable() {
+            m |= Marks::INPUT.0;
+        }
+        if self.kind == Kind::Canvas {
+            m |= Marks::CANVAS.0;
+        }
+        if self.chart.is_some() {
+            m |= Marks::CHART.0;
+        }
+        Marks(m)
     }
 
     pub fn is_interactive(&self) -> bool {
@@ -1473,7 +1530,9 @@ fn parse_fresh(
     };
 
     let has_placement = style.placement.is_some() || children.iter().any(|c| c.has_placement);
-    Ok(Node {
+    let size = 1 + children.iter().map(|c| c.size).sum::<usize>();
+    let below = children.iter().fold(0, |m, c| m | c.marks.0);
+    let mut node = Node {
         key,
         kind,
         style,
@@ -1482,10 +1541,14 @@ fn parse_fresh(
         a11y,
         children,
         has_placement,
+        size,
+        marks: Marks(0),
         handlers: parse_handlers(d)?,
         draw,
         chart,
-    })
+    };
+    node.marks = Marks(node.own_marks().0 | below);
+    Ok(node)
 }
 
 fn parse_handlers(d: &Props<'_, '_>) -> PyResult<HashMap<String, Py<PyAny>>> {
