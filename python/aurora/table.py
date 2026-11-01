@@ -9,13 +9,18 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from ._core import DragEvent
 from ._icons import _ARROW_DOWN, _ARROW_UP
 from .components import divider, virtual_list
 from .elements import Element, box, column, image, row, scroll, text
 from .signal import Signal
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from ._style_variants import TableStyle
 
 Sort = tuple[str, bool] | None
 """Orden de una tabla: `(key de la columna, descendente)`, o `None` (orden original)."""
@@ -110,7 +115,7 @@ def table(
     striped: bool = True,
     empty: str = "Sin datos",
     overscan: int = 4,
-    **style: Any,
+    **style: Unpack[TableStyle],
 ) -> Element:
     """Tabla de datos con cabecera fija y filas virtualizadas.
 
@@ -154,7 +159,9 @@ def table(
     def header(col: Column) -> Element:
         sorted_by = current is not None and current[0] == col.key
         descending = current is not None and current[1]
-        sorted_props = {"sort": "descending" if descending else "ascending"} if sorted_by else {}
+        sorted_props: dict[str, Any] = (
+            {"sort": "descending" if descending else "ascending"} if sorted_by else {}
+        )
         arrow = sorted_by and image(_ARROW_DOWN if descending else _ARROW_UP, width=12)
         label = text(
             col.title if col.title is not None else col.key,

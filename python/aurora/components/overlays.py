@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .. import _motion as motion
 from .. import animate
@@ -13,6 +13,11 @@ from ..signal import Signal
 from ._dropdown import backdrop, close_on_key, open_signal, panel, toggle
 from ._shared import Options, _has_autofocus, _items
 from .basic import card
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import DialogStyle, MenuStyle, PopoverStyle, SelectStyle
 
 _SELECT_HEIGHT = 40
 
@@ -24,7 +29,7 @@ def menu(
     key: str,
     drop: float | None = None,
     placement: str = "bottom-start",
-    **style: Any,
+    **style: Unpack[MenuStyle],
 ) -> Element:
     """Menú de acciones: `trigger` (el elemento que se pulsa) abre una lista.
 
@@ -72,7 +77,8 @@ def menu(
             content=column(gap=2, role="menu")[[option(i, entry) for i, entry in enumerate(items)]],
         ),
     ]
-    return column(**{"key": key, "on_key": on_key, **style})[trigger, opened]
+    props: dict[str, Any] = {"key": key, "on_key": on_key, **style}
+    return column(**props)[trigger, opened]
 
 
 def dialog(
@@ -83,7 +89,7 @@ def dialog(
     on_close: Callable[[], Any] | None = None,
     width: float = 420,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[DialogStyle],
 ) -> Element | None:
     """Diálogo modal: fondo oscurecido, tarjeta centrada y cierre al hacer clic
     fuera o con Esc. Se muestra cuando `open` es verdadero.
@@ -170,7 +176,7 @@ def popover(
     label: str | None = None,
     on_close: Callable[[], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[PopoverStyle],
 ) -> Element:
     """Contenido flotante anclado a `trigger`: pulsarlo abre y cierra `content`.
 
@@ -239,7 +245,7 @@ def select(
     *,
     placeholder: str = "Elegir…",
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[SelectStyle],
 ) -> Element:
     """Desplegable para elegir un valor de `options` (valores o pares `(valor, etiqueta)`).
 
@@ -321,4 +327,5 @@ def select(
             ],
         ),
     ]
-    return column(**{"min_width": 160, **style})[trigger, opened]
+    props: dict[str, Any] = {"min_width": 160, **style}
+    return column(**props)[trigger, opened]

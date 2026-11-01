@@ -845,7 +845,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | `on_focus` / `on_blur` | Callables sin argumentos: el elemento gana / pierde el foco. |
 | `on_drop` | Callable que recibe la lista de rutas (`list[str]`) de los archivos que se sueltan desde el explorador del sistema sobre el elemento o sus hijos. Ver [Soltar archivos](#soltar-archivos). |
 | `on_drop_hover` | Callable que recibe la lista de rutas cuando un arrastre de archivos entra en la ventana y `None` cuando sale o se suelta. Para resaltar las zonas donde soltar. |
-| `on_<evento>` | Todo argumento que empiece por `on_` se trata como manejador, no como estilo. |
+| `on_change` / `on_submit` / `on_link` / `on_value` / `on_context_menu` | Los usan los campos de texto, los enlaces de `rich_text`, los controles ajustables (`slider`, `splitter`) y los [menús contextuales](#menús-nativos); los componentes los ponen por ti. Un `on_<evento>` que no sea ninguno de estos lanza `TypeError` (ver [Props desconocidas](#props-desconocidas-y-tipado)). |
 | `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`, los campos de texto y los `chart(zoom=True)`. |
 | `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
 | `role` | Rol de accesibilidad para los lectores de pantalla: `"button"`, `"checkbox"`, `"switch"`, `"radio"`, `"radiogroup"`, `"slider"`, `"textbox"`, `"combobox"`, `"option"`, `"tab"`, `"tablist"`, `"dialog"`, `"menu"`, `"menuitem"`, `"list"`, `"listitem"`, `"table"`, `"row"`, `"cell"`, `"columnheader"`, `"progressbar"`, `"image"`, `"heading"`, `"status"`, `"link"`, `"region"`, `"separator"`… (los nombres de ARIA en minúscula). Un rol desconocido lanza `ValueError`. Ver [Accesibilidad](#accesibilidad). |
@@ -2191,6 +2191,38 @@ alguna sigue en curso; `pilot.settle()` espera a que terminen todas (salidas inc
 Las longitudes están en **píxeles lógicos**. Las propiedades marcadas con *H* se **heredan** de los
 contenedores (como en CSS).
 
+### Props desconocidas y tipado
+
+Un argumento que no es una propiedad de estilo, de accesibilidad ni un manejador lanza `TypeError`
+al crear el elemento, con el nombre de la función que lo recibió y la propiedad más parecida:
+
+```text
+column(bgg="red")       → TypeError: column() no acepta la prop 'bgg'. ¿Quisiste decir 'bg'?
+button("OK", onclick=f) → TypeError: button() no acepta la prop 'onclick'. ¿Quisiste decir 'on_click'?
+box(on_clik=f)          → TypeError: box() no acepta el manejador 'on_clik'. ¿Quisiste decir 'on_click'?
+```
+
+Pasa también con `None` (`box(bgg=None)` falla igual) y con el `**estilo` de los componentes,
+que va a uno de sus nodos. Comprobarlo no cuesta nada al reconstruir la vista: la misma consulta
+que decide si el argumento es estilo o manejador detecta el error.
+
+Los `**estilo` están tipados: **`Style`** es un `TypedDict` con todas las propiedades, los alias
+(`size`, `weight`, `family`), `key` y los manejadores, con sus valores (`direction` es
+`"row" | "column"`, `padding` un número o una tupla…; cualquiera admite además una función sin
+argumentos o `None`). Un editor o un comprobador de tipos (`ty`, Pyright, mypy) los autocompleta y
+avisa de un valor que no encaja antes de ejecutar. Para anotar tus propios componentes, que
+reenvían el estilo:
+
+```python
+from typing import Unpack
+
+from aurora import Element, Style, card, text
+
+
+def panel(title: str, **estilo: Unpack[Style]) -> Element:
+    return card(**estilo)[text(title, weight=700)]
+```
+
 ### Layout
 
 | Propiedad | Valores | Por defecto | Descripción |
@@ -2308,8 +2340,13 @@ OCEAN = Theme(
 )
 ```
 
-Un token que no existe en el tema lanza `KeyError` al construir la vista, para que los errores
-de escritura se detecten enseguida.
+Un token que no existe en el tema lanza **`ThemeTokenError`** al construir la vista, para que los
+errores de escritura se detecten enseguida. Dice en qué propiedad estaba y sugiere el token más
+parecido; es subclase de `KeyError`, así que un `except KeyError` lo sigue atrapando:
+
+```text
+box(bg="$primry") → ThemeTokenError: token de tema desconocido en 'bg': '$primry'. ¿Quisiste decir '$primary'?
+```
 
 `Theme.resolve(value)` hace esa traducción a mano: devuelve el color o el radio de un `"$token"`,
 resuelve cada elemento de una tupla (`(0, 8, 24, "$shadow")`) y deja igual cualquier otro valor.

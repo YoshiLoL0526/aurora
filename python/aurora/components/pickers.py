@@ -9,14 +9,19 @@ import itertools
 import unicodedata
 from collections.abc import Callable, Sequence
 from datetime import date, time, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .._icons import _CALENDAR, _CHEVRON, _CHEVRON_LEFT, _CHEVRON_RIGHT, _CLOCK
 from ..elements import Element, box, column, image, row, scroll, spacer, text
 from ..signal import Signal
 from ._dropdown import backdrop, close_on_key, open_signal, panel
-from ._shared import _INPUT_STYLE, Options, _items
+from ._shared import Options, _input_style, _items
 from ._state import _ACTIVE, _DRAFTS, _DRAG_START, _HSV, _MONTHS, _QUERIES
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import ColorPickerStyle, ComboboxStyle, DatePickerStyle, TimePickerStyle
 
 _HEIGHT = 40
 # Alto de cada opción de la lista de `time_picker`.
@@ -37,7 +42,7 @@ def combobox(
     empty: str = "Sin resultados",
     on_change: Callable[[Any], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[ComboboxStyle],
 ) -> Element:
     """Campo con lista filtrable: se escribe para buscar y se elige una opción.
 
@@ -151,7 +156,7 @@ def combobox(
         ),
     ]
     trigger = row(
-        **{**_INPUT_STYLE, "padding": (0, 6, 0, 12)},
+        **_input_style(padding=(0, 6, 0, 12)),
         height=_HEIGHT,
         gap=6,
         align="center",
@@ -169,7 +174,8 @@ def combobox(
             on_click=lambda: close() if open_() else open_list(),
         )[image(_CHEVRON, width=14)],
     ]
-    return column(**{"key": k, "min_width": 200, **style})[trigger, opened]
+    props: dict[str, Any] = {"key": k, "min_width": 200, **style}
+    return column(**props)[trigger, opened]
 
 
 _MONTH_NAMES = [
@@ -226,7 +232,7 @@ def date_picker(
     first_weekday: int = 0,
     on_change: Callable[[date], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[DatePickerStyle],
 ) -> Element:
     """Selector de fecha: un desplegable con el calendario del mes.
 
@@ -302,6 +308,7 @@ def date_picker(
         target = _shift_month(year, month, delta)
         last = date(target[0], target[1], _days_in_month(*target))
         enabled = (min is None or last >= min) and (max is None or date(*target, 1) <= max)
+        active: dict[str, Any] = {"bg_hover": "$surface_hover", "on_click": lambda: shown_month.set(target)}
         return box(
             key=f"{k}-{'prev' if delta < 0 else 'next'}",
             padding=6,
@@ -310,9 +317,7 @@ def date_picker(
             focusable=False,
             role="button",
             label=label,
-            **(
-                {"bg_hover": "$surface_hover", "on_click": lambda: shown_month.set(target)} if enabled else {}
-            ),
+            **(active if enabled else {}),
         )[image(icon, width=14)]
 
     def day(d: date) -> Element:
@@ -383,7 +388,7 @@ def date_picker(
     label = format(current) if current is not None else None
     name = style.pop("label", None)  # el nombre lo lleva el disparador, que es el que tiene el rol
     trigger = row(
-        **{**_INPUT_STYLE, "padding": (0, 12)},
+        **_input_style(padding=(0, 12)),
         key=k,
         height=_HEIGHT,
         gap=8,
@@ -403,7 +408,8 @@ def date_picker(
         image(_CHEVRON, width=14),
     ]
     opened = open_() and [backdrop(lambda: open_.set(False)), panel(content=calendar_panel)]
-    return column(**{"min_width": 180, **style})[trigger, opened]
+    props: dict[str, Any] = {"min_width": 180, **style}
+    return column(**props)[trigger, opened]
 
 
 def _clock(t: time, hour12: bool) -> str:
@@ -425,7 +431,7 @@ def time_picker(
     format: Callable[[time], str] | None = None,
     on_change: Callable[[time], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[TimePickerStyle],
 ) -> Element:
     """Selector de hora: un desplegable con las horas del día cada `step` minutos.
 
@@ -516,7 +522,7 @@ def time_picker(
     label = show(current) if current is not None else None
     name = style.pop("label", None)  # el nombre lo lleva el disparador, que es el que tiene el rol
     trigger = row(
-        **{**_INPUT_STYLE, "padding": (0, 12)},
+        **_input_style(padding=(0, 12)),
         key=k,
         height=_HEIGHT,
         gap=8,
@@ -539,7 +545,8 @@ def time_picker(
         backdrop(lambda: open_.set(False)),
         panel(width="100%", content=listing),
     ]
-    return column(**{"min_width": 150, **style})[trigger, opened]
+    props: dict[str, Any] = {"min_width": 150, **style}
+    return column(**props)[trigger, opened]
 
 
 # Paleta por defecto de `color_picker`: tonos que se leen bien sobre fondo claro y oscuro.
@@ -598,7 +605,7 @@ def color_picker(
     custom: bool = True,
     on_change: Callable[[str], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[ColorPickerStyle],
 ) -> Element:
     """Selector de color: un desplegable con una paleta, un campo hexadecimal y,
     con `custom`, un cuadro de saturación y brillo con su franja de tono.
@@ -791,7 +798,7 @@ def color_picker(
         on_submit=settle,
         on_blur=settle,
         label="Hexadecimal",
-        **{**_INPUT_STYLE, "padding": (6, 10)},
+        **_input_style(padding=(6, 10)),
     )
     content = column(gap=12, padding=8, width=width + 16, role="dialog", label="Elegir color")[
         picker,
@@ -804,7 +811,7 @@ def color_picker(
         ],
     ]
     trigger = row(
-        **{**_INPUT_STYLE, "padding": (0, 12, 0, 8)},
+        **_input_style(padding=(0, 12, 0, 8)),
         key=k,
         height=_HEIGHT,
         gap=8,
@@ -823,4 +830,5 @@ def color_picker(
         image(_CHEVRON, width=14),
     ]
     opened = open_() and [backdrop(lambda: open_.set(False)), panel(content=content)]
-    return column(**{"key": f"{k}-picker", "min_width": 150, "on_key": on_key, **style})[trigger, opened]
+    props: dict[str, Any] = {"key": f"{k}-picker", "min_width": 150, "on_key": on_key, **style}
+    return column(**props)[trigger, opened]

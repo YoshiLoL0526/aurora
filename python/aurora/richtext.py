@@ -11,9 +11,14 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .elements import Element, box, column, row, text
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from ._style_variants import MarkdownStyle, RichTextStyle
 
 # Familias monoespaciadas para el código, en orden de preferencia (la primera instalada gana).
 MONO = "Cascadia Mono, Consolas, SF Mono, Menlo, DejaVu Sans Mono, Liberation Mono, monospace"
@@ -75,7 +80,7 @@ def _flatten(parts: Spans) -> Iterable[Span]:
             yield from _flatten(part)
 
 
-def rich_text(*parts: Spans, key: str | None = None, **style: Any) -> Element:
+def rich_text(*parts: Spans, key: str | None = None, **style: Unpack[RichTextStyle]) -> Element:
     """Párrafo con tramos de estilos distintos: `rich_text("Pulsa ", span("Guardar", weight=700), ".")`.
 
     Cada parte es un texto (con el estilo del párrafo), un `span(...)` o una
@@ -194,7 +199,7 @@ def markdown(
     on_link: Callable[[str], Any] | None = None,
     gap: float = 12,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[MarkdownStyle],
 ) -> Element:
     """Render de Markdown básico: títulos, párrafos, listas (con viñetas, numeradas
     y anidadas), citas, código en línea y en bloque, separadores, énfasis
@@ -209,7 +214,8 @@ def markdown(
     """
     follow = on_link or _open_url
     lines = _ESCAPE.sub(lambda m: _PROTECT[m[1]], source.expandtabs(4)).splitlines()
-    return column(**{"gap": gap, "key": key, **style})[_blocks(lines, follow)]
+    props: dict[str, Any] = {"gap": gap, "key": key, **style}
+    return column(**props)[_blocks(lines, follow)]
 
 
 def _blocks(lines: list[str], on_link: Callable[[str], Any]) -> list[Element]:

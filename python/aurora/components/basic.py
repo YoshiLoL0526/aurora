@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..elements import Element, TextLike, box, column, image, row, text
 from ._shared import _a11y_label
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style import Style
+    from .._style_variants import AvatarStyle, ButtonStyle, DividerStyle
 
 Variant = Literal["primary", "soft", "ghost"]
 
@@ -42,7 +48,7 @@ def button(
     *,
     variant: Variant = "primary",
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[ButtonStyle],
 ) -> Element:
     styles = {
         **_BUTTON_VARIANTS[variant],
@@ -61,19 +67,18 @@ def button(
     ]
 
 
-def card(**style: Any) -> Element:
-    return column(
-        **{
-            "bg": "$surface",
-            "radius": "$lg",
-            "padding": 20,
-            "gap": 12,
-            "border_width": 1,
-            "border_color": "$border",
-            "shadow": (0, 10, 30, "$shadow"),
-            **style,
-        }
-    )
+def card(**style: Unpack[Style]) -> Element:
+    props: dict[str, Any] = {
+        "bg": "$surface",
+        "radius": "$lg",
+        "padding": 20,
+        "gap": 12,
+        "border_width": 1,
+        "border_color": "$border",
+        "shadow": (0, 10, 30, "$shadow"),
+        **style,
+    }
+    return column(**props)
 
 
 def badge(label: TextLike, *, tone: str = "accent") -> Element:
@@ -93,10 +98,11 @@ def stat(label: str, value: TextLike, delta: str | None = None, *, positive: boo
     ]
 
 
-def divider(*, vertical: bool = False, color: str = "$border", **style: Any) -> Element:
+def divider(*, vertical: bool = False, color: str = "$border", **style: Unpack[DividerStyle]) -> Element:
     """Línea separadora de 1 px. Horizontal por defecto; `vertical=True` en una `row`."""
     size = {"width": 1} if vertical else {"height": 1}
-    return box(**{**size, "bg": color, "shrink": 0, "role": "separator", **style})
+    props: dict[str, Any] = {**size, "bg": color, "shrink": 0, "role": "separator", **style}
+    return box(**props)
 
 
 _AVATAR_TONES = ("$primary", "$accent", "$success", "$muted")
@@ -107,23 +113,23 @@ def avatar(
     *,
     src: str | os.PathLike[str] | bytes | None = None,
     size: float = 32,
-    **style: Any,
+    **style: Unpack[AvatarStyle],
 ) -> Element:
     """Avatar circular: la imagen `src` recortada, o las iniciales de `name` sobre un
     color estable (el mismo nombre siempre da el mismo color)."""
-    shape = {"width": size, "height": size, "radius": "$full", "shrink": 0}
+    shape: dict[str, Any] = {"width": size, "height": size, "radius": "$full", "shrink": 0}
     if src is not None:
-        return image(src, fit="cover", **{"alt": name or None, **shape, **style})
+        photo: dict[str, Any] = {"alt": name or None, **shape, **style}
+        return image(src, fit="cover", **photo)
     initials = "".join(word[0] for word in name.split()[:2]).upper() or "?"
     tone = _AVATAR_TONES[sum(map(ord, name)) % len(_AVATAR_TONES)]
-    return box(
-        **{
-            **shape,
-            "bg": tone,
-            "align": "center",
-            "justify": "center",
-            "role": "image",
-            **({"label": name} if name else {}),
-            **style,
-        }
-    )[text(initials, size=size * 0.38, weight=700, color="#FFFFFF", hidden=bool(name))]
+    props: dict[str, Any] = {
+        **shape,
+        "bg": tone,
+        "align": "center",
+        "justify": "center",
+        "role": "image",
+        **({"label": name} if name else {}),
+        **style,
+    }
+    return box(**props)[text(initials, size=size * 0.38, weight=700, color="#FFFFFF", hidden=bool(name))]

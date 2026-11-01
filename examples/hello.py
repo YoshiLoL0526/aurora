@@ -40,7 +40,7 @@ def counter():
         row(align="center", gap=12)[
             text("Paso", size=12, color="$muted"),
             slider(step, min=1, max=50, width=240, key="step", on_change=snap_step),
-            text(lambda: f"×{round(step())}", size=12, weight=700, width=32, text_align="end"),
+            text(lambda: f"×{round(step())}", size=12, weight=700, width=32, text_align="right"),
         ],
     ]
 

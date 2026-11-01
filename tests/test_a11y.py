@@ -41,7 +41,7 @@ def test_rol_desconocido_es_error_claro():
 
 def test_live_desconocido_es_error_claro():
     with pytest.raises(ValueError, match="live desconocido"):
-        _pilot(lambda: box(live="shouty"))
+        _pilot(lambda: box(live="shouty"))  # ty: ignore[invalid-argument-type]
 
 
 def test_un_label_con_dolar_no_se_resuelve_como_token():

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from .._icons import _CHEVRON, _CHEVRON_RIGHT
 from ..elements import Element, TextLike, box, column, image, row, scroll, text
 from ..signal import Signal
 from ._state import _HEIGHTS, _TREE_OPEN, _TREE_SELECTED, _VIEWPORTS
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import TreeStyle, VirtualListStyle
 
 N = TypeVar("N")
 
@@ -29,7 +34,7 @@ def virtual_list(
     stick_to_end: bool = False,
     role: str = "list",
     item_role: str = "listitem",
-    **style: Any,
+    **style: Unpack[VirtualListStyle],
 ) -> Element:
     """Lista desplazable de `count` filas que solo construye las visibles.
 
@@ -68,8 +73,7 @@ def virtual_list(
             stick_to_end=stick_to_end,
             **style,
         )
-    if stick_to_end:
-        style["stick_to_end"] = True
+    sticky: dict[str, Any] = {"stick_to_end": True} if stick_to_end else {}
     return _virtual(
         count,
         item,
@@ -79,6 +83,7 @@ def virtual_list(
         overscan=overscan,
         role=role,
         row_props=row_props,
+        **sticky,
         **style,
     )
 
@@ -295,7 +300,7 @@ def tree(
     item_height: float = 30,
     indent: float = 18,
     overscan: int = 4,
-    **style: Any,
+    **style: Unpack[TreeStyle],
 ) -> Element:
     """Árbol expandible y virtualizado: carpetas que se despliegan, con selección y teclado.
 
@@ -398,6 +403,7 @@ def tree(
         is_open = r.branch and r.ident in open_ids
         is_chosen = i == index
         name = label(r.node)
+        branch: dict[str, Any] = {"on_click": lambda: toggle(r), "bg_hover": "$border"} if r.branch else {}
         arrow = box(
             width=16,
             height=16,
@@ -407,7 +413,7 @@ def tree(
             radius=4,
             focusable=False,
             hidden=True,
-            **({"on_click": lambda: toggle(r), "bg_hover": "$border"} if r.branch else {}),
+            **branch,
         )[r.branch and image(_CHEVRON if is_open else _CHEVRON_RIGHT, width=12)]
         return row(
             key=f"{key}-{_ident_key(r.ident)}",

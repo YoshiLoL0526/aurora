@@ -159,4 +159,4 @@ def test_overlay_inside_scroll_escapes_the_clip(tmp_path):
 
 def test_invalid_scroll_axis_raises(tmp_path):
     with pytest.raises(ValueError, match="scroll"):
-        _core.render_png(box(scroll="z").to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+        _core.render_png(box(scroll="z").to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)  # ty: ignore[invalid-argument-type]

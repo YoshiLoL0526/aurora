@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .. import _motion as motion
 from .. import animate
 from ..elements import Element, TextLike, box, column, row, text
 from ..signal import Signal
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import ProgressStyle, SkeletonStyle, SpinnerStyle, ToastStyle
 
 
 def progress(
@@ -17,7 +22,7 @@ def progress(
     *,
     max: float = 1.0,
     color: str | tuple[str, str, float] = "$primary",
-    **style: Any,
+    **style: Unpack[ProgressStyle],
 ) -> Element:
     """Barra de progreso: `value` de 0 a `max` (por defecto, una fracción de 0 a 1).
 
@@ -34,22 +39,28 @@ def progress(
         ratio = 0.0
     ratio = 0.0 if ratio < 0.0 else 1.0 if ratio > 1.0 else ratio
     fill: dict[str, Any] = {"bg": color} if isinstance(color, str) else {"gradient": color}
-    return box(
-        **{
-            "height": 8,
-            "radius": "$full",
-            "bg": "$surface_hover",
-            "role": "progressbar",
-            "value": current,
-            "value_min": 0.0,
-            "value_max": float(max),
-            **style,
-        }
-    )[box(width=f"{ratio * 100:.4f}%", height="100%", radius="$full", animate_layout=motion.move(), **fill)]
+    track: dict[str, Any] = {
+        "height": 8,
+        "radius": "$full",
+        "bg": "$surface_hover",
+        "role": "progressbar",
+        "value": current,
+        "value_min": 0.0,
+        "value_max": float(max),
+        **style,
+    }
+    return box(**track)[
+        box(width=f"{ratio * 100:.4f}%", height="100%", radius="$full", animate_layout=motion.move(), **fill)
+    ]
 
 
 def spinner(
-    *, size: float = 8, gap: float = 5, tone: str = "$primary", key: str | None = None, **style: Any
+    *,
+    size: float = 8,
+    gap: float = 5,
+    tone: str = "$primary",
+    key: str | None = None,
+    **style: Unpack[SpinnerStyle],
 ) -> Element:
     """Indicador de carga: tres puntos que laten en cadena (vaivén perpetuo).
 
@@ -57,7 +68,8 @@ def spinner(
     lo que necesita un indicador de carga — y `pilot.settle()` no lo detiene.
     Con `App(motion=False)` queda fijo, a opacidad plena.
     """
-    return row(key=key, gap=gap, align="center", role="progressbar", **style)[
+    props: dict[str, Any] = {"align": "center", "role": "progressbar", **style}
+    return row(key=key, gap=gap, **props)[
         [
             box(width=size, height=size, radius="$full", bg=tone, pulse=motion.pulse(delay=i * 0.15))
             for i in range(3)
@@ -71,7 +83,7 @@ def skeleton(
     width: str | float = "100%",
     height: float = 14,
     gap: float = 8,
-    **style: Any,
+    **style: Unpack[SkeletonStyle],
 ) -> Element:
     """Marcador de carga: bloques grises con la forma del contenido que llega.
 
@@ -81,20 +93,18 @@ def skeleton(
     """
     # Marcador de carga: decorativo, no se anuncia.
     # `$surface_pressed` y no `$surface_hover`: este casi no se distingue del fondo claro.
-    base = {
+    base: dict[str, Any] = {
         "bg": "$surface_pressed",
         "radius": "$sm",
         "pulse": motion.pulse(1.6, floor=0.55),
         "hidden": True,
         **style,
     }
+    line: dict[str, Any] = {"width": width, "height": height, **base}
     if lines <= 1:
-        return box(**{"width": width, "height": height, **base})
-    last = "60%" if isinstance(width, str) else width * 0.6
-    return column(gap=gap)[
-        [box(**{"width": width, "height": height, **base}) for _ in range(lines - 1)],
-        box(**{"width": last, "height": height, **base}),
-    ]
+        return box(**line)
+    last: dict[str, Any] = {**line, "width": "60%" if isinstance(width, str) else width * 0.6}
+    return column(gap=gap)[[box(**line) for _ in range(lines - 1)], box(**last)]
 
 
 def toast(
@@ -103,7 +113,7 @@ def toast(
     on_close: Callable[[], Any] | None = None,
     tone: str = "$accent",
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[ToastStyle],
 ) -> Element | None:
     """Aviso flotante (abajo a la derecha). Se muestra si `message` no es `None`.
 
@@ -125,6 +135,7 @@ def toast(
         if on_close is not None:
             on_close()
 
+    props: dict[str, Any] = {"role": "status", "live": "polite", **style}
     return row(
         key=key,
         position="absolute",
@@ -142,9 +153,7 @@ def toast(
         enter=motion.entering(animate.slide(y=8)),
         exit=motion.leaving(animate.fade()),
         on_click=close,
-        role="status",
-        live="polite",
-        **style,
+        **props,
     )[
         box(width=8, height=8, radius="$full", bg=tone, shrink=0),
         text(message, size=13, shrink=1, max_lines=2),

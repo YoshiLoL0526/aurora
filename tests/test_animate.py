@@ -65,7 +65,7 @@ def test_invalid_values_raise_clear_errors():
         ({"enter": "fade"}, "enter debe ser un efecto"),
         ({"animate_layout": "sí"}, "transition debe ser"),
     ]:
-        app = App(lambda props=props: box(width=10, height=10, **props), size=(40, 40))
+        app = App(lambda props=props: box(width=10, height=10, **props), size=(40, 40))  # ty: ignore[invalid-argument-type]
         with pytest.raises(ValueError, match=message):
             app.pilot()
 

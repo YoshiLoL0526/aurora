@@ -21,10 +21,15 @@ from __future__ import annotations
 
 from array import array
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from .elements import Element, _default_height
 from .theme import Theme
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from ._style_variants import ChartStyle
 
 Kind = Literal["line", "area", "bar", "scatter"]
 
@@ -151,7 +156,7 @@ def chart(
     label_size: float = 11,
     label_color: str = "$muted",
     grid_color: str = "$border",
-    **style: Any,
+    **style: Unpack[ChartStyle],
 ) -> Element:
     """Gráfico nativo alimentado por tus datos.
 

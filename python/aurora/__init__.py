@@ -20,6 +20,7 @@ from . import inspector as _inspector
 from . import reload as _reload
 from ._core import DragEvent, KeyEvent, Pilot, ResizeEvent, ScrollEvent
 from ._deprecation import AuroraDeprecationWarning
+from ._style import Style
 from .canvas import Canvas, Path, canvas
 from .charts import chart
 from .components import (
@@ -67,7 +68,7 @@ from .resources import resource
 from .richtext import Span, markdown, rich_text, span
 from .signal import Signal
 from .table import Column, table
-from .theme import DAYLIGHT, MIDNIGHT, Theme
+from .theme import DAYLIGHT, MIDNIGHT, Theme, ThemeTokenError
 
 if TYPE_CHECKING:
     # `asyncio` tarda en importarse más que todo Aurora: solo lo carga `spawn`.
@@ -91,7 +92,9 @@ __all__ = [
     "ScrollEvent",
     "Signal",
     "Span",
+    "Style",
     "Theme",
+    "ThemeTokenError",
     "Window",
     "accordion",
     "animate",

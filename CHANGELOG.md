@@ -20,8 +20,26 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   y `0` o Inicio vuelven a la vista completa. Para los lectores de pantalla, su valor es la
   ventana visible (`"Zoom 1,25×: 100 – 400"`), una región viva la anuncia al cambiar y su
   descripción explica las teclas.
+- `Style`: un `TypedDict` con todas las propiedades de estilo, de accesibilidad y los manejadores.
+  Anota el `**estilo` de las primitivas y los componentes (`**estilo: Unpack[Style]`), así que
+  los editores y los comprobadores de tipos autocompletan las props y avisan de un valor que no
+  encaja (`direction="rows"`); sirve también para anotar componentes propios.
+- `ThemeTokenError`, el error de un token de tema desconocido: dice en qué propiedad estaba y
+  sugiere el más parecido (`¿Quisiste decir '$primary'?`). Es subclase de `KeyError`, que es lo
+  que se lanzaba antes.
 
 ### Cambiado
+
+- **Una prop o un manejador desconocidos lanzan `TypeError`** al crear el elemento, con la
+  función que lo recibió y la sugerencia más parecida: `column(bgg="red")` da
+  `column() no acepta la prop 'bgg'. ¿Quisiste decir 'bg'?` y `button("a", onclick=f)` sugiere
+  `on_click`. Antes se ignoraban sin aviso, igual que un `on_<evento>` que el núcleo nunca
+  despacha. No hay periodo de obsolescencia porque nada que funcionase deja de hacerlo: un
+  nombre desconocido nunca fue API pública (lo son las propiedades de la referencia) y no tenía
+  ningún efecto, así que el error solo destapa un fallo que ya estaba (es el caso de «un
+  comportamiento que era un bug» de la
+  [política de estabilidad](https://yoshilol0526.github.io/aurora/stability/)). La comprobación
+  no añade coste a la reconstrucción de la vista.
 
 - El control de 60 fps de los benchmarks (`benchmarks/run.py --check`, el que usa la CI) exige
   16,7 ms también a `dashboard_50 rebuild` y `typing type`, que tenían un presupuesto
@@ -29,6 +47,11 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ### Corregido
 
+- `examples/hello.py` alineaba un texto con `text_align="end"`, que no existe (es `"right"`), y
+  se quedaba a la izquierda: lo encontró el tipado nuevo.
+- `spinner`, `toast`, `pages` y `sortable` aceptan en su `**estilo` las props que ponen ellos
+  (`role`, `live`, `align`, `enter`, `exit`…) y las sustituyen; antes fallaban con
+  `TypeError: got multiple values`.
 - En una columna con `align` distinto de `"stretch"`, un contenedor sin `width` (una fila, una
   columna, un `markdown`) ya no se sale del ancho de la columna: mide como mucho lo que ella
   (`fit-content` de CSS) y su contenido se parte en líneas, como un `text` largo. Antes una

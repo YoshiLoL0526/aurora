@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .. import _motion as motion
 from .. import animate
@@ -13,6 +13,20 @@ from ..signal import Signal
 from ._shared import _INPUT_STYLE, Options, _a11y_label, _field, _items, _toggle
 from ._state import _DRAFTS, _DRAG_START
 
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import (
+        CheckboxStyle,
+        FieldStyle,
+        NumberInputStyle,
+        RadioStyle,
+        SliderStyle,
+        SwitchStyle,
+        TextareaStyle,
+        TextInputStyle,
+    )
+
 
 def text_input(
     value: Signal[str] | TextLike,
@@ -21,7 +35,7 @@ def text_input(
     on_change: Callable[[str], Any] | None = None,
     on_submit: Callable[[str], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[TextInputStyle],
 ) -> Element:
     """Campo de texto de una línea.
 
@@ -40,7 +54,7 @@ def textarea(
     on_change: Callable[[str], Any] | None = None,
     on_submit: Callable[[str], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[TextareaStyle],
 ) -> Element:
     """Campo de texto multilínea. Crece con el contenido (mínimo `rows` líneas).
 
@@ -79,7 +93,7 @@ def field(
     hint: str | None = None,
     error: str | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[FieldStyle],
 ) -> Element:
     """Campo de formulario: etiqueta, control y mensaje de ayuda o error.
 
@@ -89,7 +103,8 @@ def field(
     """
     message = error if error else hint
     named = label is not None and _name_control(control, label)
-    return column(**{"gap": 6, "key": key, **style})[
+    props: dict[str, Any] = {"gap": 6, "key": key, **style}
+    return column(**props)[
         # Si el control lleva el nombre, el texto visible no se anuncia dos veces.
         label is not None and text(label, size=12, weight=600, hidden=named),
         control,
@@ -103,7 +118,7 @@ def checkbox(
     *,
     on_change: Callable[[bool], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[CheckboxStyle],
 ) -> Element:
     """Casilla de verificación. Con un `Signal[bool]` se enlaza sola; `on_change(valor)`
     se llama en cada cambio. Se activa con clic, Enter o Espacio.
@@ -133,19 +148,18 @@ def checkbox(
             exit=motion.leaving(animate.zoom(0.55)),
         )
     ]
-    return row(
-        **{
-            "gap": 8,
-            "align": "center",
-            "radius": 6,
-            "key": key,
-            "on_click": flip,
-            "role": "checkbox",
-            "checked": on,
-            **label_props,
-            **style,
-        }
-    )[mark, label is not None and text(label, hidden=bool(label_props))]
+    props: dict[str, Any] = {
+        "gap": 8,
+        "align": "center",
+        "radius": 6,
+        "key": key,
+        "on_click": flip,
+        "role": "checkbox",
+        "checked": on,
+        **label_props,
+        **style,
+    }
+    return row(**props)[mark, label is not None and text(label, hidden=bool(label_props))]
 
 
 def switch(
@@ -154,7 +168,7 @@ def switch(
     *,
     on_change: Callable[[bool], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[SwitchStyle],
 ) -> Element:
     """Interruptor encendido/apagado. Igual que `checkbox`, con otra forma.
 
@@ -183,22 +197,23 @@ def switch(
             animate_layout=motion.move(),
         )
     ]
-    return row(
-        **{
-            "gap": 10,
-            "align": "center",
-            "radius": 10,
-            "key": key,
-            "on_click": flip,
-            "role": "switch",
-            "checked": value,
-            **label_props,
-            **style,
-        }
-    )[track, label is not None and text(label, hidden=bool(label_props))]
+    props: dict[str, Any] = {
+        "gap": 10,
+        "align": "center",
+        "radius": 10,
+        "key": key,
+        "on_click": flip,
+        "role": "switch",
+        "checked": value,
+        **label_props,
+        **style,
+    }
+    return row(**props)[track, label is not None and text(label, hidden=bool(label_props))]
 
 
-def radio(options: Options, selected: Signal[Any], *, key: str | None = None, **style: Any) -> Element:
+def radio(
+    options: Options, selected: Signal[Any], *, key: str | None = None, **style: Unpack[RadioStyle]
+) -> Element:
     """Grupo de botones de opción: uno activo a la vez.
 
     `options` son valores (o pares `(valor, etiqueta)`) y `selected`, el `Signal`
@@ -255,9 +270,8 @@ def radio(options: Options, selected: Signal[Any], *, key: str | None = None, **
             on_click=lambda v=value: selected.set(v),
         )[circle, text(label, transition=motion.fast(), hidden=True)]
 
-    return column(**{"gap": 10, "role": "radiogroup", "on_key": on_key, **style})[
-        [option(i, v, label) for i, (v, label) in enumerate(items)]
-    ]
+    props: dict[str, Any] = {"gap": 10, "role": "radiogroup", "on_key": on_key, **style}
+    return column(**props)[[option(i, v, label) for i, (v, label) in enumerate(items)]]
 
 
 def slider(
@@ -268,7 +282,7 @@ def slider(
     width: float = 180,
     on_change: Callable[[float], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[SliderStyle],
 ) -> Element:
     """Deslizador horizontal: arrastra el pulgar para cambiar `value`.
 
@@ -352,6 +366,15 @@ def slider(
         )
     ]
     rail = box(width="100%", height=6, radius="$full", bg="$surface_hover", key=f"{k}-rail")[fill, anchor]
+    props: dict[str, Any] = {
+        "width": width,
+        "height": 24,
+        "padding": (0, 8),
+        "justify": "center",
+        "cursor": "pointer",
+        "focusable": True,
+        **style,
+    }
     return box(
         key=key,
         on_drag=on_drag,
@@ -362,15 +385,7 @@ def slider(
         value_min=low,
         value_max=high,
         value_step=step,
-        **{
-            "width": width,
-            "height": 24,
-            "padding": (0, 8),
-            "justify": "center",
-            "cursor": "pointer",
-            "focusable": True,
-            **style,
-        },
+        **props,
     )[rail]
 
 
@@ -389,7 +404,7 @@ def number_input(
     decimals: int | None = None,
     on_change: Callable[[float], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[NumberInputStyle],
 ) -> Element:
     """Campo numérico: se escribe el número o se ajusta con ↑/↓ y sus flechas.
 
@@ -467,6 +482,7 @@ def number_input(
     can_down = min is None or current > min
 
     def arrow(icon: bytes, direction: int, enabled: bool) -> Element:
+        active: dict[str, Any] = {"bg_hover": "$surface_hover", "on_click": lambda: nudge(direction)}
         return box(
             key=f"{k}-{'up' if direction > 0 else 'down'}",
             grow=1,
@@ -477,7 +493,7 @@ def number_input(
             opacity=1.0 if enabled else 0.35,
             focusable=False,
             hidden=True,
-            **({"bg_hover": "$surface_hover", "on_click": lambda: nudge(direction)} if enabled else {}),
+            **(active if enabled else {}),
         )[image(icon, width=12)]
 
     shown = draft() if draft() is not None else fmt(current)
@@ -499,8 +515,16 @@ def number_input(
         padding=(6, 0),
         **a11y_range,
     )
-    styles = {**_INPUT_STYLE, "padding": (3, 4, 3, 12), "gap": 4, "align": "center", "width": 140}
-    return row(**{**styles, "key": k, **style})[
+    props: dict[str, Any] = {
+        **_INPUT_STYLE,
+        "padding": (3, 4, 3, 12),
+        "gap": 4,
+        "align": "center",
+        "width": 140,
+        "key": k,
+        **style,
+    }
+    return row(**props)[
         field,
         column(gap=1, height=34)[arrow(_ARROW_UP, 1, can_up), arrow(_ARROW_DOWN, -1, can_down)],
     ]

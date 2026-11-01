@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .. import _motion as motion
 from .. import animate
@@ -12,8 +12,15 @@ from ..signal import Signal
 from ._shared import Options, _items
 from .basic import divider
 
+if TYPE_CHECKING:
+    from typing import Unpack
 
-def tabs(options: Options, selected: Signal[Any], *, key: str | None = None, **style: Any) -> Element:
+    from .._style_variants import AccordionStyle, PagesStyle, SegmentedStyle, TabsStyle
+
+
+def tabs(
+    options: Options, selected: Signal[Any], *, key: str | None = None, **style: Unpack[TabsStyle]
+) -> Element:
     """Pestañas. `options` son valores (o pares `(valor, etiqueta)`) y `selected` el
     `Signal` con el valor activo. Con una pestaña enfocada, ← y → cambian de pestaña."""
     items = _items(options)
@@ -51,7 +58,8 @@ def tabs(options: Options, selected: Signal[Any], *, key: str | None = None, **s
             box(height=2, radius=1, bg="$primary" if active else "#00000000", transition=motion.fast()),
         ]
 
-    return column(**{"gap": 0, **style})[
+    props: dict[str, Any] = {"gap": 0, **style}
+    return column(**props)[
         row(gap=4, on_key=on_key, role="tablist")[[tab(i, v, label) for i, (v, label) in enumerate(items)]],
         divider(),
     ]
@@ -62,7 +70,7 @@ def pages(
     views: Mapping[Any, Callable[[], Element]],
     *,
     key: str = "pages",
-    **style: Any,
+    **style: Unpack[PagesStyle],
 ) -> Element:
     """Una vista por valor de `current`, con transición al cambiar.
 
@@ -81,16 +89,21 @@ def pages(
     if view is None:
         options = ", ".join(repr(v) for v in views)
         raise ValueError(f"pages: no hay vista para {value!r} (usa {options})")
-    return scroll(
-        key=f"{key}-{value}",
-        enter=motion.entering(animate.fade()),
-        exit=motion.leaving(animate.fade()),
+    props: dict[str, Any] = {
+        "enter": motion.entering(animate.fade()),
+        "exit": motion.leaving(animate.fade()),
         **style,
-    )[view()]
+    }
+    return scroll(key=f"{key}-{value}", **props)[view()]
 
 
 def segmented(
-    options: Options, selected: Signal[Any], *, width: float = 220, key: str | None = None, **style: Any
+    options: Options,
+    selected: Signal[Any],
+    *,
+    width: float = 220,
+    key: str | None = None,
+    **style: Unpack[SegmentedStyle],
 ) -> Element:
     """Selector segmentado: un pulgar se desliza hasta la opción activa.
 
@@ -142,17 +155,16 @@ def segmented(
             )
         ]
 
-    return row(
-        **{
-            "padding": 3,
-            "radius": "$md",
-            "bg": "$surface_hover",
-            "width": width,
-            "role": "radiogroup",
-            "on_key": on_key,
-            **style,
-        }
-    )[
+    props: dict[str, Any] = {
+        "padding": 3,
+        "radius": "$md",
+        "bg": "$surface_hover",
+        "width": width,
+        "role": "radiogroup",
+        "on_key": on_key,
+        **style,
+    }
+    return row(**props)[
         box(grow=1, width=0)[
             # El pulgar, primero: se pinta debajo de las etiquetas.
             box(
@@ -177,7 +189,7 @@ def accordion(
     open: Signal[Any],
     *,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[AccordionStyle],
 ) -> Element:
     """Acordeón: cada sección se despliega al pulsar su cabecera.
 
@@ -217,4 +229,5 @@ def accordion(
             )[content],
         ]
 
-    return column(**{"gap": 4, **style})[[section(v, t, c) for v, t, c in sections]]
+    props: dict[str, Any] = {"gap": 4, **style}
+    return column(**props)[[section(v, t, c) for v, t, c in sections]]

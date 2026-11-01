@@ -6,6 +6,27 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+class ThemeTokenError(KeyError):
+    """Un `"$token"` que no está en el tema. Hereda de `KeyError` (lo que se
+    lanzaba antes) y sugiere el token más parecido."""
+
+    def __init__(self, token: str, known: list[str], prop: str | None = None) -> None:
+        import difflib  # solo al fallar: no cuesta en el arranque
+
+        self.token = token
+        self.prop = prop
+        where = f" en {prop!r}" if prop else ""
+        message = f"token de tema desconocido{where}: {token!r}."
+        close = difflib.get_close_matches(token, [f"${name}" for name in known], n=1)
+        if close:
+            message += f" ¿Quisiste decir {close[0]!r}?"
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        # `KeyError` muestra su argumento entre comillas: el mensaje se lee mejor sin ellas.
+        return str(self.args[0])
+
+
 @dataclass(frozen=True)
 class Theme:
     colors: dict[str, str] = field(default_factory=dict)
@@ -19,7 +40,7 @@ class Theme:
                 return self.colors[name]
             if name in self.radius:
                 return self.radius[name]
-            raise KeyError(f"token de tema desconocido: {value}")
+            raise ThemeTokenError(value, [*self.colors, *self.radius])
         if isinstance(value, tuple):
             return tuple(self.resolve(v) for v in value)
         return value

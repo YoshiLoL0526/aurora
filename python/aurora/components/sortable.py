@@ -12,11 +12,16 @@ from __future__ import annotations
 import itertools
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, Generic, Literal, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, overload
 
 from ..elements import Child, Element, TextLike, box, text
 from ..signal import Signal
 from ._state import _ANNOUNCE, _DRAGS, _ZONES
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import SortableStyle
 
 T = TypeVar("T")
 
@@ -115,7 +120,7 @@ def sortable(
     direction: Literal["column", "row"] = "column",
     gap: float = 8,
     empty: Child = None,
-    **style: Any,
+    **style: Unpack[SortableStyle],
 ) -> Element:
     """Lista cuyos elementos se reordenan arrastrándolos (o con el teclado).
 
@@ -288,9 +293,11 @@ def sortable(
 
     def line(where: Literal["before", "after"]) -> Element:
         offset = -(gap / 2) - 1
-        edge = {"top" if where == "before" else "bottom": offset} if not row_axis else {}
-        side = {"left" if where == "before" else "right": offset} if row_axis else {}
-        size = {"width": 2, "top": 0, "bottom": 0} if row_axis else {"height": 2, "left": 0, "right": 0}
+        edge: dict[str, Any] = {"top" if where == "before" else "bottom": offset} if not row_axis else {}
+        side: dict[str, Any] = {"left" if where == "before" else "right": offset} if row_axis else {}
+        size: dict[str, Any] = (
+            {"width": 2, "top": 0, "bottom": 0} if row_axis else {"height": 2, "left": 0, "right": 0}
+        )
         return box(position="absolute", radius=1, bg="$primary", hidden=True, **size, **edge, **side)
 
     def wrap(i: int, value: T) -> Element:
@@ -324,14 +331,8 @@ def sortable(
 
     zone_name, message = announce()
     highlight = {"bg": "$glow"} if empty_target else {}
-    return box(
-        key=key,
-        direction=direction,
-        gap=gap,
-        drop_target=True,
-        role="list",
-        **{"min_height": 48, "radius": "$sm", **style, **highlight},
-    )[
+    props: dict[str, Any] = {"role": "list", "min_height": 48, "radius": "$sm", **style, **highlight}
+    return box(key=key, direction=direction, gap=gap, drop_target=True, **props)[
         [wrap(i, v) for i, v in enumerate(values)],
         not values and empty,
         # Región viva: los anuncios salen de la lista donde está ahora el elemento.

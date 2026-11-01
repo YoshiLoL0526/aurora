@@ -55,6 +55,11 @@ _INPUT_STYLE: dict[str, Any] = dict(
 )
 
 
+def _input_style(**overrides: Any) -> dict[str, Any]:
+    """El estilo de los campos de texto con algunas claves cambiadas."""
+    return {**_INPUT_STYLE, **overrides}
+
+
 def _field(
     value: Signal[str] | TextLike,
     on_change: Callable[[str], Any] | None,

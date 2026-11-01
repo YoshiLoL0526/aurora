@@ -21,15 +21,20 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable, Iterable, Mapping
-from typing import Any, ClassVar, Literal, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Union
 
-from .theme import Theme
+from ._style import EVENT_NAMES, STYLE_NAMES, unknown_prop
+from .theme import Theme, ThemeTokenError
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from ._style import Style
+    from ._style_variants import ImageStyle
 
 Child = Union["Element", str, bool, None, Callable[[], "Child"], Iterable["Child"]]
 TextLike = str | Callable[[], Any]
 
-# Alias cómodos para los props de texto más usados.
-_ALIASES = {"size": "font_size", "weight": "font_weight", "family": "font_family"}
 # Texto libre que no se interpreta como token de tema aunque empiece por "$".
 _LITERAL = {"placeholder", "src", "label", "alt", "description", "value", "role", "live"}
 
@@ -85,19 +90,26 @@ class Element:
         if content is not None and callable(content):
             dyn |= _LAZY_CONTENT
         for k, v in props.items():
-            if v is None:
-                continue
-            if k[:3] == "on_":
-                if k == "on_context_menu" and not callable(v):
-                    # Una lista describe el menú contextual; el núcleo la pide al
-                    # abrirlo, así que se envuelve en un callable.
-                    handlers["context_menu"] = lambda menu=v: menu
-                else:
-                    handlers[k[3:]] = v
-            else:
-                style[_ALIASES.get(k, k)] = v
+            # Una consulta dice a la vez si `k` es estilo, manejador o un error.
+            name = STYLE_NAMES.get(k)
+            if name is not None:
+                if v is None:
+                    continue
+                style[name] = v
                 if callable(v):
                     dyn |= _LAZY_STYLE
+                continue
+            event = EVENT_NAMES.get(k)
+            if event is None:
+                raise unknown_prop(kind, k)
+            if v is None:
+                continue
+            if event == "context_menu" and not callable(v):
+                # Una lista describe el menú contextual; el núcleo la pide al
+                # abrirlo, así que se envuelve en un callable.
+                handlers["context_menu"] = lambda menu=v: menu
+            else:
+                handlers[event] = v
         self.handlers = handlers
         self.style = style
         self.children: list[Element] = []
@@ -194,10 +206,14 @@ def _resolve(theme: Theme, prop: str, value: Any) -> Any:
     # Solo una cadena "$..." o una tupla pueden contener tokens: el resto pasa sin llamar al tema.
     if prop in _LITERAL:
         return value
-    if isinstance(value, str):
-        return theme.resolve(value) if value[:1] == "$" else value
-    if isinstance(value, tuple):
-        return theme.resolve(value)
+    try:
+        if isinstance(value, str):
+            return theme.resolve(value) if value[:1] == "$" else value
+        if isinstance(value, tuple):
+            return theme.resolve(value)
+    except ThemeTokenError as err:
+        # El tema no sabe en qué propiedad estaba el token: se añade al mensaje.
+        raise ThemeTokenError(err.token, [*theme.colors, *theme.radius], prop) from None
     return value
 
 
@@ -229,19 +245,19 @@ def _default_height(style: Mapping[str, Any], height: float = 200) -> dict[str, 
 # --- Primitivas ------------------------------------------------------------
 
 
-def box(**style: Any) -> Element:
+def box(**style: Unpack[Style]) -> Element:
     return Element("box", **style)
 
 
-def column(**style: Any) -> Element:
+def column(**style: Unpack[Style]) -> Element:
     return Element("box", direction="column", **style)
 
 
-def row(**style: Any) -> Element:
+def row(**style: Unpack[Style]) -> Element:
     return Element("box", direction="row", **style)
 
 
-def text(content: TextLike, **style: Any) -> Element:
+def text(content: TextLike, **style: Unpack[Style]) -> Element:
     return Element("text", content=content, **style)
 
 
@@ -252,7 +268,9 @@ def spacer() -> Element:
 Fit = Literal["contain", "cover", "fill", "none"]
 
 
-def image(src: str | os.PathLike[str] | bytes, *, fit: Fit = "contain", **style: Any) -> Element:
+def image(
+    src: str | os.PathLike[str] | bytes, *, fit: Fit = "contain", **style: Unpack[ImageStyle]
+) -> Element:
     """Imagen de un archivo (PNG, JPEG, WebP, GIF, BMP, ICO o SVG) o de bytes en memoria.
 
     Sin `width` ni `height` ocupa su tamaño natural (sin pasar del ancho
@@ -263,7 +281,7 @@ def image(src: str | os.PathLike[str] | bytes, *, fit: Fit = "contain", **style:
     return Element("image", src=source, fit=fit, **style)
 
 
-def scroll(*, axis: Literal["x", "y", "both"] = "y", **style: Any) -> Element:
+def scroll(*, axis: Literal["x", "y", "both"] = "y", **style: Unpack[Style]) -> Element:
     """Contenedor desplazable: recorta su contenido y se desplaza con rueda, trackpad o barra.
 
     Apila sus hijos en el eje que se desplaza. Uno vertical sin `height` ni

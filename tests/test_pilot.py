@@ -232,12 +232,12 @@ def test_overlay_click_bubbles_to_tree_parent():
 
 def test_invalid_layer_raises(tmp_path):
     with pytest.raises(ValueError, match="layer"):
-        _core.render_png(box(layer="top").to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+        _core.render_png(box(layer="top").to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)  # ty: ignore[invalid-argument-type]
 
 
 def test_non_callable_handler_raises(tmp_path):
     with pytest.raises(ValueError, match="on_click"):
-        _core.render_png(box(on_click="no").to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)
+        _core.render_png(box(on_click="no").to_spec(MIDNIGHT), 10, 10, str(tmp_path / "x.png"), 1.0)  # ty: ignore[invalid-argument-type]
 
 
 # --- Despertar desde otros hilos ------------------------------------------
@@ -403,7 +403,7 @@ def test_overflow_hidden_clips_clicks_and_toggles():
 
 def test_invalid_cursor_raises(tmp_path):
     with pytest.raises(ValueError, match="cursor"):
-        App(lambda: box(cursor="mano"), size=(10, 10)).render_png(str(tmp_path / "x.png"))
+        App(lambda: box(cursor="mano"), size=(10, 10)).render_png(str(tmp_path / "x.png"))  # ty: ignore[invalid-argument-type]
 
 
 def test_drop_files_goes_to_drop_zone_under_point(tmp_path):
@@ -814,7 +814,7 @@ def test_explicit_resize_zone():
 
 def test_invalid_window_drag_is_a_clear_error():
     with pytest.raises(ValueError, match="window_drag inválido"):
-        App(lambda: box(window_drag="up")).pilot()
+        App(lambda: box(window_drag="up")).pilot()  # ty: ignore[invalid-argument-type]
 
 
 def test_title_bar_buttons_act_on_their_window():

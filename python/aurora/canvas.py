@@ -28,11 +28,16 @@ from array import array
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
 from itertools import chain
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from .elements import Element, _default_height
 from .signal import Frame, Signal, frames, fresh
 from .theme import Theme
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from ._style import Style
 
 Color = str
 Cap = Literal["butt", "round", "square"]
@@ -403,7 +408,7 @@ class CanvasElement(Element):
         return spec
 
 
-def canvas(draw: Callable[[Canvas], Any], **style: Any) -> Element:
+def canvas(draw: Callable[[Canvas], Any], **style: Unpack[Style]) -> Element:
     """Lienzo de dibujo inmediato: `draw(c)` recibe un `Canvas` del tamaño de la caja.
 
     Sin `height`, `grow` ni límites de alto mide 200 px de alto; a lo ancho se

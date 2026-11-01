@@ -76,19 +76,18 @@ def panel(
     anchor: dict[str, Any] = (
         {"top": top, "left": 0} if top is not None else {"placement": placement, "offset": offset}
     )
-    return box(
-        **{
-            "layer": "overlay",
-            "position": "absolute",
-            **anchor,
-            "padding": 4,
-            "radius": "$md",
-            "bg": "$surface",
-            "border_width": 1,
-            "border_color": "$border",
-            "shadow": (0, 12, 32, "$shadow"),
-            "enter": motion.entering(animate.slide(y=-6)),
-            "exit": motion.leaving(animate.fade()),
-            **style,
-        }
-    )[content]
+    props: dict[str, Any] = {
+        "layer": "overlay",
+        "position": "absolute",
+        **anchor,
+        "padding": 4,
+        "radius": "$md",
+        "bg": "$surface",
+        "border_width": 1,
+        "border_color": "$border",
+        "shadow": (0, 12, 32, "$shadow"),
+        "enter": motion.entering(animate.slide(y=-6)),
+        "exit": motion.leaving(animate.fade()),
+        **style,
+    }
+    return box(**props)[content]

@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..elements import Element, box
 from ..signal import Signal
 from ._state import _DRAG_START, _EXTENTS, _SPLITS
+
+if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import SplitterStyle
 
 # Grosor de la franja del separador (la línea visible mide 1 px).
 _HANDLE = 7
@@ -23,7 +28,7 @@ def splitter(
     step: float = 16,
     on_change: Callable[[float], Any] | None = None,
     key: str | None = None,
-    **style: Any,
+    **style: Unpack[SplitterStyle],
 ) -> Element:
     """Dos paneles con un separador entre ellos que se arrastra para repartir el espacio.
 
@@ -107,7 +112,12 @@ def splitter(
             return None
         return True
 
-    line = box(grow=1, bg="$border", **{"width" if row else "height": 1})
+    thin: dict[str, Any] = {"width" if row else "height": 1}
+    line = box(grow=1, bg="$border", **thin)
+    # Los tamaños van en el eje del splitter: `width`/`min_width` o `height`/`min_height`.
+    thick: dict[str, Any] = {dim: _HANDLE}
+    first_size: dict[str, Any] = {dim: shown, f"min_{dim}": min_first}
+    second_size: dict[str, Any] = {dim: 0, f"min_{dim}": min_second}
     handle = box(
         key=f"{k}-handle",
         direction="column" if row else "row",
@@ -127,14 +137,9 @@ def splitter(
         value_min=low,
         value_max=high,
         value_step=step,
-        **{dim: _HANDLE},
+        **thick,
     )[line]
-    pane_first = box(key=f"{k}-first", shrink=1, overflow="hidden", **{dim: shown, f"min_{dim}": min_first})[
-        first
-    ]
-    pane_second = box(key=f"{k}-second", grow=1, overflow="hidden", **{dim: 0, f"min_{dim}": min_second})[
-        second
-    ]
-    return box(**{"key": k, "direction": direction, "grow": 1, "on_resize": on_resize, **style})[
-        pane_first, handle, pane_second
-    ]
+    pane_first = box(key=f"{k}-first", shrink=1, overflow="hidden", **first_size)[first]
+    pane_second = box(key=f"{k}-second", grow=1, overflow="hidden", **second_size)[second]
+    props: dict[str, Any] = {"key": k, "direction": direction, "grow": 1, "on_resize": on_resize, **style}
+    return box(**props)[pane_first, handle, pane_second]

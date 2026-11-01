@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING, Any, Literal
 from ..elements import Child, Element, TextLike, box, row, spacer, text
 
 if TYPE_CHECKING:
+    from typing import Unpack
+
+    from .._style_variants import TitleBarStyle
+
+if TYPE_CHECKING:
     from .. import Window
 
 # Rojo de cerrar de Windows: el botón lo toma al pasar por encima, en claro y en oscuro.
@@ -16,14 +21,16 @@ _CLOSE_HOVER = "#C42B1C"
 _LIGHTS = ("#FF5F57", "#FEBC2E", "#28C840")
 
 
-def _glyph(kind: str, bg: str) -> Element:
+def _glyph(kind: str, bg: Any) -> Element:
     """El dibujo de un botón de ventana, hecho con cajas (toma el color del tema)."""
     if kind == "minimize":
         return box(width=10, height=1, bg="$text")
     if kind == "maximize":
         return box(width=10, height=10, radius=1, border_width=1, border_color="$text")
     if kind == "restore":
-        square = dict(position="absolute", width=8, height=8, radius=1, border_width=1, border_color="$text")
+        square: dict[str, Any] = dict(
+            position="absolute", width=8, height=8, radius=1, border_width=1, border_color="$text"
+        )
         return box(width=10, height=10)[
             box(top=0, right=0, **square),
             box(bottom=0, left=0, bg=bg, **square),
@@ -40,7 +47,7 @@ def title_bar(
     controls: bool | Literal["windows", "macos"] = True,
     height: float = 36,
     key: str = "title-bar",
-    **style: Any,
+    **style: Unpack[TitleBarStyle],
 ) -> Element:
     """Barra de título para una ventana sin marco: se arrastra y lleva los botones de la ventana.
 
@@ -110,13 +117,14 @@ def title_bar(
             ),
             windows_button("close", "Cerrar", target.request_close),
         ]
+    props: dict[str, Any] = {"bg": bg, **style}
     return row(
         key=key,
         window_drag="move",
         height=height,
         shrink=0,
         align="stretch" if not mac else "center",
-        **{"bg": bg, **style},
+        **props,
     )[
         mac and buttons and row(align="center", padding=(0, 0, 0, 12))[buttons],
         row(gap=8, align="center", padding=(0, 12))[

@@ -303,7 +303,8 @@ def _as_main(module: types.ModuleType, script: str | None) -> Generator[None]:
 
 
 def _fragment(block: Block, items: list[Element]) -> App:
-    align = block.attrs.get("align", "start")
+    # Lo que diga el bloque, tal cual: un valor inválido lo rechaza el núcleo.
+    align: Any = block.attrs.get("align", "start")
     content = items[0] if len(items) == 1 else row(gap=12, align="center", wrap=True)[items]
     width = int(_size(block)[0] or FRAGMENT_WIDTH)
 
