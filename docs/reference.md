@@ -1141,9 +1141,10 @@ card(width=320)[
 ]
 ```
 
-### `badge(label, *, tone="accent")`
+### `badge(label, *, tone="accent", key=None, **estilo)`
 
-Píldora compacta de texto. `tone` es el nombre de un token de color del tema.
+Píldora compacta de texto. `tone` es el nombre de un token de color del tema; los `estilo` van a la
+píldora.
 
 ```python live
 from aurora import badge  # oculto
@@ -1156,10 +1157,11 @@ from aurora import badge  # oculto
 ]
 ```
 
-### `stat(label, value, delta=None, *, positive=True)`
+### `stat(label, value, delta=None, *, positive=True, key=None, **estilo)`
 
 Tarjeta de métrica: etiqueta, valor grande y variación opcional en verde (`positive=True`) o rojo.
-Tiene `grow=1`, así que varias `stat` en una `row` se reparten el ancho.
+Tiene `grow=1`, así que varias `stat` en una `row` se reparten el ancho. La `key` y los `estilo`
+van a la tarjeta (`width`, `grow=0`, `bg`…).
 
 ```python live align=stretch
 from aurora import row, stat  # oculto
@@ -1278,7 +1280,9 @@ radio([("free", "Gratis"), ("pro", "Pro"), ("team", "Equipo")], plan, key="plan"
 
 Pestañas con indicador bajo la activa. `options` es una lista de valores o de pares
 `(valor, etiqueta)` y `selected` el `Signal` con el valor activo. Con una pestaña enfocada, ← y →
-cambian de pestaña. Cada pestaña tiene la key `f"{key}-{valor}"`.
+cambian de pestaña. Con `key`, la fila de pestañas tiene esa key y cada pestaña la suya,
+`f"{key}-{valor}"`: así se pulsan desde `Pilot` (`pilot.click("nav-tablero")`) o `aurora pilot`
+(`click nav-tablero`). Sin `key` las keys no son predecibles.
 
 ```python live
 from aurora import Signal, tabs  # oculto
@@ -1292,8 +1296,8 @@ tabs([("resumen", "Resumen"), ("tablero", "Tablero"), ("equipo", "Equipo")], pag
 Selector segmentado: el pulgar se desliza hasta la opción activa. `options` son valores (o pares
 `(valor, etiqueta)`) y `selected`, el `Signal` con el valor activo. Las ranuras miden todas lo
 mismo, de ahí el `width` en píxeles (es lo que permite anclar el pulgar por fracción y que se
-deslice). Cada opción tiene la key `f"{key}-{valor}"` y el pulgar la suya, `f"{key}-thumb"`. Los
-`estilo` van al contenedor (`bg`…).
+deslice). Con `key`, el contenedor tiene esa key, cada opción la suya, `f"{key}-{valor}"`
+(`pilot.click("scope-Mes")`), y el pulgar `f"{key}-thumb"`. Los `estilo` van al contenedor (`bg`…).
 
 ```python live
 from aurora import Signal, segmented  # oculto

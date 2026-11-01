@@ -62,6 +62,8 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   `'start'`, `text_align="end"` â†’ `'right'`). Antes `row(justify="space-between")` se aceptaba y
   no alineaba, y `button(variant="sof")` daba un `KeyError: 'sof'` desnudo. Un valor reactivo
   lo comprueba el nÃºcleo al leerlo. `live` admite en el tipado `"off"`, que el nÃºcleo ya aceptaba.
+- `stat` y `badge` aceptan `key` y `**estilo` (van a la tarjeta y a la pÃ­ldora): ya no hace falta
+  envolverlos en un `box` para localizarlos desde `Pilot` o `aurora pilot` ni para darles ancho.
 
 ### Cambiado
 
@@ -115,6 +117,9 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   de texto, `error() and text(error())` con `error() == ""` creaba un `text("")` que ocupaba una
   lÃ­nea y sumaba un `gap` (era el patrÃ³n que recomendaba la chuleta). Un nÃºmero distinto de 0 como
   hijo lanza un `TypeError` claro en vez de `'int' object is not iterable`.
+- `tabs(key=...)` y `segmented(key=...)` ponen la `key` en su contenedor; antes solo la llevaban
+  las opciones (`f"{key}-{valor}"`), que ahora se documentan como la forma de pulsarlas desde
+  `Pilot` y `aurora pilot`.
 
 ## [0.9.1] — 2026-10-31
 

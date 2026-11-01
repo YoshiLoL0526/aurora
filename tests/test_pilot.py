@@ -1140,3 +1140,25 @@ def test_external_value_keeps_the_cursor_at_the_end():
     assert pilot.selection("f") == (4, 4)
     pilot.type("!")
     assert value() == "hola!"
+
+
+def test_tabs_segmented_stat_and_badge_have_keys():
+    from aurora import badge, segmented, stat, tabs
+
+    page, scope = Signal("a"), Signal("Día")
+    view = lambda: column(gap=8, padding=8)[
+        tabs([("a", "A"), ("b", "B")], page, key="nav"),
+        segmented(["Día", "Mes"], scope, key="scope"),
+        row(gap=8)[
+            stat("Ventas", "12", key="ventas", width=120, grow=0), badge("beta", key="b", tone="success")
+        ],
+    ]
+    pilot = App(view, size=(400, 300)).pilot()
+    # Cada opción, con la key del componente y su valor; el contenedor, con la del componente.
+    pilot.click("nav-b")
+    assert page() == "b"
+    pilot.click("scope-Mes")
+    assert scope() == "Mes"
+    assert pilot.rect("nav") is not None and pilot.rect("scope") is not None
+    assert pilot.rect("ventas")[2] == 120  # el estilo llega a la tarjeta
+    assert pilot.rect("b") is not None

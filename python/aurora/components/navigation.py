@@ -59,7 +59,7 @@ def tabs(
         ]
 
     props: dict[str, Any] = {"gap": 0, **style}
-    return column(**props)[
+    return column(key=key, **props)[
         row(gap=4, on_key=on_key, role="tablist")[[tab(i, v, label) for i, (v, label) in enumerate(items)]],
         divider(),
     ]
@@ -164,7 +164,7 @@ def segmented(
         "on_key": on_key,
         **style,
     }
-    return row(**props)[
+    return row(key=key, **props)[
         box(grow=1, width=0)[
             # El pulgar, primero: se pinta debajo de las etiquetas.
             box(

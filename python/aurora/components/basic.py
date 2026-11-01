@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from typing import Unpack
 
     from .._style import Style
-    from .._style_variants import AvatarStyle, ButtonStyle, DividerStyle
+    from .._style_variants import AvatarStyle, BadgeStyle, ButtonStyle, DividerStyle, StatStyle
 
 Variant = Literal["primary", "soft", "ghost"]
 
@@ -86,15 +86,32 @@ def card(**style: Unpack[Style]) -> Element:
     return column(**props)
 
 
-def badge(label: TextLike, *, tone: str = "accent") -> Element:
-    return row(padding=(4, 10), radius="$full", bg=f"${tone}", align="center")[
-        text(label, size=11, weight=700, color="#0B0D14", letter_spacing=0.4)
-    ]
+def badge(
+    label: TextLike, *, tone: str = "accent", key: str | None = None, **style: Unpack[BadgeStyle]
+) -> Element:
+    """Píldora de texto. `tone` es el nombre de un token de color; los `estilo` van a la píldora."""
+    props: dict[str, Any] = {
+        "padding": (4, 10),
+        "radius": "$full",
+        "bg": f"${tone}",
+        "align": "center",
+        **style,
+    }
+    return row(key=key, **props)[text(label, size=11, weight=700, color="#0B0D14", letter_spacing=0.4)]
 
 
-def stat(label: str, value: TextLike, delta: str | None = None, *, positive: bool = True) -> Element:
-    """Tarjeta de métrica para dashboards."""
-    return card(grow=1, gap=6)[
+def stat(
+    label: str,
+    value: TextLike,
+    delta: str | None = None,
+    *,
+    positive: bool = True,
+    key: str | None = None,
+    **style: Unpack[StatStyle],
+) -> Element:
+    """Tarjeta de métrica para dashboards. Los `estilo` van a la tarjeta."""
+    props: dict[str, Any] = {"grow": 1, "gap": 6, **style}
+    return card(key=key, **props)[
         text(label, size=12, weight=500, color="$muted", letter_spacing=0.3),
         row(gap=10, align="baseline")[
             text(value, size=28, weight=700),
