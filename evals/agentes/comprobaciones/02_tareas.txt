@@ -1,0 +1,28 @@
+# Añadir con el botón y con Enter
+focus new
+type "Comprar pan"
+click add
+expect exists task-1
+expect value new ""
+focus new
+type Llamar
+press enter
+expect exists task-2
+expect text "Llamar" in task-2
+# Una tarea vacía no se añade
+click add
+expect missing task-3
+expect text "2 pendientes" in remaining
+# Marcar y filtrar
+click toggle-1
+expect checked toggle-1
+expect text "1 pendientes" in remaining
+click filter-pending
+expect missing task-1
+expect exists task-2
+click filter-done
+expect exists task-1
+expect missing task-2
+click filter-all
+expect exists task-1
+expect exists task-2

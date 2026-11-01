@@ -101,3 +101,8 @@ extra-paths = ["python", "benchmarks", "docs/hooks"]
 [[tool.ty.overrides]]
 include = ["tests/**"]
 rules = { not-subscriptable = "ignore", not-iterable = "ignore" }
+
+# La app de partida de la tarea 04 de la evaluación con agentes está rota a propósito.
+[[tool.ty.overrides]]
+include = ["evals/agentes/inicio/**"]
+rules = { invalid-argument-type = "ignore" }

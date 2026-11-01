@@ -1,0 +1,8 @@
+expect text 5400 in total
+expect text 900 in average
+expect text Junio in best
+expect exists chart
+expect exists sales
+expect text Mayo in sales
+expect text 1080 in sales
+click theme

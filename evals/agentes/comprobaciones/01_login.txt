@@ -1,0 +1,16 @@
+# Correo sin @
+focus email
+type ana.ejemplo.com
+click submit
+expect text "Email inválido"
+# Correo válido, contraseña corta
+a11y email set_value ana@ejemplo.com
+focus password
+type 123
+click submit
+expect text "Contraseña demasiado corta"
+# Todo válido
+a11y password set_value secreto123
+click submit
+expect text "Bienvenido, ana@ejemplo.com"
+expect missing submit

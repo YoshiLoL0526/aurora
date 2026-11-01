@@ -1,0 +1,6 @@
+expect text "Clics: 0" in count
+click inc
+click inc
+expect text "Clics: 2" in count
+click reset
+expect text "Clics: 0" in count
