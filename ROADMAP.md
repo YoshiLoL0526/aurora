@@ -113,10 +113,13 @@ dependa de lo que cambia, no del tamaño de la vista.*
   la guía al día con lo reciente y una página de recetas para las tareas habituales
 - ✅ **Cada componente completo**: test de render, de interacción con `Pilot` y de su nodo en el
   árbol de accesibilidad, y manejo con teclado si es interactivo, con una matriz de cobertura
-  que comprueba un test ([`docs/coverage.md`](https://yoshilol0526.github.io/aurora/coverage/)). Quedan para la 1.0 los enlaces
-  de `rich_text`/`markdown` en el orden de Tab y el zoom de `chart` con el teclado
+  que comprueba un test ([`docs/coverage.md`](https://yoshilol0526.github.io/aurora/coverage/)). Lo que quedó
+  pendiente también está hecho: los enlaces de `rich_text`/`markdown` entran en el orden de Tab,
+  `chart(zoom=True)` hace zoom y pan con el teclado y `markdown` ya no se mide demasiado estrecho
+  en una columna con `align="start"`
 - ✅ **Control de 60 fps en CI**: presupuesto de 16,7 ms por frame para las operaciones
-  interactivas de los benchmarks, y la CI falla si se pasa
+  interactivas de los benchmarks, y la CI falla si se pasa. Ya sin presupuestos provisionales:
+  `dashboard_50 rebuild` y `typing type` también tienen el de 16,7 ms
 - ✅ Pequeños arreglos: `target-version` de ruff alineado con `requires-python`
 
 ## 1.0 — Criterios de salida 🎯
@@ -125,12 +128,12 @@ La 1.0 sale cuando se cumplen todos, no en una fecha:
 
 - La API pública está congelada: nada pendiente de obsolescencia, y desde aquí la
   [política de estabilidad](https://yoshilol0526.github.io/aurora/stability/) solo permite romper en versiones mayores
-- Cada componente se ve bien por defecto, anuncia su rol a los lectores de pantalla, se maneja
+- ✅ Cada componente se ve bien por defecto, anuncia su rol a los lectores de pantalla, se maneja
   con teclado y tiene tests de render y de interacción
 - La documentación cubre toda la API, con guía, referencia y recetas para las tareas habituales
 - Ninguna limitación grave conocida en Windows, macOS y Linux (X11); las que dependan de terceros
   (menús nativos en Linux, soltar archivos en Wayland) están documentadas
-- 60 fps en la suite de benchmarks en el hardware de referencia de la CI
+- ✅ 60 fps en la suite de benchmarks en el hardware de referencia de la CI
 
 ---
 
