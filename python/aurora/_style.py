@@ -125,6 +125,7 @@ class Style(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco

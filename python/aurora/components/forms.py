@@ -32,6 +32,7 @@ def text_input(
     value: Signal[str] | TextLike,
     *,
     placeholder: str = "",
+    password: bool = False,
     on_change: Callable[[str], Any] | None = None,
     on_submit: Callable[[str], Any] | None = None,
     key: str | None = None,
@@ -42,8 +43,15 @@ def text_input(
     Con un `Signal[str]` queda enlazado en los dos sentidos: lo que se escribe
     actualiza el Signal y lo que se asigna al Signal aparece en el campo.
     `on_submit(texto)` se llama al pulsar Enter.
+
+    `password=True` lo convierte en un campo de contraseña: pinta un punto por
+    carácter, no deja copiar ni cortar, salta por palabras como si fuera una
+    sola y los lectores de pantalla lo anuncian como contraseña sin leer el valor.
     """
-    return _field(value, on_change, on_submit, key, {"placeholder": placeholder, **style})
+    styles = {"placeholder": placeholder, **style}
+    if password:
+        styles["password"] = True
+    return _field(value, on_change, on_submit, key, styles)
 
 
 def textarea(

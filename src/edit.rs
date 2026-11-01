@@ -28,6 +28,9 @@ pub struct Editor {
     redo: Vec<Snapshot>,
     /// La última operación fue escribir caracteres: se agrupan en un solo paso de deshacer.
     typing: bool,
+    /// Campo de contraseña: no hay palabras (saltar o borrar por palabras va al
+    /// extremo y el doble clic selecciona todo), para no delatar dónde hay espacios.
+    pub secret: bool,
 }
 
 impl Editor {
@@ -61,14 +64,21 @@ impl Editor {
     }
 
     /// El texto cambió desde fuera (Python asignó otro valor): se adopta y el
-    /// cursor se conserva si sigue siendo válido.
+    /// cursor se conserva si sigue siendo válido. Si estaba al final (también
+    /// en un campo vacío que se rellena), sigue al final.
     pub fn set_external(&mut self, text: &str) {
         if text == self.text {
             return;
         }
+        let at_end = !self.has_selection() && self.cursor == self.text.len();
         self.text = text.to_owned();
-        self.cursor = self.snap(self.cursor.min(text.len()));
-        self.anchor = self.snap(self.anchor.min(text.len()));
+        if at_end {
+            self.cursor = text.len();
+            self.anchor = text.len();
+        } else {
+            self.cursor = self.snap(self.cursor.min(text.len()));
+            self.anchor = self.snap(self.anchor.min(text.len()));
+        }
         self.typing = false;
     }
 
@@ -128,7 +138,7 @@ impl Editor {
             return false;
         }
         let start = if word {
-            prev_word(&self.text, self.cursor)
+            self.prev_word()
         } else {
             prev_grapheme(&self.text, self.cursor)
         };
@@ -146,7 +156,7 @@ impl Editor {
             return false;
         }
         let end = if word {
-            next_word(&self.text, self.cursor)
+            self.next_word()
         } else {
             next_grapheme(&self.text, self.cursor)
         };
@@ -178,7 +188,7 @@ impl Editor {
             return self.move_to(self.selection().start, false);
         }
         let pos = if word {
-            prev_word(&self.text, self.cursor)
+            self.prev_word()
         } else {
             prev_grapheme(&self.text, self.cursor)
         };
@@ -190,11 +200,27 @@ impl Editor {
             return self.move_to(self.selection().end, false);
         }
         let pos = if word {
-            next_word(&self.text, self.cursor)
+            self.next_word()
         } else {
             next_grapheme(&self.text, self.cursor)
         };
         self.move_to(pos, extend);
+    }
+
+    fn prev_word(&self) -> usize {
+        if self.secret {
+            0
+        } else {
+            prev_word(&self.text, self.cursor)
+        }
+    }
+
+    fn next_word(&self) -> usize {
+        if self.secret {
+            self.text.len()
+        } else {
+            next_word(&self.text, self.cursor)
+        }
     }
 
     pub fn select_all(&mut self) {
@@ -205,6 +231,9 @@ impl Editor {
 
     /// Selecciona la palabra (o el bloque de espacios/símbolos) que contiene `pos`.
     pub fn select_word_at(&mut self, pos: usize) {
+        if self.secret {
+            return self.select_all();
+        }
         let pos = pos.min(self.text.len());
         let range = self
             .text
@@ -370,6 +399,31 @@ mod tests {
         e.set_external("ab");
         assert_eq!(e.cursor(), 2);
         assert!(!e.has_selection());
+    }
+
+    #[test]
+    fn external_text_keeps_cursor_at_the_end() {
+        let mut e = Editor::new("");
+        e.set_external("hola");
+        assert_eq!(e.cursor(), 4);
+        e.move_to(1, false);
+        e.set_external("hola mundo");
+        assert_eq!(e.cursor(), 1);
+    }
+
+    #[test]
+    fn secret_text_has_no_words() {
+        let mut e = Editor::new("uno dos");
+        e.secret = true;
+        e.left(true, false);
+        assert_eq!(e.cursor(), 0);
+        e.right(true, true);
+        assert_eq!(e.selection(), 0..7);
+        e.select_word_at(1);
+        assert_eq!(e.selection(), 0..7);
+        e.move_to(7, false);
+        e.backspace(true);
+        assert_eq!(e.text(), "");
     }
 
     #[test]

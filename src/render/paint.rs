@@ -772,9 +772,7 @@ impl<'a> Painter<'a> {
         let paragraph = &ctx.paragraph;
 
         let cursor = match state {
-            Some(st) if !placeholder => {
-                st.editor.cursor() + st.preedit.as_ref().map_or(0, String::len)
-            }
+            Some(st) if !placeholder => st.display_cursor(),
             _ => 0,
         };
         let caret = if placeholder {
@@ -816,7 +814,7 @@ impl<'a> Painter<'a> {
                 .unwrap_or_else(|| tp.focus_color.with_a(110));
             let mut p = Paint::default();
             p.set_anti_alias(true).set_color(color);
-            for r in range_rects(paragraph, &display, st.editor.selection()) {
+            for r in range_rects(paragraph, &display, st.display_selection()) {
                 canvas.draw_rect(r.with_offset(origin), &p);
             }
         }
@@ -824,11 +822,10 @@ impl<'a> Painter<'a> {
         let mut ink = Paint::default();
         ink.set_anti_alias(true).set_color(tp.color);
         if let Some(st) = state
-            && let Some(pre) = &st.preedit
+            && let Some(range) = st.preedit_range()
             && !placeholder
         {
-            let start = st.editor.cursor();
-            for r in range_rects(paragraph, &display, start..start + pre.len()) {
+            for r in range_rects(paragraph, &display, range) {
                 let r = r.with_offset(origin);
                 canvas.draw_rect(
                     Rect::new(r.left, r.bottom - 1.5, r.right, r.bottom - 0.5),

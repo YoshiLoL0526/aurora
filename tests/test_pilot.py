@@ -1060,7 +1060,7 @@ def test_click_back_into_a_field_places_the_cursor():
 def test_multi_click_follows_pilot_frames_not_real_time():
     # El piloto cuenta el tiempo en frames: dos clics separados por un segundo
     # de frames son dos clics simples, aunque el test tarde menos en ejecutarlos.
-    pilot, a = _two_fields()
+    pilot, _a = _two_fields()
     pilot.click("a")
     pilot.type("abc")
     pilot.click("a")
@@ -1072,7 +1072,7 @@ def test_multi_click_follows_pilot_frames_not_real_time():
 
 
 def test_select_all_does_not_survive_leaving_and_clicking_back():
-    pilot, a = _two_fields()
+    pilot, _a = _two_fields()
     pilot.click("a")
     pilot.type("abc")
     pilot.press("ctrl+a")
@@ -1081,3 +1081,62 @@ def test_select_all_does_not_survive_leaving_and_clicking_back():
     pilot.click("a")
     start, end = pilot.selection("a")
     assert start == end
+
+
+def test_password_field_hides_the_value():
+    secret = Signal("")
+    view = lambda: column(padding=16)[text_input(secret, password=True, label="Clave", key="pw")]
+    pilot = App(view, size=(300, 100)).pilot()
+    pilot.click("pw")
+    pilot.type("uno dos")
+    assert secret() == "uno dos"
+    # Copiar y cortar no sacan el valor del campo.
+    pilot.clipboard = "antes"
+    pilot.press("ctrl+a")
+    pilot.press("ctrl+c")
+    pilot.press("ctrl+x")
+    assert pilot.clipboard == "antes"
+    assert secret() == "uno dos"
+    # Sin palabras: Ctrl+← va al principio en vez de a "dos".
+    pilot.press("end")
+    pilot.press("ctrl+left")
+    assert pilot.selection("pw") == (0, 0)
+    pilot.press("ctrl+shift+right")
+    assert pilot.selection("pw") == (0, 7)
+    # El lector lo anuncia como contraseña y solo ve los puntos.
+    (node,) = [n for n in pilot.a11y_tree() if n["key"] == "pw"]
+    assert node["role"] == "password"
+    assert node["label"] == "Clave"
+    assert node["value"] == "•" * 7
+    (region,) = [r for r in pilot.layout() if r["key"] == "pw"]
+    assert region["text"] == "•" * 7
+
+
+def test_password_click_places_cursor_between_dots():
+    secret = Signal("abcdef")
+    view = lambda: column(padding=16)[text_input(secret, password=True, key="pw")]
+    pilot = App(view, size=(300, 100)).pilot()
+    x, y, w, h = pilot.rect("pw")
+    pilot.click_at(x + w - 4, y + h / 2)
+    assert pilot.selection("pw") == (6, 6)
+    pilot.press("left")
+    pilot.press("left")
+    pilot.type("X")
+    assert secret() == "abcdXef"
+    # El doble clic no delata palabras: selecciona todo.
+    pilot.click_at(x + w - 4, y + h / 2)
+    pilot.click_at(x + w - 4, y + h / 2)
+    assert pilot.selection("pw") == (0, 7)
+
+
+def test_external_value_keeps_the_cursor_at_the_end():
+    # Un campo vacío que se rellena desde fuera deja el cursor al final, no al principio.
+    value = Signal("")
+    view = lambda: column(padding=16)[text_input(value, key="f")]
+    pilot = App(view, size=(300, 100)).pilot()
+    pilot.click("f")
+    value.set("hola")
+    pilot.frame()
+    assert pilot.selection("f") == (4, 4)
+    pilot.type("!")
+    assert value() == "hola!"

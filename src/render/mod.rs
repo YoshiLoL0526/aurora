@@ -273,6 +273,7 @@ impl Engine {
                     .entry(node.key.clone())
                     .or_insert_with(|| InputState::new(text, node.style.multiline));
                 state.editor.set_external(text);
+                state.editor.secret = node.style.password;
                 state.multiline = node.style.multiline;
                 alive.insert(node.key.clone());
             }

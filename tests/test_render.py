@@ -26,6 +26,7 @@ from aurora import (
     span,
     splitter,
     text,
+    text_input,
     time_picker,
     title_bar,
     tree,
@@ -414,3 +415,16 @@ def test_variable_virtual_list_paints_each_row_at_its_height(tmp_path):
     assert _png_pixel(path, 50, 60) == (0, 0, 255)
     assert _png_pixel(path, 50, 95) == (255, 0, 0)
     assert _png_pixel(path, 50, 130) == (0, 0, 255)
+
+
+def test_password_field_paints_one_dot_per_character(tmp_path):
+    # Con el mismo número de caracteres, dos contraseñas se pintan igual: solo se ven los puntos.
+    def shot(value, **kw):
+        out = tmp_path / f"{value}{len(kw)}.png"
+        spec = column(padding=10)[text_input(value, width=200, **kw)].to_spec(MIDNIGHT)
+        _core.render_png(spec, 220, 60, str(out), 1.0)
+        return out.read_bytes()
+
+    assert shot("iiii", password=True) == shot("WWWW", password=True)
+    assert shot("iiii", password=True) != shot("iiii")
+    assert shot("iiii", password=True) != shot("iii", password=True)

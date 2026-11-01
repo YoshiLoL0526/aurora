@@ -1078,7 +1078,8 @@ manejadores que un clic o una tecla. Sin lector conectado el árbol ni se constr
 
 - Los **componentes** declaran su semántica solos: `button` (nombre y activación), `checkbox` y
   `switch` (marcado), `radio` (grupo, posición y activo), `slider` (valor y rango), `text_input` /
-  `textarea` (el valor real, incluido lo que se está escribiendo), `select` (valor, desplegado y
+  `textarea` (el valor real, incluido lo que se está escribiendo; con `password=True`, rol de
+  contraseña y solo los puntos), `select` (valor, desplegado y
   opciones), `tabs`, `menu`, `dialog` (modal y título), `progress`, `toast` (región viva),
   `virtual_list` (posiciones) y `table` (cabeceras, filas y ordenación). `image` y `avatar` usan
   `alt`; sin él son decorativos.
@@ -2033,7 +2034,7 @@ email = Signal("")
 field(text_input(email, placeholder="tu@correo.com", width=240), label="Correo", hint="No lo compartimos")
 ```
 
-### `text_input(value, *, placeholder="", on_change=None, on_submit=None, key=None, **estilo)`
+### `text_input(value, *, placeholder="", password=False, on_change=None, on_submit=None, key=None, **estilo)`
 
 Campo de texto de una línea. `value` es normalmente un `Signal[str]`, y entonces queda **enlazado
 en los dos sentidos**: lo que se escribe actualiza el Signal y lo que asignes al Signal aparece en
@@ -2050,6 +2051,7 @@ text_input(query, placeholder="Buscar…", on_submit=lambda q: search(q))
 |---|---|
 | `value` | `Signal[str]` (enlazado), o un `str`/callable con `on_change` para gestionar el valor tú. Sin `on_change`, un valor fijo no cambia al escribir. |
 | `placeholder` | Texto atenuado que se muestra con el campo vacío. Se toma literalmente (un `"$"` inicial no es un token). |
+| `password` | Campo de contraseña (ver abajo). |
 | `on_change` | `fn(texto)` en cada cambio (después de actualizar el Signal). |
 | `on_submit` | `fn(texto)` al pulsar Enter. |
 
@@ -2063,6 +2065,23 @@ Ctrl+A, Ctrl+C/X/V, Ctrl+Z y Ctrl+Mayús+Z o Ctrl+Y (Cmd en macOS). Con el rató
 cursor (Mayús+clic amplía la selección), arrastrar selecciona, doble clic selecciona una palabra y
 triple clic todo. El texto se recorre por grafemas: un emoji compuesto o una letra con tilde
 combinada se borran de una vez. Tab sale del campo; las teclas pasan antes por los `on_key`.
+Si el valor cambia desde fuera (asignas el Signal), el cursor se queda donde estaba, o al final si
+ya lo estaba (también en un campo vacío que se rellena).
+
+**Contraseñas:** con `password=True` el campo pinta un punto (`•`) por carácter. El valor sigue
+llegando entero al Signal y a `on_change`, pero no sale del campo por otro lado: Ctrl+C y Ctrl+X no
+hacen nada (pegar sí), no hay palabras (Ctrl+flechas y Ctrl+Retroceso van al extremo y el doble
+clic selecciona todo, para no delatar dónde hay espacios) y los lectores de pantalla lo anuncian
+con el rol de contraseña y ven solo los puntos; `Pilot.a11y_tree()` lo da con `role="password"` y
+`value="•••"`, y `Pilot.layout()` y `aurora tree` muestran también los puntos. Se llama
+`password`, como `type="password"` en HTML y el rol de AccessKit.
+
+```python live
+from aurora import Signal, field, text_input  # oculto
+
+clave = Signal("secreto")
+field(text_input(clave, password=True, width=240), label="Contraseña")
+```
 
 ### `textarea(value, *, placeholder="", rows=3, on_change=None, on_submit=None, key=None, **estilo)`
 

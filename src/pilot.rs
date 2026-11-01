@@ -2,6 +2,7 @@
 //! frame. Usa el mismo `Runtime` que la ventana, así que un test que pasa con
 //! el piloto ejercita el mismo hit-testing, burbujeo y reconstrucción.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -356,7 +357,12 @@ impl Pilot {
             };
             d.set_item("key", &region.key)?;
             d.set_item("kind", kind)?;
-            d.set_item("text", node.and_then(|n| n.text.as_deref()))?;
+            // Una contraseña sale como la pinta el campo: puntos.
+            let text = node.and_then(|n| match &n.text {
+                Some(t) if n.style.password => Some(Cow::Owned(crate::input::mask(t))),
+                t => t.as_deref().map(Cow::Borrowed),
+            });
+            d.set_item("text", text)?;
             d.set_item("parent", region.parent)?;
             d.set_item("rect", xywh(region.rect))?;
             let (r, c) = (region.rect, region.clip);

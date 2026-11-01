@@ -48,6 +48,12 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - `ThemeTokenError`, el error de un token de tema desconocido: dice en qué propiedad estaba y
   sugiere el más parecido (`¿Quisiste decir '$primary'?`). Es subclase de `KeyError`, que es lo
   que se lanzaba antes.
+- Campos de contraseÃ±a: `text_input(clave, password=True)` pinta un punto por carÃ¡cter, no deja
+  copiar ni cortar el valor, no tiene palabras (Ctrl+flechas, Ctrl+Retroceso y el doble clic van
+  al extremo o seleccionan todo) y los lectores de pantalla lo anuncian con el rol de contraseÃ±a
+  de AccessKit sin ver el valor. `Pilot.a11y_tree()` lo da con `role="password"` y los puntos como
+  `value`; `Pilot.layout()` y `aurora tree` tambiÃ©n muestran solo los puntos. La prop de estilo
+  `password` hace lo mismo en un `Element("input")`.
 
 ### Cambiado
 
@@ -84,6 +90,9 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   era una) y lo siguiente que se escribÃ­a la sustituÃ­a. En `Pilot` el doble clic sigue el tiempo
   de sus frames en vez del reloj real, asÃ­ que dos clics separados por un segundo de frames
   son dos clics simples por rÃ¡pido que corra el test.
+- Cuando el valor de un campo cambia desde fuera y el cursor estaba al final (tambiÃ©n en un campo
+  vacÃ­o que se rellena), el cursor sigue al final. Antes volvÃ­a al principio y lo siguiente que se
+  escribÃ­a iba delante del texto.
 
 ## [0.9.1] — 2026-10-31
 

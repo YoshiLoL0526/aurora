@@ -62,6 +62,7 @@ const ROLES: &[(&str, Role)] = &[
     ("meter", Role::Meter),
     ("navigation", Role::Navigation),
     ("option", Role::ListBoxOption),
+    ("password", Role::PasswordInput),
     ("progressbar", Role::ProgressIndicator),
     ("radio", Role::RadioButton),
     ("radiogroup", Role::RadioGroup),
@@ -391,8 +392,14 @@ impl Builder<'_> {
         if node.is_editable() {
             // Lo que se está escribiendo ahora mismo (el editor), no solo lo
             // que llegó de Python; y su pista si el campo está vacío.
+            // En uno de contraseña, los puntos que se ven: el lector anuncia
+            // cuántos caracteres hay, nunca cuáles.
             if let Some(state) = self.engine.inputs.get(&node.key) {
-                ac.set_value(state.editor.text().to_owned());
+                ac.set_value(if node.style.password {
+                    state.display()
+                } else {
+                    state.editor.text().to_owned()
+                });
             }
             if let Some(placeholder) = &node.style.placeholder {
                 ac.set_placeholder(placeholder.clone());
@@ -490,6 +497,7 @@ fn role_of(node: &Node) -> Role {
     }
     match node.kind {
         Kind::Text => Role::Label,
+        Kind::Input if node.style.password => Role::PasswordInput,
         Kind::Input if node.style.multiline => Role::MultilineTextInput,
         Kind::Input => Role::TextInput,
         Kind::Image => Role::Image,

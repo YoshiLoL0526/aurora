@@ -57,8 +57,9 @@ impl Runtime {
             }
             "Enter" => submit = true,
             _ if cmd && letter == "a" => state.editor.select_all(),
+            // Una contraseña no sale del campo: copiar y cortar no hacen nada.
             _ if cmd && (letter == "c" || letter == "x") => {
-                if state.editor.has_selection() {
+                if state.editor.has_selection() && !state.editor.secret {
                     self.clipboard.set(state.editor.selected_text().to_owned());
                     if letter == "x" {
                         state.editor.delete_selection();

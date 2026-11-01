@@ -90,6 +90,7 @@ class AccordionStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -206,6 +207,7 @@ class AvatarStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -323,6 +325,7 @@ class ButtonStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -438,6 +441,7 @@ class ChartStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -555,6 +559,7 @@ class CheckboxStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -669,6 +674,7 @@ class ColorPickerStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -784,6 +790,7 @@ class ComboboxStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     rows: Prop[int]
     # Foco
     focusable: Prop[bool]
@@ -898,6 +905,7 @@ class DatePickerStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     rows: Prop[int]
     # Foco
     focusable: Prop[bool]
@@ -1011,6 +1019,7 @@ class DialogStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1128,6 +1137,7 @@ class DividerStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1245,6 +1255,7 @@ class FieldStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1360,6 +1371,7 @@ class ImageStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1476,6 +1488,7 @@ class MarkdownStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1591,6 +1604,7 @@ class MenuStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1708,6 +1722,7 @@ class NumberInputStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1823,6 +1838,7 @@ class PagesStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -1938,6 +1954,7 @@ class PopoverStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2054,6 +2071,7 @@ class ProgressStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2170,6 +2188,7 @@ class RadioStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2286,6 +2305,7 @@ class RichTextStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2402,6 +2422,7 @@ class SegmentedStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2518,6 +2539,7 @@ class SelectStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     rows: Prop[int]
     # Foco
     focusable: Prop[bool]
@@ -2631,6 +2653,7 @@ class SkeletonStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2747,6 +2770,7 @@ class SliderStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2860,6 +2884,7 @@ class SortableStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -2975,6 +3000,7 @@ class SpinnerStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -3090,6 +3116,7 @@ class SplitterStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -3206,6 +3233,7 @@ class SwitchStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -3321,6 +3349,7 @@ class TableStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     # Foco
     focusable: Prop[bool]
@@ -3436,6 +3465,7 @@ class TabsStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -3665,6 +3695,7 @@ class TextareaStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     # Foco
     focusable: Prop[bool]
     autofocus: Prop[bool]
@@ -3777,6 +3808,7 @@ class TimePickerStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     rows: Prop[int]
     # Foco
     focusable: Prop[bool]
@@ -3890,6 +3922,7 @@ class TitleBarStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -4007,6 +4040,7 @@ class ToastStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -4124,6 +4158,7 @@ class TreeStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco
@@ -4236,6 +4271,7 @@ class VirtualListStyle(TypedDict, total=False):
     spans: Prop[Any]
     # Campos de texto
     multiline: Prop[bool]
+    password: Prop[bool]
     placeholder: Prop[str]
     rows: Prop[int]
     # Foco

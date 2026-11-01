@@ -167,7 +167,15 @@ impl Engine {
     pub(super) fn input_display(&self, node: &Node) -> (String, TextProps, bool) {
         let value = match self.inputs.get(&node.key) {
             Some(state) => state.display(),
-            None => node.text.clone().unwrap_or_default(),
+            // Sin estado (un render suelto): el valor del nodo, enmascarado si toca.
+            None => {
+                let text = node.text.as_deref().unwrap_or_default();
+                if node.style.password {
+                    crate::input::mask(text)
+                } else {
+                    text.to_owned()
+                }
+            }
         };
         let s = &node.style;
         if !value.is_empty() {

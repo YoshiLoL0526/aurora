@@ -9,9 +9,18 @@ use std::ops::Range;
 use skia_safe::textlayout::{Paragraph, RectHeightStyle, RectWidthStyle};
 use skia_safe::{Point, Rect};
 
+use unicode_segmentation::UnicodeSegmentation;
+
 use crate::edit::{Editor, prev_grapheme, utf8_to_utf16, utf16_to_utf8};
 
 pub const CARET_WIDTH: f32 = 1.5;
+/// Lo que pinta un campo de contraseña por cada carácter del valor.
+pub const MASK: char = '•';
+
+/// `text` como lo pinta un campo de contraseña: un punto por grafema.
+pub fn mask(text: &str) -> String {
+    MASK.to_string().repeat(text.graphemes(true).count())
+}
 /// Medio periodo del parpadeo del cursor (segundos).
 const BLINK: f32 = 0.53;
 
@@ -60,13 +69,63 @@ impl InputState {
         BLINK - self.blink % BLINK
     }
 
-    /// Texto a pintar: el valor con la composición del IME insertada en el cursor.
+    /// Texto a pintar: el valor con la composición del IME insertada en el
+    /// cursor; en un campo de contraseña, un punto por grafema.
     pub fn display(&self) -> String {
+        if self.editor.secret {
+            let pre = self.preedit.as_deref().unwrap_or("");
+            return mask(self.editor.text()) + &mask(pre);
+        }
         let mut text = self.editor.text().to_owned();
         if let Some(pre) = &self.preedit {
             text.insert_str(self.editor.cursor(), pre);
         }
         text
+    }
+
+    /// Posición en el texto pintado (bytes) del byte `pos` del valor: la misma,
+    /// salvo en un campo de contraseña, donde cada grafema es un punto.
+    pub fn to_display(&self, pos: usize) -> usize {
+        if !self.editor.secret {
+            return pos;
+        }
+        let text = self.editor.text();
+        text[..pos.min(text.len())].graphemes(true).count() * MASK.len_utf8()
+    }
+
+    /// Inverso de `to_display`: el byte del valor bajo una posición del texto pintado.
+    fn value_pos(&self, pos: usize) -> usize {
+        if !self.editor.secret {
+            return pos;
+        }
+        let text = self.editor.text();
+        text.grapheme_indices(true)
+            .nth(pos / MASK.len_utf8())
+            .map_or(text.len(), |(i, _)| i)
+    }
+
+    /// Cursor en el texto pintado: tras la composición del IME, si la hay.
+    pub fn display_cursor(&self) -> usize {
+        self.preedit_range()
+            .map_or_else(|| self.to_display(self.editor.cursor()), |r| r.end)
+    }
+
+    /// Selección en el texto pintado.
+    pub fn display_selection(&self) -> Range<usize> {
+        let r = self.editor.selection();
+        self.to_display(r.start)..self.to_display(r.end)
+    }
+
+    /// Lo que ocupa la composición del IME en el texto pintado.
+    pub fn preedit_range(&self) -> Option<Range<usize>> {
+        let pre = self.preedit.as_deref()?;
+        let start = self.to_display(self.editor.cursor());
+        let len = if self.editor.secret {
+            pre.graphemes(true).count() * MASK.len_utf8()
+        } else {
+            pre.len()
+        };
+        Some(start..start + len)
     }
 
     /// Posición del valor (bytes) bajo un punto absoluto del último frame.
@@ -83,7 +142,8 @@ impl InputState {
             .get_glyph_position_at_coordinate(p - frame.origin)
             .position
             .max(0) as usize;
-        Some(self.editor.snap(utf16_to_utf8(&frame.display, pos)))
+        let pos = self.value_pos(utf16_to_utf8(&frame.display, pos));
+        Some(self.editor.snap(pos))
     }
 
     pub fn caret(&self) -> Option<Rect> {
