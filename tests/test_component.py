@@ -127,6 +127,20 @@ def test_entries_not_used_are_forgotten():
     assert len(item.cache) == 2
 
 
+def test_memoization_goes_away_with_its_owner():
+    # Lo memorizado para una App que ya no existe (la de otro test, una ventana descartada)
+    # no se queda vivo ni lo recorre cada reconstrucción de las demás.
+    import gc
+
+    item, _ = _counting()
+    pilot = App(lambda: column()[[item(str(i)) for i in range(50)]], size=(200, 200)).pilot()
+    assert len(item.cache) == 50
+    del pilot
+    gc.collect()
+    assert len(item.cache) == 0
+    assert len(item.owners) == 0
+
+
 def test_two_builders_keep_their_own_memoization():
     # Cada ventana (o piloto) es un dueño distinto: reconstruir una no puede
     # olvidar lo que memorizó la otra.

@@ -138,16 +138,38 @@ class Component(Generic[P]):
     def __init__(self, fn: Callable[P, Element]) -> None:
         self.fn = fn
         self.name: str = getattr(fn, "__name__", repr(fn))
-        # Clave: `(dueño, argumentos, kwargs)`; ver `__call__`.
-        self.cache: dict[tuple[Any, ...], Entry] = {}
+        # Lo memorizado de cada dueño (`App`, `Window`), por `(argumentos, kwargs)`. El
+        # dueño se guarda con una referencia débil: al desaparecer (una `App` de un test, una
+        # ventana descartada) se va su memoria, y `end_build` no recorre la de los demás.
+        self.owners: weakref.WeakKeyDictionary[Any, dict[tuple[Any, ...], Entry]] = (
+            weakref.WeakKeyDictionary()
+        )
+        # Lo construido fuera de una sesión (sin dueño).
+        self.orphan: dict[tuple[Any, ...], Entry] = {}
         functools.update_wrapper(self, fn)
         _components.add(self)
 
+    def cache_of(self, owner: Any) -> dict[tuple[Any, ...], Entry]:
+        """La memoria de `owner` (vacía si no tiene)."""
+        if owner is None:
+            return self.orphan
+        return self.owners.setdefault(owner, {})
+
+    @property
+    def cache(self) -> dict[tuple[Any, ...], Entry]:
+        """Todo lo memorizado, de todos los dueños (para inspeccionar y en los tests)."""
+        out = dict(self.orphan)
+        for cache in self.owners.values():
+            out.update(cache)
+        return out
+
     def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Element:
         owner, _ = _current_session()
+        cache: dict[tuple[Any, ...], Entry] = {}
         try:
-            key: tuple[Any, ...] | None = (owner, args, tuple(sorted(kwargs.items())))
-            entry = self.cache.get(key)
+            cache = self.cache_of(owner)
+            key: tuple[Any, ...] | None = (args, tuple(sorted(kwargs.items())))
+            entry = cache.get(key)
         except TypeError:  # argumentos (o dueño) no hashables: no se memoriza
             key, entry = None, None
         if entry is not None and fresh(entry.deps):
@@ -171,7 +193,7 @@ class Component(Generic[P]):
             element._memo = entry
             element._dyn |= _MEMO
         if key is not None:
-            self.cache[key] = entry
+            cache[key] = entry
         report(entry)
         return element
 
@@ -209,11 +231,12 @@ def end_build() -> None:
     stack = _sessions()
     owner, session = stack.pop() if stack else (None, 0)
     for comp in list(_components):
-        comp.cache = {
-            key: entry
-            for key, entry in comp.cache.items()
-            if key[0] is not owner or entry.generation == session
-        }
+        cache = comp.orphan if owner is None else comp.owners.get(owner)
+        if not cache:
+            continue
+        stale = [key for key, entry in cache.items() if entry.generation != session]
+        for key in stale:
+            del cache[key]
 
 
 # --- Regiones de la vista ---------------------------------------------------
