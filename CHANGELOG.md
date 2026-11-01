@@ -21,6 +21,12 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   ventana visible (`"Zoom 1,25×: 100 – 400"`), una región viva la anuncia al cambiar y su
   descripción explica las teclas.
 
+### Cambiado
+
+- El control de 60 fps de los benchmarks (`benchmarks/run.py --check`, el que usa la CI) exige
+  16,7 ms también a `dashboard_50 rebuild` y `typing type`, que tenían un presupuesto
+  provisional de 25 ms: ya caben en un frame (8,2 y 5,4 ms de mediana en la CI).
+
 ### Corregido
 
 - En una columna con `align` distinto de `"stretch"`, un contenedor sin `width` (una fila, una

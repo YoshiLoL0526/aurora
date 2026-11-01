@@ -72,15 +72,14 @@ mediana, no el p95: el p95 de unas decenas de muestras en un runner compartido e
 | `lista_10k`, `lista_10k_memo` | `hover`, `scroll`, `idle` | `rebuild`: reconstruir 10 000 filas (~50 000 nodos) es una vista deliberadamente gigante. |
 | `vista_grande` | `color`, `hover`, `idle` | `texto` y `clic`: rehacen el layout o la vista entera de ~50 000 nodos. |
 | `lista_virtual_100k` | `rebuild`, `hover`, `scroll`, `idle` | — |
-| `dashboard_50` | `hover`, `idle`; `rebuild` con 25 ms provisionales | — |
-| `typing` | `idle`; `type` con 25 ms provisionales | — |
+| `dashboard_50` | `rebuild`, `hover`, `idle` | — |
+| `typing` | `type`, `idle` | — |
 | `charts_points` | `hover`, `idle` | `rebuild`: volver a grabar 80 000 puntos nuevos; los datos llegan a ráfagas, no en cada frame. |
 | `chart_millon` | `zoom`, `pan`, `idle` | `rebuild`: releer un millón de puntos nuevos. |
 
 `dashboard_50 rebuild` y `typing type` reconstruyen por completo una vista de ~1600 y ~2000 nodos
-en cada frame (sin `@component`) y hoy rondan los 15–19 ms en un equipo de escritorio: tienen un
-presupuesto **provisional** de 25 ms (`PROVISIONAL`) que impide que empeoren, y bajarlo a 16,7 ms
-es trabajo pendiente para la 1.0.
+en cada frame (sin `@component`). Son las operaciones con menos margen: en la CI (runner Linux de
+4 vCPU) rondan los 8 y 5 ms de mediana, y en un equipo de escritorio con Windows, los 15 y 11.
 
 Los frames en frío (`cold`) no tienen presupuesto: son el primer frame de cada app, con su coste
 de crear el árbol y maquetar todo el texto; el arranque tiene su propio objetivo (abajo).

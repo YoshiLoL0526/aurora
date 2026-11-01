@@ -44,9 +44,6 @@ Op = Callable[[Pilot], None]
 
 # Un frame a 60 fps, en ms: el presupuesto de las operaciones interactivas.
 FRAME = 1000 / 60
-# Presupuesto provisional de las reconstrucciones completas de vistas medianas (~2000 nodos) que
-# aún no caben en un frame: impide que empeoren mientras se baja a `FRAME` (pendiente para la 1.0).
-PROVISIONAL = 25.0
 
 
 @dataclass
@@ -309,7 +306,7 @@ def dashboard_50(scale: float = 1.0) -> Bench:
             "idle": _idle,
         },
         info={"panels": n, "bars": n * bars},
-        budgets={**budget("hover", "idle"), **budget("rebuild", ms=PROVISIONAL)},
+        budgets=budget("rebuild", "hover", "idle"),
     )
 
 
@@ -348,7 +345,7 @@ def typing(scale: float = 1.0) -> Bench:
         {"type": type_char, "idle": _idle},
         setup=lambda p: p.focus("campo"),
         info={"rows": n},
-        budgets={**budget("idle"), **budget("type", ms=PROVISIONAL)},
+        budgets=budget("type", "idle"),
     )
 
 
