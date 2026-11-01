@@ -1083,3 +1083,7 @@ opciones están en la [referencia](reference.md#empaquetado-aurora-build).
   validación, cargas asíncronas, maestro-detalle, kanban, chat, atajos globales, tests…
 - Revisa la [referencia](reference.md) para descubrir todas las propiedades de estilo.
 - Si te interesa cómo funciona por dentro, sigue con la [arquitectura](architecture.md).
+- ¿Programas con un agente o un asistente de IA? No conoce Aurora por su entrenamiento: ejecuta
+  `aurora agents` en tu proyecto para que su `AGENTS.md` le diga que lea `aurora docs`, la
+  documentación de tu versión pensada para modelos (la [chuleta](llms.md), la referencia y la
+  guía en Markdown).

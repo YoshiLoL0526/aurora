@@ -11,6 +11,14 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ### Añadido
 
+- Documentación para modelos de lenguaje y agentes, empaquetada con cada versión (experimental):
+  `aurora docs` imprime en Markdown plano una chuleta para modelos (modelo mental, firmas, props
+  de estilo, tokens, `Pilot` y errores frecuentes, con las partes mecánicas generadas desde la
+  librería); `aurora docs <tema>` imprime la sección de la referencia de un componente o tema
+  (`aurora docs button`, con sugerencia si no existe), `--search` busca y `--full` lo imprime
+  todo. `aurora agents` escribe en el `AGENTS.md` del proyecto (sin pisar lo que tenga) cómo
+  consultar esa documentación y comprobar el trabajo con `render_png` y `Pilot`. El sitio publica
+  `llms.txt`, `llms-full.txt` y cada página en Markdown.
 - Los enlaces de `rich_text` (un `span` con `on_click`) y de `markdown` entran en el orden de
   Tab: se enfocan como una sola parada aunque ocupen varias líneas, muestran el anillo de foco
   alrededor de cada una y se activan con Enter. Antes solo respondían al clic y a los lectores

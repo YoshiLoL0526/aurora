@@ -25,6 +25,9 @@ Es pública, y sigue las reglas de esta página:
 - Todo lo que empieza por `_` (`aurora._core`, `_motion`, parámetros como `Window(_id=...)`).
 - Los módulos internos aunque se puedan importar (`aurora.elements`, `aurora.reactive`,
   `aurora.signal`, `aurora.components.forms`…): importa siempre desde `aurora`.
+- Los subcomandos **experimentales** `aurora docs` y `aurora agents`: sus opciones, el texto
+  que imprimen y la sección que escriben en `AGENTS.md` pueden cambiar mientras se ajustan a
+  cómo los usan los agentes. También el contenido de `llms.txt` y `llms-full.txt`.
 - Los atributos de un `Element` (`children`, `style`, `to_spec()`…): un elemento se construye con
   las funciones de Aurora y se compone con `[...]`; lo que lleva dentro es un detalle.
 - La forma del dict que viaja a Rust (el *spec*) y del árbol que devuelve el inspector.

@@ -97,3 +97,6 @@ uv run aurora dev app.py    # tu app, con hot reload
 - [**Referencia**](reference.md): todas las primitivas, componentes y propiedades de estilo.
 - [**Galería**](examples.md): los ejemplos del repositorio, renderizados.
 - [**Arquitectura**](architecture.md): cómo funciona el núcleo y por qué está diseñado así.
+- [**Para LLMs**](llms.md): ¿programas con un agente? `aurora agents` le explica Aurora y
+  `aurora docs` le da la documentación de tu versión; el sitio publica también
+  [`llms.txt`](https://yoshilol0526.github.io/aurora/llms.txt).

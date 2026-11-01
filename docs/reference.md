@@ -25,6 +25,7 @@ Referencia completa de la API pública de Aurora. Para un recorrido paso a paso,
 - [Temas y tokens](#temas-y-tokens)
 - [Formatos de valores](#formatos-de-valores)
 - [Empaquetado: `aurora build`](#empaquetado-aurora-build)
+- [Para agentes: `aurora docs` y `aurora agents`](#para-agentes-aurora-docs-y-aurora-agents)
 - [Avisos de obsolescencia](#avisos-de-obsolescencia)
 
 ---
@@ -2432,6 +2433,44 @@ Devuelve la ruta absoluta de un recurso de la app. Una ruta relativa se resuelve
 donde quedan los archivos de `include`, que conservan su estructura. Así funciona igual con
 `python app.py`, con doble clic en el ejecutable o lanzándolo desde otra carpeta. Una ruta
 absoluta se devuelve tal cual.
+
+## Para agentes: `aurora docs` y `aurora agents`
+
+Aurora es reciente: los modelos de lenguaje no la conocen por su entrenamiento, y lo que sepan de
+ella tiene que salir de lo que se les dé, para la versión que está instalada. Estos dos comandos
+son *experimentales* (ver [estabilidad](stability.md#qué-es-api-pública)).
+
+```bash
+aurora docs                      # la chuleta para modelos
+aurora docs button               # la sección de la referencia de un componente o tema
+aurora docs --search "on_drop"   # las secciones que contienen un texto
+aurora docs --full               # toda la documentación (chuleta, guía, recetas y referencia)
+aurora agents                    # escribe en ./AGENTS.md cómo trabajar con Aurora
+```
+
+**`aurora docs`** imprime en Markdown plano (sin colores, en UTF-8, a stdout) la documentación que
+viaja dentro del paquete instalado, la misma que publica este sitio:
+
+| Uso | Imprime |
+|---|---|
+| `aurora docs` | La [chuleta para modelos](llms.md): el modelo mental, las firmas de todas las primitivas y componentes, las props de estilo, los tokens, cómo probar con `Pilot` y los errores frecuentes. Las firmas, las props y los tokens se generan desde la propia librería. |
+| `aurora docs <tema>` | La sección de un tema: un componente o primitiva (`button`, `table`, `canvas`), una clase (`pilot`, `signal`, `window`) o un apartado (`style`, `tokens`, `temas y tokens`, `kanban`). Sin distinguir mayúsculas ni tildes. Si no existe, sale con código 1 y sugiere el más parecido. |
+| `aurora docs --search <texto>` | Las secciones que contienen el texto, con el comando que imprime cada una y la línea donde aparece. |
+| `aurora docs --list` | Los temas de la referencia. |
+| `aurora docs --full` | Todo junto, como `llms-full.txt`. |
+
+El sitio publica además, para herramientas que leen documentación de la web,
+[`llms.txt`](https://yoshilol0526.github.io/aurora/llms.txt) (el índice, en el formato de
+[llmstxt.org](https://llmstxt.org)), [`llms-full.txt`](https://yoshilol0526.github.io/aurora/llms-full.txt)
+y cada página en Markdown (`guide.md`, `reference.md`…) junto a su HTML.
+
+**`aurora agents [ruta] [--force] [--print]`** escribe en el `AGENTS.md` del proyecto (en la
+carpeta actual o en `ruta`) una sección breve que le dice a un agente de programación que consulte
+`aurora docs` y que compruebe su trabajo sin ventana con `render_png` y `pilot()`. Si el archivo
+ya existe, añade la sección al final sin tocar el resto; si ya tenía una de Aurora (va entre las
+marcas `<!-- aurora:inicio … -->` y `<!-- aurora:fin -->`), la sustituye, así que volver a
+ejecutarlo tras actualizar Aurora la pone al día. `--force` sobrescribe el archivo entero y
+`--print` la imprime en vez de escribirla.
 
 ## Avisos de obsolescencia
 
