@@ -120,6 +120,9 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - `tabs(key=...)` y `segmented(key=...)` ponen la `key` en su contenedor; antes solo la llevaban
   las opciones (`f"{key}-{valor}"`), que ahora se documentan como la forma de pulsarlas desde
   `Pilot` y `aurora pilot`.
+- `aurora --help`, la ayuda de cada comando y los errores de uso salen en UTF-8 tambiÃ©n en Windows:
+  el CLI pasa stdout y stderr a UTF-8 al arrancar. Antes solo lo hacÃ­an `aurora docs` y los
+  errores propios, y la ayuda de argparse se leÃ­a rota en una tuberÃ­a (`documentaciï¿½n`).
 
 ## [0.9.1] — 2026-10-31
 

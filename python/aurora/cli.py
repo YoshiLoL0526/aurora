@@ -26,6 +26,10 @@ if TYPE_CHECKING:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # La ayuda y los errores de uso de argparse también llevan tildes: sin esto, en una tubería
+    # de Windows salen en la página de códigos local y se leen rotos (`documentaci�n`).
+    _utf8(sys.stdout)
+    _utf8(sys.stderr)
     parser = argparse.ArgumentParser(prog="aurora", description="Herramientas de Aurora.")
     parser.add_argument("--version", action="version", version=f"aurora {__version__}")
     commands = parser.add_subparsers(dest="command", required=True, metavar="comando")

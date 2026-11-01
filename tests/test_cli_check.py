@@ -331,3 +331,17 @@ def test_load_errores() -> None:
     with pytest.raises(ScriptError) as e:
         start(pick_window(app, None))
     assert e.value.location is not None and e.value.location.line == 7
+
+
+@pytest.mark.parametrize(("argv", "expected"), [(["--help"], "documentación"), (["acción"], "'acción'")])
+def test_la_ayuda_y_los_errores_de_uso_salen_en_utf8(argv: list[str], expected: str) -> None:
+    # En una tubería de Windows la salida usaría la página de códigos local (se fuerza aquí con
+    # PYTHONIOENCODING): el CLI la pasa a UTF-8 al arrancar, también para argparse.
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    done = subprocess.run([sys.executable, "-m", "aurora", *argv], capture_output=True, env=env)
+    output = (done.stdout + done.stderr).decode("utf-8")  # falla si no es UTF-8
+    assert expected in output
