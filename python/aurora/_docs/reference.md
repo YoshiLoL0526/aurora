@@ -616,7 +616,9 @@ column(gap=8)[text("a"), text("b")]
 ```
 
 Dentro de los corchetes se aceptan elementos, listas (se aplanan), strings (se convierten en
-`text`), `None`/`False` (se ignoran, para poder escribir `condición and elemento`) y funciones sin
+`text`), `None`/`False` (se ignoran, para poder escribir `condición and elemento`; también la
+cadena vacía y el `0`, que es lo que da `and` cuando la condición es un `str` o un número:
+`error() and text(error())` no deja un texto vacío que ocupe sitio) y funciones sin
 argumentos que devuelven cualquiera de esas cosas: son hijos calculados, que se reevalúan solos
 cuando cambia un `Signal` que leen ([reconstrucción parcial](#reconstrucción-parcial)). Cualquier
 propiedad de estilo admite también una función (`bg=lambda: ...`), con el mismo efecto.

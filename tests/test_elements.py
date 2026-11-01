@@ -53,3 +53,17 @@ def test_button_keeps_callback_and_key():
     assert spec["handlers"] == {"click": cb}
     assert spec["key"] == "ok"
     assert spec["children"][0]["text"] == "OK"
+
+
+def test_empty_string_and_zero_children_paint_nothing():
+    # `error() and text(error())` con `error() == ""` da "": como `None`, no crea un texto vacío
+    # que ocupe sitio y sume un `gap`. Igual con un 0 (`n() and badge(...)`).
+    error, n = "", 0
+    with_empty = column(gap=10)[error and text(error), n and text("n"), text("a")]
+    assert [c.content for c in with_empty.children] == ["a"]
+    assert column()["x"].children[0].content == "x"
+
+
+def test_a_number_child_is_a_clear_error():
+    with pytest.raises(TypeError, match="un número no es un hijo"):
+        column()[5]

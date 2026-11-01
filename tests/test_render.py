@@ -428,3 +428,13 @@ def test_password_field_paints_one_dot_per_character(tmp_path):
     assert shot("iiii", password=True) == shot("WWWW", password=True)
     assert shot("iiii", password=True) != shot("iiii")
     assert shot("iiii", password=True) != shot("iii", password=True)
+
+
+def test_empty_conditional_child_takes_no_space():
+    error = Signal("")
+    view = lambda: column(gap=20, padding=0)[error() and text(error()), text("b", key="b")]
+    pilot = App(view, size=(200, 100)).pilot()
+    assert pilot.rect("b")[1] == 0  # sin texto vacío delante ni el gap que sumaba
+    error.set("mal")
+    pilot.frame()
+    assert pilot.rect("b")[1] > 20

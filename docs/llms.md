@@ -61,7 +61,8 @@ App(view, title="Contador", size=(520, 200)).run()
   `text_input(nombre, placeholder="Nombre")`, `checkbox(acepto, "Acepto")`,
   `select(pais, ["ES", "MX"])`, `slider(volumen)`. Pasa el `Signal`, no su valor.
 - **Condicionales:** `cargando() and spinner()`, o `dialog(abierto, contenido, title="…")`,
-  que no pinta nada mientras `abierto()` es falso.
+  que no pinta nada mientras `abierto()` es falso. Con una condición de texto o número también
+  vale: `error() and text(error())` no pinta nada (ni suma `gap`) si `error()` es `""` o `0`.
 - **Layout:** `row`/`column` (flexbox: `gap`, `align`, `justify`, `grow`), `spacer()` empuja lo
   siguiente al final, `scroll()` para lo que no cabe, `virtual_list` para miles de filas.
   `grow=1, width=0` en cada hijo de una `row` reparte el ancho a partes iguales.
@@ -87,6 +88,7 @@ App(view, title="Contador", size=(520, 200)).run()
 | `key=str(i)` en una lista que se reordena, o `key=str(random())` | `key=f"tarea-{t.id}"` | Keys estables y únicas. |
 | `for t in ts: ... on_click=lambda: borrar(t)` | `lambda t=t: borrar(t)` o una función por fila | Las lambdas en un bucle capturan la variable, no el valor. |
 | `App(view())` | `App(view)` | `App` recibe la función. |
+| `text(error(), color="$danger")` siempre | `error() and text(error(), color="$danger")` | Un `text("")` también ocupa una línea y suma un `gap`; el `and` no pinta nada con `""`. |
 | `text_input(nombre(), ...)` | `text_input(nombre, ...)` | Con el valor, el campo no cambia al escribir. |
 | `app.run()` en un test | `app.pilot()` / `app.render_png(...)` | `run()` abre una ventana y bloquea. |
 
@@ -217,7 +219,7 @@ resource(path: str | PathLike[str])
 ### Alias de tipos de las firmas
 
 ```python
-Child = Union[Element, str, bool, None, Callable[[], "Child"], Iterable["Child"]]
+Child = Union[Element, str, bool, int, None, Callable[[], "Child"], Iterable["Child"]]
 Fit = Literal["contain", "cover", "fill", "none"]
 Kind = Literal["line", "area", "bar", "scatter"]
 Options = Sequence[T] | Sequence[tuple[T, str]]

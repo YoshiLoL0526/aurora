@@ -32,7 +32,8 @@ if TYPE_CHECKING:
     from ._style import Style
     from ._style_variants import ImageStyle
 
-Child = Union["Element", str, bool, None, Callable[[], "Child"], Iterable["Child"]]
+# `int` está por `n() and elemento`: un 0 no pinta nada (otro número es un error).
+Child = Union["Element", str, bool, int, None, Callable[[], "Child"], Iterable["Child"]]
 TextLike = str | Callable[[], Any]
 
 # Texto libre que no se interpreta como token de tema aunque empiece por "$".
@@ -226,13 +227,19 @@ def _resolve(theme: Theme, prop: str, value: Any) -> Any:
 
 
 def _flatten(children: Child) -> Iterable[Element]:
-    # None/False permiten condicionales en línea: `cond and elemento`.
+    # None/False permiten condicionales en línea: `cond and elemento`. Con una
+    # condición que es una cadena vacía o un 0 (`error() and text(error())`,
+    # `n() and badge(...)`), `and` da ese valor: tampoco pinta nada.
     if children is None or isinstance(children, bool):
         return
     if isinstance(children, Element):
         yield children
     elif isinstance(children, str):
-        yield text(children)
+        if children:
+            yield text(children)
+    elif isinstance(children, (int, float)):
+        if children:
+            raise TypeError(f"un número no es un hijo: {children!r} (usa text(str(...)))")
     elif callable(children):
         yield Dynamic(children)
     else:

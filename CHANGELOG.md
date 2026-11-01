@@ -111,6 +111,10 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - `aurora check` seÃ±ala la lÃ­nea de tu cÃ³digo que escribiÃ³ un token de tema desconocido (el
   `ThemeTokenError` lleva `origin`, el archivo y la lÃ­nea donde se creÃ³ el elemento). Antes, como el
   token falla al serializar la vista, el error salÃ­a sin archivo (`file: null`).
+- Una cadena vacÃ­a o un `0` entre los hijos no pintan nada, como `None` y `False`: con una condiciÃ³n
+  de texto, `error() and text(error())` con `error() == ""` creaba un `text("")` que ocupaba una
+  lÃ­nea y sumaba un `gap` (era el patrÃ³n que recomendaba la chuleta). Un nÃºmero distinto de 0 como
+  hijo lanza un `TypeError` claro en vez de `'int' object is not iterable`.
 
 ## [0.9.1] — 2026-10-31
 
