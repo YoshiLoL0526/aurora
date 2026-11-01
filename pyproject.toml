@@ -76,7 +76,8 @@ filterwarnings = ["error::aurora.AuroraDeprecationWarning"]
 [tool.ruff]
 line-length = 110
 target-version = "py311"
-extend-exclude = ["python/aurora/_core.pyi"]
+# `_docs/` es la copia generada de `docs/` (la que imprime `aurora docs`): se formatea allí.
+extend-exclude = ["python/aurora/_core.pyi", "python/aurora/_docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

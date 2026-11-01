@@ -4,6 +4,9 @@ Antes de leer las páginas se ejecutan sus bloques vivos: las capturas se añade
 archivos generados (así MkDocs valida los enlaces a ellas) y cada página recibe su Markdown con
 las imágenes ya insertadas. Los enlaces a archivos del repositorio fuera de `docs/`
 (`../examples/hello.py`) se convierten en enlaces a GitHub.
+
+Al terminar, `llmstxt.py` publica la documentación para modelos de lenguaje: `llms.txt`,
+`llms-full.txt` y cada página de la navegación como `.md`, junto a su HTML.
 """
 
 from __future__ import annotations
@@ -16,15 +19,18 @@ from pathlib import Path
 from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.exceptions import PluginError
 from mkdocs.structure.files import File, Files
+from mkdocs.structure.nav import Navigation
 from mkdocs.structure.pages import Page
 from mkdocs.utils.meta import get_data
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import livedocs
+import llmstxt
 
 OUT = livedocs.ROOT / "build" / "docs-live"
 _OUTSIDE = re.compile(r"\]\(\.\./([^)#\s]+)(#[^)\s]*)?\)")
 _pages: dict[str, str] = {}
+_nav: list[tuple[str, str]] = []
 
 
 def on_files(files: Files, *, config: MkDocsConfig) -> Files:
@@ -52,3 +58,18 @@ def on_page_markdown(markdown: str, *, page: Page, config: MkDocsConfig, files: 
     if not repo:
         return markdown
     return _OUTSIDE.sub(lambda m: f"]({repo}/blob/main/{m[1]}{m[2] or ''})", markdown)
+
+
+def on_nav(nav: Navigation, *, config: MkDocsConfig, files: Files) -> Navigation:
+    _nav[:] = [(str(page.title or page.file.src_uri), page.file.src_uri) for page in nav.pages]
+    return nav
+
+
+def on_post_build(*, config: MkDocsConfig) -> None:
+    llmstxt.write_site(
+        Path(config.site_dir),
+        _nav,
+        site_url=config.site_url or "",
+        description=config.site_description or "",
+        repo=(config.repo_url or llmstxt.REPO).rstrip("/"),
+    )

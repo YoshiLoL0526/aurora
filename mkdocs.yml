@@ -36,6 +36,7 @@ nav:
   - Guía: guide.md
   - Recetas: recipes.md
   - Referencia: reference.md
+  - Para LLMs: llms.md
   - Galería: examples.md
   - Arquitectura: architecture.md
   - Proyecto:
