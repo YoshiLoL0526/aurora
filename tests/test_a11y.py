@@ -1,9 +1,10 @@
 """Accesibilidad: la semántica que declara la vista (`role`, `label`, estados) y el
 árbol que ven los lectores de pantalla (`Pilot.a11y_tree`)."""
 
+import numpy as np
 import pytest
 
-from aurora import App, Signal, box, button, column, image, row, scroll, text, text_input
+from aurora import App, Signal, box, button, chart, column, image, row, scroll, text, text_input
 from aurora._icons import _CHECK
 from aurora.components import (
     checkbox,
@@ -355,3 +356,32 @@ def test_sortable_is_a_list_and_announces_keyboard_moves():
     pilot.press("escape")
     live = [n for n in pilot.a11y_tree() if n.get("live") == "assertive"]
     assert [n["value"] for n in live] == ["Cancelado. «uno» vuelve a su sitio."]
+
+
+def test_el_grafico_con_zoom_anuncia_su_ventana_y_sus_teclas():
+    labels = [f"día {i}" for i in range(41)]
+    view = lambda: column()[chart(np.arange(41.0), labels=labels, zoom=True, label="Ventas", key="c")]
+    pilot = _pilot(view)
+    figure = _node(pilot, "c")
+    assert figure["role"] == "figure" and figure["label"] == "Ventas"
+    assert "focus" in figure["actions"]
+    assert figure["value"] == "Vista completa: día 0 – día 40"
+    assert "acercan y alejan" in figure["description"]
+    status = _node(pilot, "c#zoom")
+    assert status["role"] == "status" and status["live"] == "polite"
+    assert status["id"] in figure["children"]
+
+    pilot.press("tab")
+    pilot.press("plus")
+    expected = "Zoom 1,25×: día 4 – día 36"
+    assert _node(pilot, "c")["value"] == expected
+    assert _node(pilot, "c")["focused"]
+    assert _node(pilot, "c#zoom")["label"] == expected  # la región viva lo anuncia
+    pilot.press("0")
+    assert _node(pilot, "c#zoom")["label"] == "Vista completa: día 0 – día 40"
+
+
+def test_el_grafico_sin_zoom_no_anuncia_ventana():
+    pilot = _pilot(lambda: column()[chart(np.arange(10.0), label="Ventas", key="c")])
+    assert _node(pilot, "c")["value"] is None
+    assert not [n for n in pilot.a11y_tree() if n["key"] == "c#zoom"]

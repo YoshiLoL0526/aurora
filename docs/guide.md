@@ -700,7 +700,8 @@ del array, así que si lo mutas en sitio basta con reconstruir la vista (por eje
 un `Signal`) para que se actualice. Las series largas se reducen con LTTB al dibujarlas, así que
 un gráfico de millones de puntos se mueve sin problema; con `zoom=True` la rueda acerca (sobre el
 puntero), el arrastre desplaza, la rueda horizontal también y el doble clic vuelve a la vista
-completa, ajustando el eje y a lo que se ve.
+completa, ajustando el eje y a lo que se ve. Con el teclado, el gráfico se enfoca con Tab y se
+maneja con `+`/`-` (zoom), las flechas ←/→ (desplazar) y `0` (vista completa).
 
 Mira [`examples/charts.py`](../examples/charts.py) para un panel con las cuatro formas y la señal
 con zoom.

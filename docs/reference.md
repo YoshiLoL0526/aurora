@@ -765,9 +765,14 @@ chart(muestras, zoom=True)  # millones de puntos: rueda para acercar, arrastra p
 - **Zoom y pan:** con `zoom=True`, la rueda acerca y aleja sobre el puntero (el dato bajo el
   cursor no se mueve), el arrastre desplaza la ventana, la rueda horizontal (trackpad) también
   desplaza y el doble clic vuelve a la vista completa. El eje y se ajusta a lo visible salvo que
-  fijes `y_min`/`y_max`; al llegar a un tope, la rueda pasa al `scroll` de fuera. La ventana es
-  estado del gráfico (su `key`) y sobrevive a las reconstrucciones; `Pilot.chart_view(key)` la
-  lee en los tests.
+  fijes `y_min`/`y_max`; al llegar a un tope, la rueda pasa al `scroll` de fuera. El gráfico entra
+  en el orden de Tab y, con el foco, `+` (o `=`) y `-` acercan y alejan alrededor del centro, ← y
+  → desplazan un 10 % de lo visible y `0` o Inicio vuelven a la vista completa (`focusable=False`
+  lo saca del orden de Tab; un `on_key` que atienda la tecla la gana). Para los lectores de
+  pantalla, su valor es la ventana visible (`"Zoom 2×: 10 – 30"`, con las `labels` si las hay),
+  que una región viva (`f"{key}#zoom"`) anuncia al cambiar, y su descripción explica las teclas.
+  La ventana es estado del gráfico (su `key`) y sobrevive a las reconstrucciones;
+  `Pilot.chart_view(key)` la lee en los tests.
 - **Series:** `color` admite un color o una lista (uno por serie; sin él, rota la paleta del
   tema) y `names` dibuja la leyenda de arriba.
 - **Ejes:** el de x son posiciones 0, 1, 2… salvo que des `x` (numérico) o `labels` (categorías:
@@ -841,7 +846,7 @@ Además de las propiedades de estilo, todos los elementos aceptan:
 | `on_drop` | Callable que recibe la lista de rutas (`list[str]`) de los archivos que se sueltan desde el explorador del sistema sobre el elemento o sus hijos. Ver [Soltar archivos](#soltar-archivos). |
 | `on_drop_hover` | Callable que recibe la lista de rutas cuando un arrastre de archivos entra en la ventana y `None` cuando sale o se suelta. Para resaltar las zonas donde soltar. |
 | `on_<evento>` | Todo argumento que empiece por `on_` se trata como manejador, no como estilo. |
-| `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`. |
+| `focusable` | `bool`. Si el elemento recibe el foco con Tab y con clic. Por defecto, los que tienen `on_click`, los campos de texto y los `chart(zoom=True)`. |
 | `autofocus` | `bool`. Toma el foco al aparecer en la vista (p. ej. el primer botón de un diálogo). Solo al aparecer: no lo roba en cada reconstrucción. |
 | `role` | Rol de accesibilidad para los lectores de pantalla: `"button"`, `"checkbox"`, `"switch"`, `"radio"`, `"radiogroup"`, `"slider"`, `"textbox"`, `"combobox"`, `"option"`, `"tab"`, `"tablist"`, `"dialog"`, `"menu"`, `"menuitem"`, `"list"`, `"listitem"`, `"table"`, `"row"`, `"cell"`, `"columnheader"`, `"progressbar"`, `"image"`, `"heading"`, `"status"`, `"link"`, `"region"`, `"separator"`… (los nombres de ARIA en minúscula). Un rol desconocido lanza `ValueError`. Ver [Accesibilidad](#accesibilidad). |
 | `label` | Nombre con el que el lector anuncia el elemento. Por defecto, su texto (`text`, o el de un botón o casilla). En los controles compuestos (`select`, `combobox`, `number_input`, los selectores de fecha, hora y color) va al nodo que tiene el rol, y `field(..., label=)` lo pone en el control que envuelve. |

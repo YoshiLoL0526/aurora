@@ -743,7 +743,12 @@ impl Node {
     pub fn is_focusable(&self) -> bool {
         self.style
             .focusable
-            .unwrap_or_else(|| self.is_interactive() || self.is_editable())
+            .unwrap_or_else(|| self.is_interactive() || self.is_editable() || self.is_zoomable())
+    }
+
+    /// Es un `chart(zoom=True)`: se enfoca para hacer zoom con el teclado.
+    pub fn is_zoomable(&self) -> bool {
+        self.chart.as_ref().is_some_and(|chart| chart.zoom)
     }
 
     pub fn handler(&self, event: &str) -> Option<&Py<PyAny>> {

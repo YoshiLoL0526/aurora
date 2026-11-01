@@ -20,6 +20,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use skia_safe::Rect;
 
+use crate::chart::Charts;
 use crate::render::{Engine, HitRegion};
 use crate::spec::{Kind, Node, Value};
 
@@ -150,6 +151,10 @@ pub fn role_name(role: Role) -> String {
         .unwrap_or_else(|| format!("{role:?}").to_lowercase())
 }
 
+/// Descripción de un `chart` con zoom: las teclas que lo manejan.
+const ZOOM_KEYS: &str =
+    "+ y - acercan y alejan, las flechas desplazan y 0 vuelve a la vista completa";
+
 /// Id del nodo raíz: la ventana.
 const WINDOW: NodeId = NodeId(0);
 
@@ -202,6 +207,7 @@ pub fn build(
     state: &mut A11y,
     tree: Option<&Node>,
     engine: &Engine,
+    charts: &Charts,
     width: f32,
     height: f32,
     scale: f32,
@@ -209,6 +215,7 @@ pub fn build(
     let mut builder = Builder {
         state,
         engine,
+        charts,
         regions: engine.regions.iter().map(|r| (r.key.as_str(), r)).collect(),
         scale,
         focused: engine.focused.as_deref(),
@@ -250,6 +257,8 @@ pub fn build(
 struct Builder<'a> {
     state: &'a mut A11y,
     engine: &'a Engine,
+    /// La ventana visible de los `chart` con zoom.
+    charts: &'a Charts,
     /// Región de cada key (bounds y orden de pintura).
     regions: HashMap<&'a str, &'a HitRegion>,
     scale: f32,
@@ -304,6 +313,31 @@ impl Builder<'_> {
             self.keys.push((id, key));
             children.push(id);
         }
+    }
+
+    /// La ventana visible de un `chart` con zoom: es el valor del gráfico y
+    /// un hijo `status` que la anuncia al cambiar (zoom o pan con el teclado).
+    fn zoom_window(&mut self, node: &Node, ac: &mut AcNode, children: &mut Vec<NodeId>) {
+        let Some(text) = node
+            .chart
+            .as_ref()
+            .filter(|chart| chart.zoom)
+            .and_then(|chart| self.charts.describe(&node.key, chart))
+        else {
+            return;
+        };
+        ac.set_value(text.clone());
+        if node.a11y.description.is_none() && node.style.tooltip.is_none() {
+            ac.set_description(ZOOM_KEYS.to_owned());
+        }
+        let key = format!("{}#zoom", node.key);
+        let id = self.state.id(&key);
+        let mut status = AcNode::new(Role::Status);
+        status.set_label(text);
+        status.set_live(Live::Polite);
+        self.nodes.push((id, status));
+        self.keys.push((id, key));
+        children.push(id);
     }
 
     /// El nodo de accesibilidad de `node` con su subárbol, o `None` si todo él
@@ -415,6 +449,7 @@ impl Builder<'_> {
         if node.is_focusable() {
             ac.add_action(Action::Focus);
         }
+        self.zoom_window(node, &mut ac, &mut children);
         if node.is_editable() {
             ac.add_action(Action::SetValue);
         }

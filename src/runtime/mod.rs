@@ -507,9 +507,13 @@ impl Runtime {
     /// Lo usan el adaptador de la ventana y el piloto.
     pub fn a11y_build(&mut self, width: f32, height: f32, scale: f32) -> crate::a11y::Built {
         let Self {
-            tree, engine, a11y, ..
+            tree,
+            engine,
+            a11y,
+            charts,
+            ..
         } = self;
-        crate::a11y::build(a11y, tree.as_ref(), engine, width, height, scale)
+        crate::a11y::build(a11y, tree.as_ref(), engine, charts, width, height, scale)
     }
 
     /// Llama al manejador `event` del nodo `key`, con `arg` como único

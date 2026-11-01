@@ -85,6 +85,44 @@ impl Charts {
         self.set_window(key, x0 + shift, x1 + shift)
     }
 
+    /// Desplaza la ventana una fracción de su ancho (positiva: hacia el final
+    /// del eje x). Es el pan del teclado.
+    pub fn shift(&mut self, key: &str, fraction: f64) -> bool {
+        let Some((x0, x1)) = self.view(key) else {
+            return false;
+        };
+        let d = fraction * (x1 - x0);
+        self.set_window(key, x0 + d, x1 + d)
+    }
+
+    /// La ventana visible de `key` en palabras, para los lectores de pantalla:
+    /// su zoom respecto a la vista completa y el primer y el último valor del
+    /// eje x visibles (las etiquetas, si el eje las tiene).
+    pub fn describe(&self, key: &str, chart: &Chart) -> Option<String> {
+        let (x0, x1) = self.view(key)?;
+        let (d0, d1) = self.drawn.get(key)?.view?.domain;
+        let at = |v: f64| -> String {
+            if !chart.labels.is_empty() {
+                let i = (v.round().max(0.0) as usize).min(chart.labels.len() - 1);
+                return chart.labels[i].clone();
+            }
+            let step = nice_step(x1 - x0, 5.0);
+            format_tick(v, step, tick_unit(x0, x1))
+        };
+        let range = format!("{} – {}", at(x0), at(x1));
+        let zoom = (d1 - d0) / (x1 - x0);
+        Some(if zoom < 1.0 + 1e-9 {
+            format!("Vista completa: {range}")
+        } else {
+            let zoom = format!("{zoom:.2}");
+            let zoom = zoom
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .replace('.', ",");
+            format!("Zoom {zoom}×: {range}")
+        })
+    }
+
     /// Vuelve a la vista completa (dominio entero).
     pub fn reset(&mut self, key: &str) -> bool {
         let changed = self.windows.remove(key).is_some();

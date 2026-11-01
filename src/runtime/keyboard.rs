@@ -32,8 +32,9 @@ impl Runtime {
     /// Primero la reciben los manejadores `on_key`, del nodo enfocado hacia la
     /// raíz (o solo la raíz si no hay foco); uno que devuelva un valor verdadero
     /// la da por atendida. Si nadie la atiende, se aplica el comportamiento por
-    /// defecto: Tab mueve el foco, Enter y Espacio activan, y las flechas,
-    /// RePág/AvPág, Inicio/Fin y Espacio desplazan.
+    /// defecto: Tab mueve el foco, Enter y Espacio activan, un `chart` con
+    /// zoom acerca, aleja y se desplaza, y las flechas, RePág/AvPág,
+    /// Inicio/Fin y Espacio desplazan.
     pub fn key_event(&mut self, input: &KeyInput, pressed: bool) -> PyResult<bool> {
         if !pressed {
             return self.key_up(input);
@@ -76,7 +77,7 @@ impl Runtime {
                 }
                 Ok(true)
             }
-            _ => Ok(self.keyboard_scroll(input)),
+            _ => Ok(self.chart_key(input) || self.keyboard_scroll(input)),
         }
     }
 

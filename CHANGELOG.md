@@ -15,6 +15,11 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   Tab: se enfocan como una sola parada aunque ocupen varias líneas, muestran el anillo de foco
   alrededor de cada una y se activan con Enter. Antes solo respondían al clic y a los lectores
   de pantalla. El lector también puede enfocarlos, y sus bounds cubren todas sus líneas.
+- Zoom de `chart(zoom=True)` con el teclado: el gráfico entra en el orden de Tab y, con el foco,
+  `+` (o `=`) y `-` acercan y alejan alrededor del centro, ← y → desplazan un 10 % de lo visible
+  y `0` o Inicio vuelven a la vista completa. Para los lectores de pantalla, su valor es la
+  ventana visible (`"Zoom 1,25×: 100 – 400"`), una región viva la anuncia al cambiar y su
+  descripción explica las teclas.
 
 ## [0.9.1] — 2026-10-31
 

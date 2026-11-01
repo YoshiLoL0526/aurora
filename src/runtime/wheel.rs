@@ -5,6 +5,9 @@ use super::*;
 /// Factor de zoom por paso de rueda (`scroll::LINE` píxeles): 1,25×.
 const ZOOM_RATE: f64 = 1.25;
 
+/// Lo que desplaza cada flecha a un `chart` enfocado: un 10 % de lo visible.
+const KEY_PAN: f64 = 0.1;
+
 impl Runtime {
     /// Rueda o trackpad sobre el puntero: sobre un `chart` con zoom, la rueda
     /// vertical acerca (el puntero es el ancla) y la horizontal desplaza la
@@ -68,8 +71,29 @@ impl Runtime {
         self.tree
             .as_ref()
             .and_then(|tree| tree.find(key))
-            .and_then(|node| node.chart.as_ref())
-            .is_some_and(|chart| chart.zoom)
+            .is_some_and(Node::is_zoomable)
+    }
+
+    /// Zoom con el teclado del `chart` enfocado: `+` (o `=`) acerca y `-`
+    /// aleja alrededor del centro, ← y → desplazan y `0` o Inicio vuelven a la
+    /// vista completa. Devuelve si la tecla era suya (aunque ya esté en el tope).
+    pub(super) fn chart_key(&mut self, input: &KeyInput) -> bool {
+        let m = input.mods;
+        if m.ctrl || m.alt || m.meta {
+            return false;
+        }
+        let Some(key) = self.engine.focused.clone().filter(|k| self.zoomable(k)) else {
+            return false;
+        };
+        match input.key.as_str() {
+            "+" | "=" => self.charts.zoom(&key, 0.5, 1.0 / ZOOM_RATE),
+            "-" => self.charts.zoom(&key, 0.5, ZOOM_RATE),
+            "ArrowLeft" => self.charts.shift(&key, -KEY_PAN),
+            "ArrowRight" => self.charts.shift(&key, KEY_PAN),
+            "0" | "Home" => self.charts.reset(&key),
+            _ => return false,
+        };
+        true
     }
 
     /// Desplazamiento actual del `scroll` con esa key.

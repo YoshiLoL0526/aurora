@@ -554,6 +554,51 @@ def test_zoom_with_several_series(tmp_path):
     assert _pixels(out, (0, 255, 0))
 
 
+def test_keyboard_zooms_pans_and_resets_the_focused_chart():
+    pilot, _ = _zoomable()
+    pilot.press("tab")  # un chart con zoom entra en el orden de Tab
+    assert pilot.focused == "c"
+    pilot.press("plus")
+    x0, x1 = pilot.chart_view("c")
+    assert x1 - x0 == pytest.approx(400.0)  # 1,25× alrededor del centro
+    assert (x0 + x1) / 2 == pytest.approx(250.0)
+    pilot.press("=")  # el + sin Mayúsculas de los teclados US
+    pilot.press("right")
+    after = pilot.chart_view("c")
+    assert after[1] - after[0] == pytest.approx(320.0)
+    assert after[0] == pytest.approx(90.0 + 32.0)  # un 10 % de lo visible a la derecha
+    pilot.press("left")
+    pilot.press("left")
+    assert pilot.chart_view("c")[0] == pytest.approx(90.0 - 32.0)
+    pilot.press("-")
+    assert pilot.chart_view("c")[1] - pilot.chart_view("c")[0] == pytest.approx(400.0)
+    pilot.press("0")
+    assert pilot.chart_view("c") == (0.0, 500.0)
+    pilot.press("plus")
+    pilot.press("home")
+    assert pilot.chart_view("c") == (0.0, 500.0)
+    # Al tope, la tecla sigue siendo del gráfico: no acerca más allá de los datos.
+    for _ in range(40):
+        pilot.press("plus")
+    x0, x1 = pilot.chart_view("c")
+    assert 0.0 < x1 - x0 < 5.0
+
+
+def test_keyboard_zoom_leaves_ctrl_shortcuts_and_unfocused_charts_alone():
+    pilot, _ = _zoomable()
+    pilot.press("plus")  # sin foco no es de nadie
+    assert pilot.chart_view("c") == (0.0, 500.0)
+    pilot.focus("c")
+    pilot.press("ctrl+-")
+    assert pilot.chart_view("c") == (0.0, 500.0)
+
+
+def test_a_chart_without_zoom_takes_no_focus():
+    pilot, _ = _zoomable(zoom=False)
+    pilot.press("tab")
+    assert pilot.focused is None
+
+
 def test_zoom_with_a_descending_x(tmp_path):
     """x en orden descendente: la ventana se acota igual (búsqueda al revés)."""
     n = 10_000

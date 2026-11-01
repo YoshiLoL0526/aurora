@@ -179,7 +179,9 @@ def chart(
     en su dato), el arrastre desplaza la ventana y el doble clic vuelve a la
     vista completa; el eje y se ajusta a lo visible salvo que fijes
     `y_min`/`y_max`. Al llegar a un tope, la rueda sigue con el `scroll` de
-    fuera.
+    fuera. El gráfico entra entonces en el orden de Tab y, enfocado, `+`/`-`
+    acercan y alejan, las flechas ←/→ desplazan y `0` o Inicio vuelven a la
+    vista completa; los lectores de pantalla oyen la ventana visible.
 
     Admite el estilo de una caja (`bg`, `radius`, `padding`, `border_*`,
     `shadow`…), manejadores como `on_click` y una `height` (por defecto, 200 px

@@ -399,7 +399,8 @@ COVERAGE: dict[str, dict[str, str]] = {
     "chart": {
         "render": "test_charts.py::test_repaints_from_the_raster_cache_look_the_same",
         "pilot": "test_charts.py::test_zoom_with_a_descending_x",
-        "keyboard": "(pendiente para la 1.0: el zoom solo va con rueda y arrastre)",
+        "a11y": "test_a11y.py::test_el_grafico_con_zoom_anuncia_su_ventana_y_sus_teclas",
+        "keyboard": "test_charts.py::test_keyboard_zooms_pans_and_resets_the_focused_chart",
     },
     "checkbox": {
         "render": "test_components.py::test_checkbox_draws_mark_when_checked",
