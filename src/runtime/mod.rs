@@ -162,8 +162,14 @@ pub struct Runtime {
     pub mods: Mods,
     /// Campo en el que se está seleccionando con el ratón.
     selecting: Option<String>,
-    /// Último clic (momento, punto y número de clics seguidos) para dobles y triples clics.
-    last_click: Option<(Instant, Point, u8)>,
+    /// Último clic (momento en segundos de `clock`, punto, número de clics
+    /// seguidos y lo que recibió la pulsación) para dobles y triples clics.
+    last_click: Option<(f32, Point, u8, String)>,
+    /// Reloj simulado (segundos) del piloto, que avanza con sus frames; `None`
+    /// en una ventana real, que usa el tiempo del sistema (ver `clock`).
+    pub virtual_clock: Option<f32>,
+    /// Momento de creación: origen del reloj real.
+    epoch: Instant,
     /// El puntero está sobre un `chart` con zoom (para el cursor de agarrar).
     zoom_hover: bool,
     /// Los bordes de la ventana la redimensionan (sin marco, redimensionable y
@@ -227,6 +233,8 @@ impl Runtime {
             mods: Mods::default(),
             selecting: None,
             last_click: None,
+            virtual_clock: None,
+            epoch: Instant::now(),
             zoom_hover: false,
             window_edges: false,
             size: (0.0, 0.0),
@@ -447,6 +455,9 @@ impl Runtime {
 
     /// Avanza el reloj real (parpadeo del cursor), independiente de las transiciones.
     pub fn advance_clock(&mut self, elapsed: f32) {
+        if let Some(t) = &mut self.virtual_clock {
+            *t += elapsed;
+        }
         self.inspector.advance(elapsed);
         if let Some(state) = self.focused_input() {
             state.blink += elapsed;
@@ -463,6 +474,17 @@ impl Runtime {
             self.stats.layout += self.engine.layout_time;
             self.stats.layout_cached &= self.engine.layout_cached;
         }
+    }
+}
+
+impl Runtime {
+    /// Segundos desde que se creó el runtime: el reloj simulado en el piloto
+    /// (los clics de un guion no dependen de lo rápido que se ejecute) y el
+    /// real en una ventana (los eventos llegan entre frames, antes de que
+    /// `advance_clock` se ponga al día).
+    pub(super) fn clock(&self) -> f32 {
+        self.virtual_clock
+            .unwrap_or_else(|| self.epoch.elapsed().as_secs_f32())
     }
 }
 

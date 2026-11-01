@@ -3,7 +3,7 @@
 use super::*;
 
 /// Dos clics más cerca que esto (en tiempo y distancia) cuentan como doble clic.
-const MULTI_CLICK: Duration = Duration::from_millis(400);
+const MULTI_CLICK: f32 = 0.4;
 const MULTI_CLICK_DISTANCE: f32 = 4.0;
 
 pub(super) struct Drag {
@@ -259,6 +259,7 @@ impl Runtime {
         }
         if self.start_drag() {
             self.engine.pressed = None;
+            self.last_click = None;
             return Ok(());
         }
         // Bordes y zonas `window_drag`: la pulsación es para la ventana.
@@ -276,6 +277,7 @@ impl Runtime {
                 .and_then(|t| t.find(&key))
                 .is_some_and(Node::is_draggable)
         {
+            self.last_click = None;
             self.grip = Some(Grip {
                 key,
                 start: at,
@@ -286,8 +288,9 @@ impl Runtime {
         }
         // Un `chart` con zoom bajo el puntero: el arrastre mueve su ventana y el
         // doble clic vuelve a la vista completa.
-        if let (Some((key, _)), Some((x, y))) = (self.zoom_at(), self.pointer) {
-            if self.click_count(Point::new(x, y)) == 2 {
+        let zoom = self.zoom_at();
+        if let (Some((key, _)), Some((x, y))) = (zoom.clone(), self.pointer) {
+            if self.click_count(Point::new(x, y), &key) == 2 {
                 self.charts.reset(&key);
             }
             self.pan = Some(Pan {
@@ -306,33 +309,38 @@ impl Runtime {
         });
         let editable = target.as_ref().filter(|(_, e)| *e).map(|(k, _)| k.clone());
         let result = self.focus(target.map(|(k, _)| k));
-        if let (Some(key), Some((x, y))) = (editable, self.pointer) {
-            self.place_cursor(key, Point::new(x, y));
+        match (editable, self.pointer) {
+            (Some(key), Some((x, y))) => self.place_cursor(key, Point::new(x, y)),
+            // Pulsar en otra cosa corta la serie: volver luego al campo es un
+            // clic simple aunque llegue enseguida.
+            _ if zoom.is_none() => self.last_click = None,
+            _ => {}
         }
         result
     }
 
-    /// Cuántos clics seguidos lleva el puntero (1, 2 o 3), para el doble y el
-    /// triple clic.
-    pub(super) fn click_count(&mut self, at: Point) -> u8 {
-        let now = Instant::now();
-        let count = match self.last_click {
-            Some((t, p, n))
-                if now.duration_since(t) < MULTI_CLICK
-                    && (p - at).length() < MULTI_CLICK_DISTANCE =>
+    /// Cuántos clics seguidos lleva el puntero sobre `target` (1, 2 o 3), para
+    /// el doble y el triple clic. Un clic sobre otro destino empieza la cuenta.
+    pub(super) fn click_count(&mut self, at: Point, target: &str) -> u8 {
+        let now = self.clock();
+        let count = match &self.last_click {
+            Some((t, p, n, k))
+                if now - t < MULTI_CLICK
+                    && (*p - at).length() < MULTI_CLICK_DISTANCE
+                    && k == target =>
             {
                 n % 3 + 1
             }
             _ => 1,
         };
-        self.last_click = Some((now, at, count));
+        self.last_click = Some((now, at, count, target.to_owned()));
         count
     }
 
     /// Clic en un campo: coloca el cursor (Mayús amplía la selección); doble
     /// clic selecciona la palabra y triple clic todo el texto.
     fn place_cursor(&mut self, key: String, at: Point) {
-        let count = self.click_count(at);
+        let count = self.click_count(at, &key);
         let Some(state) = self.engine.inputs.get_mut(&key) else {
             return;
         };

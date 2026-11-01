@@ -109,6 +109,8 @@ impl Pilot {
         frameless: bool,
     ) -> PyResult<Self> {
         let mut rt = Runtime::new(build, Clipboard::Memory(String::new()), inspector);
+        // Los clics siguen el tiempo de los frames del piloto, no lo que tarde el test.
+        rt.virtual_clock = Some(0.0);
         // Una ventana sin marco y redimensionable: sus bordes la redimensionan.
         rt.window_edges = frameless;
         let mut pilot = Self {

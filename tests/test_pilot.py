@@ -24,6 +24,7 @@ from aurora import (
     spacer,
     splitter,
     text,
+    text_input,
     title_bar,
     tree,
 )
@@ -1029,3 +1030,54 @@ def test_png_recorta_a_la_caja_de_una_key(tmp_path):
     assert _png_pixel(path, 10, 10) == (255, 0, 0)
     with pytest.raises(LookupError, match="no hay ningún nodo pintado"):
         pilot.png(str(path), key="nada")
+
+
+def _two_fields():
+    a, b = Signal(""), Signal("")
+    view = lambda: column(gap=8, padding=16)[
+        text_input(a, key="a"),
+        text_input(b, key="b"),
+        button("ok", lambda: None, key="ok"),
+    ]
+    return App(view, size=(400, 300)).pilot(), a
+
+
+def test_click_back_into_a_field_places_the_cursor():
+    # Un clic en otro nodo corta la serie de clics: volver al campo enseguida
+    # coloca el cursor en vez de contar como doble clic (que seleccionaba la palabra).
+    pilot, a = _two_fields()
+    pilot.click("a")
+    pilot.type("abc")
+    pilot.click("ok")
+    pilot.click("a")
+    start, end = pilot.selection("a")
+    assert start == end
+    pilot.press("end")
+    pilot.type("X")
+    assert a() == "abcX"
+
+
+def test_multi_click_follows_pilot_frames_not_real_time():
+    # El piloto cuenta el tiempo en frames: dos clics separados por un segundo
+    # de frames son dos clics simples, aunque el test tarde menos en ejecutarlos.
+    pilot, a = _two_fields()
+    pilot.click("a")
+    pilot.type("abc")
+    pilot.click("a")
+    for _ in range(60):
+        pilot.frame()
+    pilot.click("a")
+    start, end = pilot.selection("a")
+    assert start == end
+
+
+def test_select_all_does_not_survive_leaving_and_clicking_back():
+    pilot, a = _two_fields()
+    pilot.click("a")
+    pilot.type("abc")
+    pilot.press("ctrl+a")
+    assert pilot.selection("a") == (0, 3)
+    pilot.click("b")
+    pilot.click("a")
+    start, end = pilot.selection("a")
+    assert start == end

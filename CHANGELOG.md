@@ -78,6 +78,12 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   (`fit-content` de CSS) y su contenido se parte en líneas, como un `text` largo. Antes una
   fila con un texto largo medía todo el texto en una línea, y las listas y citas de `markdown`
   se quedaban en ~20 px de ancho con una letra por línea.
+- Un clic en un campo de texto coloca el cursor aunque llegue poco despuÃ©s de otro clic en otro
+  nodo: la serie de doble y triple clic se corta al pulsar en otra cosa. Antes volver a un
+  campo tras pulsar un botÃ³n contaba como doble clic, seleccionaba la palabra (todo el texto si
+  era una) y lo siguiente que se escribÃ­a la sustituÃ­a. En `Pilot` el doble clic sigue el tiempo
+  de sus frames en vez del reloj real, asÃ­ que dos clics separados por un segundo de frames
+  son dos clics simples por rÃ¡pido que corra el test.
 
 ## [0.9.1] — 2026-10-31
 

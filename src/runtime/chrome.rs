@@ -94,7 +94,7 @@ impl Runtime {
         let Some(zone) = self.window_zone(x, y) else {
             return false;
         };
-        let double = zone == WindowDrag::Move && self.click_count(Point::new(x, y)) == 2;
+        let double = zone == WindowDrag::Move && self.click_count(Point::new(x, y), "window") == 2;
         self.window_request = Some(if double {
             WindowRequest::ToggleMaximize
         } else {
