@@ -118,6 +118,26 @@ impl Column {
         self.len
     }
 
+    /// La columna como slice de `f64`, si ya lo es en memoria (un array de numpy
+    /// `float64` contiguo y alineado, el caso habitual): los recorridos de cada
+    /// frame la leen así sin decidir el tipo en cada punto.
+    pub(super) fn as_f64(&self) -> Option<&[f64]> {
+        let dense = self.num == Num::F64
+            && !self.swap
+            && self.stride == std::mem::size_of::<f64>() as isize
+            && (self.base as usize).is_multiple_of(std::mem::align_of::<f64>());
+        if !dense {
+            return None;
+        }
+        if self.len == 0 {
+            return Some(&[]);
+        }
+        // Seguridad: como en `value`, la memoria del exportador sigue viva mientras
+        // exista esta vista, y son `len` `f64` seguidos, alineados y en el orden de
+        // bytes de la máquina.
+        Some(unsafe { std::slice::from_raw_parts(self.base.cast::<f64>(), self.len) })
+    }
+
     /// Valor `i` como `f64`, leído de la memoria del búfer.
     #[inline]
     pub(super) fn value(&self, i: usize) -> f64 {

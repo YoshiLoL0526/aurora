@@ -155,12 +155,23 @@ pub(super) fn span_of(series: &Series, window: Option<Window>, order: Order) -> 
 pub(super) fn visible_y(chart: &Chart, spans: &[Span], x0: f64, x1: f64) -> (f64, f64) {
     let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
     for (s, span) in chart.series.iter().zip(spans) {
-        for i in each(*span, s.len(), false) {
-            let (x, y) = (s.x_at(i), s.y_at(i));
-            if x.is_finite() && y.is_finite() && x >= x0 && x <= x1 {
-                lo = lo.min(y);
-                hi = hi.max(y);
-            }
+        let (a, b) = match s.dense() {
+            Some(d) => range_y(&d, *span, x0, x1),
+            None => range_y(s, *span, x0, x1),
+        };
+        lo = lo.min(a);
+        hi = hi.max(b);
+    }
+    (lo, hi)
+}
+
+fn range_y(s: &impl Points, span: Span, x0: f64, x1: f64) -> (f64, f64) {
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for i in each(span, s.len(), false) {
+        let (x, y) = (s.x_at(i), s.y_at(i));
+        if x.is_finite() && y.is_finite() && x >= x0 && x <= x1 {
+            lo = lo.min(y);
+            hi = hi.max(y);
         }
     }
     (lo, hi)
@@ -177,6 +188,13 @@ pub(super) struct Curves {
 /// línea en los valores que faltan (los `NaN`) y, cuando un tramo tiene más
 /// puntos que `budget` (su ancho en pantalla), lo reduce con LTTB.
 pub(super) fn curves(series: &Series, span: Span, budget: impl Fn(f64, f64) -> usize) -> Curves {
+    match series.dense() {
+        Some(d) => curves_of(&d, span, budget),
+        None => curves_of(series, span, budget),
+    }
+}
+
+fn curves_of(series: &impl Points, span: Span, budget: impl Fn(f64, f64) -> usize) -> Curves {
     let len = series.len();
     let finite = |i: usize| series.x_at(i).is_finite() && series.y_at(i).is_finite();
     // Con x desordenada entra cada punto visible y sus vecinos: así se siguen

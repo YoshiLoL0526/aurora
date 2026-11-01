@@ -9,6 +9,23 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 
 ## [Sin publicar]
 
+### Cambiado
+
+- Con la reconstrucción parcial, el núcleo ya no recorre el árbol entero en cada cambio para
+  buscar campos de texto, imágenes, lienzos, gráficos, `autofocus` y oyentes de `on_scroll` y
+  `on_resize`: cada nodo resume lo que hay debajo y se saltan las ramas sin nada. En una vista de
+  50 000 nodos, cambiar un color pasa de ~5 ms a ~1,5.
+- Un `chart` con datos `float64` contiguos (lo habitual con numpy) los lee directamente al
+  recortar a la ventana, calcular el eje y y reducir con LTTB: en un gráfico de 1 000 000 de
+  puntos, cada paso de zoom o pan pasa de ~12 a ~9 ms.
+
+### Corregido
+
+- Lo que un `@component` memoriza se guarda aparte para cada `App` o `Window`, que se recuerdan
+  con una referencia débil: al desaparecer (la `App` de un test, una ventana que ya no se usa)
+  se libera su memoria. Antes se quedaba viva mientras existiera el componente, y cada
+  reconstrucción de cualquier vista recorría también la de los demás dueños.
+
 ## [0.9.0] — 2026-10-31
 
 ### Añadido

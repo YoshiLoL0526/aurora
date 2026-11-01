@@ -81,6 +81,68 @@ impl Series {
     fn y_at(&self, i: usize) -> f64 {
         self.y.value(i)
     }
+
+    /// La serie leída directamente como slices de `f64`, si sus búferes lo son.
+    fn dense(&self) -> Option<Dense<'_>> {
+        let y = self.y.as_f64()?;
+        let x = match &self.x {
+            Some(x) => Some(x.as_f64()?),
+            None => None,
+        };
+        Some(Dense { x, y })
+    }
+}
+
+/// Acceso a los puntos de una serie. Los recorridos que tocan cada punto
+/// visible en cada frame (LTTB, el rango de y) son genéricos sobre él: con una
+/// `Dense` el compilador lee los slices sin decidir el tipo del búfer por punto.
+trait Points {
+    fn len(&self) -> usize;
+    fn x_at(&self, i: usize) -> f64;
+    fn y_at(&self, i: usize) -> f64;
+}
+
+impl Points for Series {
+    #[inline]
+    fn len(&self) -> usize {
+        Series::len(self)
+    }
+
+    #[inline]
+    fn x_at(&self, i: usize) -> f64 {
+        Series::x_at(self, i)
+    }
+
+    #[inline]
+    fn y_at(&self, i: usize) -> f64 {
+        Series::y_at(self, i)
+    }
+}
+
+/// Una serie cuyos búferes son `f64` contiguos (ver `Series::dense`).
+struct Dense<'a> {
+    x: Option<&'a [f64]>,
+    y: &'a [f64],
+}
+
+impl Points for Dense<'_> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.y.len()
+    }
+
+    #[inline]
+    fn x_at(&self, i: usize) -> f64 {
+        match self.x {
+            Some(x) => x[i],
+            None => i as f64,
+        }
+    }
+
+    #[inline]
+    fn y_at(&self, i: usize) -> f64 {
+        self.y[i]
+    }
 }
 
 /// Un gráfico completo: sus series y el aspecto de los ejes.
