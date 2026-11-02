@@ -7,6 +7,7 @@ Las apps de prueba están en `tests/apps/`. Cada comando ejecuta el script desde
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -75,7 +76,8 @@ def test_shot_tema(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
 def test_tree_muestra_keys_textos_y_cajas(capsys: pytest.CaptureFixture[str]) -> None:
     code, out, _ = run(capsys, "tree", CONTADOR)
     assert code == 0
-    assert 'button "Sumar" #add @24,63' in out
+    # La altura de cada línea depende de las fuentes del sistema: solo se fija la x.
+    assert re.search(r'button "Sumar" #add @24,\d+ \d+x\d+', out)
     assert 'text "Clics: 0" #total' in out
     assert 'textbox placeholder="Tu nombre" #name' in out
     # El texto de un botón no se repite en su propia línea.

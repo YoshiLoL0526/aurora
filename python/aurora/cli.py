@@ -35,7 +35,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True, metavar="comando")
     for add in COMMANDS:
         add(commands)
-    args = parser.parse_args(argv)
+    args, rest = parser.parse_known_args(argv)
+    # Hasta Python 3.12, argparse no reparte los posicionales que separa una opción: en
+    # `aurora pilot app.py --json "pasos"` el guion se queda suelto. Se le devuelve aquí.
+    if rest and getattr(args, "steps", "") is None and len(rest) == 1 and not rest[0].startswith("-"):
+        args.steps, rest = rest[0], []
+    if rest:
+        parser.error(f"argumentos no reconocidos: {' '.join(rest)}")
     return args.run(args)
 
 

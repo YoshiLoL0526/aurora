@@ -1,6 +1,7 @@
 """Tests de interacción con el piloto headless: mismo runtime que la ventana, sin pantalla."""
 
 import asyncio
+import sys
 import threading
 from datetime import date
 
@@ -28,6 +29,9 @@ from aurora import (
     title_bar,
     tree,
 )
+
+# Saltar palabras: Alt en macOS, Ctrl en el resto.
+WORD = "alt" if sys.platform == "darwin" else "ctrl"
 
 
 @pytest.fixture(autouse=True)
@@ -1075,7 +1079,7 @@ def test_select_all_does_not_survive_leaving_and_clicking_back():
     pilot, _a = _two_fields()
     pilot.click("a")
     pilot.type("abc")
-    pilot.press("ctrl+a")
+    pilot.press("mod+a")
     assert pilot.selection("a") == (0, 3)
     pilot.click("b")
     pilot.click("a")
@@ -1092,16 +1096,16 @@ def test_password_field_hides_the_value():
     assert secret() == "uno dos"
     # Copiar y cortar no sacan el valor del campo.
     pilot.clipboard = "antes"
-    pilot.press("ctrl+a")
-    pilot.press("ctrl+c")
-    pilot.press("ctrl+x")
+    pilot.press("mod+a")
+    pilot.press("mod+c")
+    pilot.press("mod+x")
     assert pilot.clipboard == "antes"
     assert secret() == "uno dos"
-    # Sin palabras: Ctrl+← va al principio en vez de a "dos".
+    # Sin palabras: Ctrl+← (Alt+← en macOS) va al principio en vez de a "dos".
     pilot.press("end")
-    pilot.press("ctrl+left")
+    pilot.press(f"{WORD}+left")
     assert pilot.selection("pw") == (0, 0)
-    pilot.press("ctrl+shift+right")
+    pilot.press(f"{WORD}+shift+right")
     assert pilot.selection("pw") == (0, 7)
     # El lector lo anuncia como contraseña y solo ve los puntos.
     (node,) = [n for n in pilot.a11y_tree() if n["key"] == "pw"]
