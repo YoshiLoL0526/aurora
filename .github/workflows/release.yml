@@ -1,4 +1,5 @@
-# Publica wheels en PyPI al crear un tag vX.Y.Z.
+# Publica wheels en PyPI al crear un tag vX.Y.Z y crea su release en GitHub con las notas del
+# CHANGELOG y los mismos archivos.
 #
 # Requisitos (una sola vez):
 #   1. Crear el proyecto en PyPI y configurar "Trusted Publishing" para este repositorio
@@ -72,3 +73,32 @@ jobs:
           path: dist
           merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Release en GitHub
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Crear la release con la sección del CHANGELOG
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          awk -v v="$version" '
+            /^## \[/ { p = index($0, "## [" v "]") == 1; next }
+            /^\[Sin publicar\]:/ { exit }
+            p
+          ' CHANGELOG.md > notas.md
+          if [ ! -s notas.md ]; then
+            echo "::error::CHANGELOG.md no tiene sección para $version"
+            exit 1
+          fi
+          gh release create "$TAG" dist/* --title "Aurora $version" --notes-file notas.md --verify-tag
