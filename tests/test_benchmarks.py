@@ -80,6 +80,27 @@ def test_frame_verdict_counts_ops_over_budget():
     assert "escala 1" in run.frame_verdict(results, 0.1)[0][0]
 
 
+def test_slack_tolerates_ops_over_budget_within_the_margin():
+    results = {
+        "x": {
+            "ops": {
+                "hover": {"median": 2.0, "p95": 3.0, "budget": FRAME},
+                "scroll": {"median": 20.0, "p95": 25.0, "budget": FRAME},
+                "drag": {"median": 30.0, "p95": 35.0, "budget": FRAME},
+            }
+        }
+    }
+    lines, over = run.frame_verdict(results, slack=1.5)
+    # 20 ms se pasa de 16,7 pero cabe en 25: se avisa sin fallar; 30 ms falla.
+    assert over == 1
+    assert lines[0].startswith("60 fps: 1 de 3")
+    assert "--slack 1.5" in lines[0]
+    assert any(line.startswith("⚠️ x scroll") for line in lines)
+    assert any(line.startswith("❌ x drag") for line in lines)
+    with pytest.raises(SystemExit):
+        run.main(["x", "--slack", "0.5"])
+
+
 def test_check_fails_when_an_op_is_over_budget(monkeypatch, capsys):
     import scenarios
 

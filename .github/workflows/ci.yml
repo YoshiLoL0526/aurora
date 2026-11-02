@@ -54,11 +54,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libfreetype-dev
       - name: Compilar e instalar
         run: uv sync
-      # Control de 60 fps: falla si la mediana de una operación interactiva pasa de su
-      # presupuesto por frame (`Bench.budgets` en benchmarks/scenarios.py). El resto de cifras
-      # se publican para comparar: descarga los JSON y usa `--compare`.
+      # Control de 60 fps: falla si la mediana de una operación interactiva pasa de 1,5 veces su
+      # presupuesto por frame (`Bench.budgets` en benchmarks/scenarios.py). El margen es porque
+      # los runners compartidos varían del simple al doble de velocidad entre ejecuciones; el
+      # resumen marca con ⚠️ lo que se pasa del presupuesto sin pasar del margen. El resto de
+      # cifras se publican para comparar: descarga los JSON y usa `--compare`.
       - name: Ejecutar la suite
-        run: uv run benchmarks/run.py --json bench.json --markdown --check >> "$GITHUB_STEP_SUMMARY"
+        run: uv run benchmarks/run.py --json bench.json --markdown --check --slack 1.5 >> "$GITHUB_STEP_SUMMARY"
       - name: Subir resultados
         if: always()
         uses: actions/upload-artifact@v7

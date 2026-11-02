@@ -7,6 +7,7 @@
     uv run benchmarks/run.py --compare base.json      # compara con una medición anterior
     uv run benchmarks/run.py --markdown               # tabla Markdown (resumen de CI)
     uv run benchmarks/run.py --check                  # falla si una operación pasa de su presupuesto
+    uv run benchmarks/run.py --check --slack 1.5      # ...o de 1,5 veces su presupuesto (la CI)
 
 Cada operación avanza un frame del piloto headless (mismo runtime que la ventana, sin
 presentar en pantalla). Se mide el tiempo total del frame y, con `Pilot.stats`, cada fase:
@@ -16,7 +17,9 @@ de calentamiento.
 
 Las operaciones interactivas tienen un presupuesto por frame (`Bench.budgets` en `scenarios.py`,
 16,7 ms para 60 fps): tras la tabla se dice cuáles caben, y con `--check` el proceso termina con
-error si alguna se pasa (es lo que hace la CI).
+error si alguna se pasa. `--slack F` da un margen a `--check` (solo falla si la mediana pasa de
+F veces el presupuesto): la CI usa `--slack 1.5` porque sus runners compartidos no tienen siempre
+la misma velocidad.
 
 `arranque` mide otra cosa: desde `import aurora` hasta el primer frame de una app típica, con
 cada muestra en un proceso nuevo (`startup.py`), y lo compara con su objetivo (`STARTUP_TARGET`).
@@ -166,26 +169,36 @@ def startup_verdict(results: dict) -> str | None:
     return f"{mark} arranque: {median:.0f} ms de mediana (objetivo ≤ {res['target']:.0f} ms)"
 
 
-def frame_verdict(results: dict, scale: float = 1.0) -> tuple[list[str], int]:
-    """Una línea por operación con presupuesto (mediana frente a él) y cuántas se pasan.
+def frame_verdict(results: dict, scale: float = 1.0, slack: float = 1.0) -> tuple[list[str], int]:
+    """Una línea por operación con presupuesto (mediana frente a él) y cuántas se pasan del
+    presupuesto multiplicado por `slack` (las que hacen fallar `--check`).
 
-    Los presupuestos son para los escenarios a tamaño nominal: con otra `scale` se avisa."""
-    lines, over = [], 0
+    Con `slack > 1`, una operación que se pasa del presupuesto pero cabe en el margen se marca con
+    ⚠️ y no cuenta. Los presupuestos son para los escenarios a tamaño nominal: con otra `scale`
+    se avisa."""
+    lines, within, over = [], 0, 0
     for name, res in results.items():
         for op, s in res["ops"].items():
             if "budget" not in s:
                 continue
             ok = s["median"] <= s["budget"]
-            over += not ok
+            failed = s["median"] > s["budget"] * slack
+            within += ok
+            over += failed
+            mark = "✅" if ok else "❌" if failed else "⚠️"
             lines.append(
-                f"{'✅' if ok else '❌'} {name} {op}: {s['median']:.1f} ms de mediana, "
+                f"{mark} {name} {op}: {s['median']:.1f} ms de mediana, "
                 f"p95 {s['p95']:.1f} ms (presupuesto ≤ {s['budget']:.1f} ms)"
             )
     if lines:
-        total = len(lines)
-        head = f"60 fps: {total - over} de {total} operaciones caben en su presupuesto por frame"
+        head = f"60 fps: {within} de {len(lines)} operaciones caben en su presupuesto por frame"
+        notes = []
+        if slack != 1.0:
+            notes.append(f"con --slack {slack:g}, ⚠️ se pasa pero cabe en el margen y solo ❌ falla")
         if scale != 1.0:
-            head += f" (con --scale {scale:g}: los presupuestos son para la escala 1)"
+            notes.append(f"con --scale {scale:g}: los presupuestos son para la escala 1")
+        if notes:
+            head += f" ({'; '.join(notes)})"
         lines.insert(0, head)
     return lines, over
 
@@ -297,7 +310,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--check", action="store_true", help="termina con error si una operación pasa de su presupuesto"
     )
+    parser.add_argument(
+        "--slack",
+        type=float,
+        default=1.0,
+        help="margen de --check: solo falla si la mediana pasa del presupuesto por este factor "
+        "(la CI usa 1.5: sus runners compartidos varían del simple al doble de velocidad)",
+    )
     args = parser.parse_args(argv)
+    if args.slack < 1:
+        parser.error("--slack tiene que ser 1 o más")
     if unknown := set(args.scenarios) - set(names):
         parser.error(f"escenario desconocido: {', '.join(sorted(unknown))} (hay: {', '.join(names)})")
 
@@ -321,7 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     if verdict := startup_verdict(results):
         print()
         print(verdict)
-    lines, over = frame_verdict(results, args.scale)
+    lines, over = frame_verdict(results, args.scale, args.slack)
     if lines:
         print()
         # En Markdown, una lista: el resumen de CI no junta las líneas.

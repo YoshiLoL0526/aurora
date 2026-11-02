@@ -10,6 +10,7 @@ uv run benchmarks/run.py --json antes.json      # guarda los resultados
 uv run benchmarks/run.py --compare antes.json   # compara con una medición anterior
 uv run benchmarks/run.py --scale 0.1            # escenarios reducidos, para iterar rápido
 uv run benchmarks/run.py --check                # falla si una operación pasa de su presupuesto
+uv run benchmarks/run.py --check --slack 1.5    # ...o de 1,5 veces su presupuesto (lo que usa la CI)
 ```
 
 ## Qué se mide
@@ -63,7 +64,8 @@ transiciones de hover que dejó en curso la operación anterior.
 Las operaciones interactivas tienen que caber en **un frame a 60 fps: 16,7 ms de mediana**. Cada
 escenario declara cuáles en `Bench.budgets` (`budgets=budget("hover", "scroll", "idle")`, con
 `FRAME` por defecto o `ms=` para un presupuesto propio). Tras la tabla, `run.py` dice cuántas caben
-y marca cada una con ✅ o ❌; con `--check` termina con error si alguna se pasa. Se compara la
+y marca cada una con ✅ o ❌; con `--check` termina con error si alguna se pasa (con `--slack F`,
+solo si pasa de F veces su presupuesto, y lo que queda en medio sale con ⚠️). Se compara la
 mediana, no el p95: el p95 de unas decenas de muestras en un runner compartido es casi todo ruido
 (se muestra igualmente). Los presupuestos son para la escala nominal: con `--scale` se avisa.
 
@@ -114,7 +116,12 @@ se rompan sin que nadie lo note.
 - [`baseline-0.2.0.json`](baseline-0.2.0.json) es el punto de partida de la v0.3, medido con la
   0.2.0 en la máquina que indica su `meta` (Windows). Sirve de referencia de orden de magnitud;
   para comparar en tu máquina, mide primero la rama principal con `--json`.
-- En CI el job **Benchmarks** ejecuta la suite en cada push con `--check`, publica la tabla y el
-  veredicto de 60 fps en el resumen del build y sube `bench.json` como artefacto. **Falla si una
-  operación con presupuesto se pasa de 16,7 ms de mediana**; el resto de cifras (y el objetivo de
-  arranque) solo se publican, porque los runners compartidos tienen ruido.
+- En CI el job **Benchmarks** ejecuta la suite en cada push con `--check --slack 1.5`, publica la
+  tabla y el veredicto de 60 fps en el resumen del build y sube `bench.json` como artefacto.
+  **Falla si una operación con presupuesto se pasa de 1,5 veces su presupuesto de mediana** (25 ms
+  para los de 16,7 ms); entre el presupuesto y ese margen se marca con ⚠️. El margen existe porque
+  los runners compartidos no tienen siempre la misma velocidad: la misma operación, sin cambios en
+  el código, ha medido de 7,6 a 28,8 ms entre ejecuciones (`dashboard_50 rebuild`, otoño de 2026),
+  y todas las fases, también las de Rust, se mueven a la vez. Sin margen, el control fallaría según
+  el runner que toque; con él caza las regresiones grandes. El objetivo sigue siendo 16,7 ms: mídelo
+  en tu máquina con `--compare`. El resto de cifras (y el objetivo de arranque) solo se publican.

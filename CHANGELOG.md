@@ -48,21 +48,21 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - `ThemeTokenError`, el error de un token de tema desconocido: dice en qué propiedad estaba y
   sugiere el más parecido (`¿Quisiste decir '$primary'?`). Es subclase de `KeyError`, que es lo
   que se lanzaba antes.
-- Campos de contraseÃ±a: `text_input(clave, password=True)` pinta un punto por carÃ¡cter, no deja
+- Campos de contraseña: `text_input(clave, password=True)` pinta un punto por carácter, no deja
   copiar ni cortar el valor, no tiene palabras (Ctrl+flechas, Ctrl+Retroceso y el doble clic van
-  al extremo o seleccionan todo) y los lectores de pantalla lo anuncian con el rol de contraseÃ±a
+  al extremo o seleccionan todo) y los lectores de pantalla lo anuncian con el rol de contraseña
   de AccessKit sin ver el valor. `Pilot.a11y_tree()` lo da con `role="password"` y los puntos como
-  `value`; `Pilot.layout()` y `aurora tree` tambiÃ©n muestran solo los puntos. La prop de estilo
+  `value`; `Pilot.layout()` y `aurora tree` también muestran solo los puntos. La prop de estilo
   `password` hace lo mismo en un `Element("input")`.
 - Los valores de las props enumeradas (`justify`, `align`, `direction`, `position`, `overflow`,
   `fit`, `scroll`, `cursor`, `window_drag`, `layer`, `text_align`, `live`, `sort`, `orientation`
   y `placement`) y de `button(variant=)`, `chart(kind=)` y `Column(align=)` se validan al crear el
-  elemento: un valor que no existe lanza `ValueError` con los vÃ¡lidos y una sugerencia, que
-  entiende los nombres de CSS (`justify="space-between"` â†’ `'between'`, `align="flex-start"` â†’
-  `'start'`, `text_align="end"` â†’ `'right'`). Antes `row(justify="space-between")` se aceptaba y
+  elemento: un valor que no existe lanza `ValueError` con los válidos y una sugerencia, que
+  entiende los nombres de CSS (`justify="space-between"` → `'between'`, `align="flex-start"` →
+  `'start'`, `text_align="end"` → `'right'`). Antes `row(justify="space-between")` se aceptaba y
   no alineaba, y `button(variant="sof")` daba un `KeyError: 'sof'` desnudo. Un valor reactivo
-  lo comprueba el nÃºcleo al leerlo. `live` admite en el tipado `"off"`, que el nÃºcleo ya aceptaba.
-- `stat` y `badge` aceptan `key` y `**estilo` (van a la tarjeta y a la pÃ­ldora): ya no hace falta
+  lo comprueba el núcleo al leerlo. `live` admite en el tipado `"off"`, que el núcleo ya aceptaba.
+- `stat` y `badge` aceptan `key` y `**estilo` (van a la tarjeta y a la píldora): ya no hace falta
   envolverlos en un `box` para localizarlos desde `Pilot` o `aurora pilot` ni para darles ancho.
 
 ### Cambiado
@@ -81,13 +81,18 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
 - El control de 60 fps de los benchmarks (`benchmarks/run.py --check`, el que usa la CI) exige
   16,7 ms también a `dashboard_50 rebuild` y `typing type`, que tenían un presupuesto
   provisional de 25 ms: ya caben en un frame (8,2 y 5,4 ms de mediana en la CI).
-- Sugerencias mÃ¡s Ãºtiles en los errores. Un token de tema desconocido sugiere uno del tipo que pide
-  la propiedad (un color en `bg`, un radio en `radius`; antes `bg="$bg"` sugerÃ­a `'$lg'`, un
-  radio) y entiende alias habituales (`$bg` â†’ `$background`, `$fg` â†’ `$text`, `$error` â†’
-  `$danger`, `$large` â†’ `$lg`). Una prop desconocida reconoce los nombres de otras librerÃ­as
-  (`background`, `border_radius`, `flex`, `justify_content`, `secure` â†’ `password`â€¦), explica
-  que `margin` y `on_hover` no existen y quÃ© usar, y ya no sugiere nombres poco parecidos
-  (`text_input(secure=True)` sugerÃ­a `'capture'`).
+- `benchmarks/run.py --slack F` da un margen a `--check`: solo falla si la mediana pasa de F veces
+  el presupuesto, y lo que queda entre el presupuesto y el margen sale con ⚠️. La CI usa
+  `--slack 1.5`: sus runners compartidos varían del simple al doble de velocidad entre
+  ejecuciones (`dashboard_50 rebuild` ha medido de 7,6 a 28,8 ms sin cambios en el código), y sin
+  margen el control fallaba según el runner que tocara.
+- Sugerencias más útiles en los errores. Un token de tema desconocido sugiere uno del tipo que pide
+  la propiedad (un color en `bg`, un radio en `radius`; antes `bg="$bg"` sugería `'$lg'`, un
+  radio) y entiende alias habituales (`$bg` → `$background`, `$fg` → `$text`, `$error` →
+  `$danger`, `$large` → `$lg`). Una prop desconocida reconoce los nombres de otras librerías
+  (`background`, `border_radius`, `flex`, `justify_content`, `secure` → `password`…), explica
+  que `margin` y `on_hover` no existen y qué usar, y ya no sugiere nombres poco parecidos
+  (`text_input(secure=True)` sugería `'capture'`).
 
 ### Corregido
 
@@ -101,28 +106,28 @@ explica la [política de estabilidad](https://yoshilol0526.github.io/aurora/stab
   (`fit-content` de CSS) y su contenido se parte en líneas, como un `text` largo. Antes una
   fila con un texto largo medía todo el texto en una línea, y las listas y citas de `markdown`
   se quedaban en ~20 px de ancho con una letra por línea.
-- Un clic en un campo de texto coloca el cursor aunque llegue poco despuÃ©s de otro clic en otro
+- Un clic en un campo de texto coloca el cursor aunque llegue poco después de otro clic en otro
   nodo: la serie de doble y triple clic se corta al pulsar en otra cosa. Antes volver a un
-  campo tras pulsar un botÃ³n contaba como doble clic, seleccionaba la palabra (todo el texto si
-  era una) y lo siguiente que se escribÃ­a la sustituÃ­a. En `Pilot` el doble clic sigue el tiempo
-  de sus frames en vez del reloj real, asÃ­ que dos clics separados por un segundo de frames
-  son dos clics simples por rÃ¡pido que corra el test.
-- Cuando el valor de un campo cambia desde fuera y el cursor estaba al final (tambiÃ©n en un campo
-  vacÃ­o que se rellena), el cursor sigue al final. Antes volvÃ­a al principio y lo siguiente que se
-  escribÃ­a iba delante del texto.
-- `aurora check` seÃ±ala la lÃ­nea de tu cÃ³digo que escribiÃ³ un token de tema desconocido (el
-  `ThemeTokenError` lleva `origin`, el archivo y la lÃ­nea donde se creÃ³ el elemento). Antes, como el
-  token falla al serializar la vista, el error salÃ­a sin archivo (`file: null`).
-- Una cadena vacÃ­a o un `0` entre los hijos no pintan nada, como `None` y `False`: con una condiciÃ³n
+  campo tras pulsar un botón contaba como doble clic, seleccionaba la palabra (todo el texto si
+  era una) y lo siguiente que se escribía la sustituía. En `Pilot` el doble clic sigue el tiempo
+  de sus frames en vez del reloj real, así que dos clics separados por un segundo de frames
+  son dos clics simples por rápido que corra el test.
+- Cuando el valor de un campo cambia desde fuera y el cursor estaba al final (también en un campo
+  vacío que se rellena), el cursor sigue al final. Antes volvía al principio y lo siguiente que se
+  escribía iba delante del texto.
+- `aurora check` señala la línea de tu código que escribió un token de tema desconocido (el
+  `ThemeTokenError` lleva `origin`, el archivo y la línea donde se creó el elemento). Antes, como el
+  token falla al serializar la vista, el error salía sin archivo (`file: null`).
+- Una cadena vacía o un `0` entre los hijos no pintan nada, como `None` y `False`: con una condición
   de texto, `error() and text(error())` con `error() == ""` creaba un `text("")` que ocupaba una
-  lÃ­nea y sumaba un `gap` (era el patrÃ³n que recomendaba la chuleta). Un nÃºmero distinto de 0 como
+  línea y sumaba un `gap` (era el patrón que recomendaba la chuleta). Un número distinto de 0 como
   hijo lanza un `TypeError` claro en vez de `'int' object is not iterable`.
 - `tabs(key=...)` y `segmented(key=...)` ponen la `key` en su contenedor; antes solo la llevaban
   las opciones (`f"{key}-{valor}"`), que ahora se documentan como la forma de pulsarlas desde
   `Pilot` y `aurora pilot`.
-- `aurora --help`, la ayuda de cada comando y los errores de uso salen en UTF-8 tambiÃ©n en Windows:
-  el CLI pasa stdout y stderr a UTF-8 al arrancar. Antes solo lo hacÃ­an `aurora docs` y los
-  errores propios, y la ayuda de argparse se leÃ­a rota en una tuberÃ­a (`documentaciï¿½n`).
+- `aurora --help`, la ayuda de cada comando y los errores de uso salen en UTF-8 también en Windows:
+  el CLI pasa stdout y stderr a UTF-8 al arrancar. Antes solo lo hacían `aurora docs` y los
+  errores propios, y la ayuda de argparse se leía rota en una tubería (`documentaci�n`).
 
 ## [0.9.1] — 2026-10-31
 
